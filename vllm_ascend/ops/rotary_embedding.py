@@ -228,7 +228,11 @@ class AscendRotaryEmbedding(RotaryEmbedding):
         vllm_config = get_current_vllm_config()
         self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp"
         self.force_native_qwen2_rope = (
-            "Qwen2ForCausalLM" in getattr(vllm_config.model_config, "architectures", [])
+            bool(
+                {"Qwen2ForCausalLM", "SliceGPTQwen2ForCausalLM"}.intersection(
+                    getattr(vllm_config.model_config, "architectures", [])
+                )
+            )
             and os.environ.get("VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE", "0") != "0"
         )
         _record_cos_sin_cache(self.cos_sin_cache)

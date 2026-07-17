@@ -625,7 +625,10 @@ class NPUPlatform(Platform):
 
         from vllm.config.compilation import CUDAGraphMode
 
-        if model_config is not None and architecture == "Qwen2ForCausalLM":
+        if model_config is not None and architecture in {
+            "Qwen2ForCausalLM",
+            "SliceGPTQwen2ForCausalLM",
+        }:
             if os.environ.get("VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE", "0") != "0":
                 logger.warning(
                     "Using native rotary fallback for %s on NPU because VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE=1.",
