@@ -47,6 +47,7 @@ from vllm_ascend.attention.kvcomp_attn.attention_utils import (
     is_enable_hamming_sparse,
     reshape_and_cache_kvcomp,
 )
+from vllm_ascend.attention.path_probe import ATTENTION_PATH_PROBE
 from vllm_ascend.attention.utils import (
     AscendCommonAttentionMetadata,
     cache_graph_workspace,
@@ -1239,6 +1240,14 @@ class AscendAttentionBackendImpl(AttentionImpl):
         # we inherit ForwardContext in model runner v2, when enable model
         # runner v2, there is not capturing attribute in forward_context,
         # just use getattr to avoid attribute error.
+        if ATTENTION_PATH_PROBE is not None:
+            ATTENTION_PATH_PROBE.record(
+                path="fused_infer_attention",
+                query=query,
+                attn_metadata=attn_metadata,
+                sliding_window=self.sliding_window,
+                capturing=bool(_EXTRA_CTX.capturing),
+            )
         if _EXTRA_CTX.capturing:
             if self.sinks is not None:
                 attn_output, num_tokens = self.full_graph_fia_v2(query, key, value, attn_metadata, output)
@@ -1354,6 +1363,14 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
         output: torch.Tensor | None = None,
     ) -> torch.Tensor:
+        if ATTENTION_PATH_PROBE is not None:
+            ATTENTION_PATH_PROBE.record(
+                path="paged_attention",
+                query=query,
+                attn_metadata=attn_metadata,
+                sliding_window=self.sliding_window,
+                capturing=bool(_EXTRA_CTX.capturing),
+            )
         if _EXTRA_CTX.capturing:
             return self.full_graph_pa(query, attn_metadata, output)
         torch_npu._npu_paged_attention(

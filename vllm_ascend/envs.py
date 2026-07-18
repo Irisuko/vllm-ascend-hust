@@ -147,6 +147,16 @@ env_variables: dict[str, Callable[[], Any]] = {
     "VLLM_ASCEND_DISABLE_TOP_K_TOP_P_CUSTOM_OP": lambda: bool(
         int(os.getenv("VLLM_ASCEND_DISABLE_TOP_K_TOP_P_CUSTOM_OP", "0"))
     ),
+    # Optional JSONL destination for executed attention-path diagnostics.
+    # Empty (default): disabled. The path is not sensitive.
+    "VLLM_ASCEND_ATTENTION_PATH_PROBE_JSONL": lambda: os.getenv(
+        "VLLM_ASCEND_ATTENTION_PATH_PROBE_JSONL", ""
+    ),
+    # Maximum detailed attention-path records per process. Counts are still
+    # included in the exit summary after this limit. Valid range: >= 0.
+    "VLLM_ASCEND_ATTENTION_PATH_PROBE_MAX_RECORDS": lambda: int(
+        os.getenv("VLLM_ASCEND_ATTENTION_PATH_PROBE_MAX_RECORDS", "2048")
+    ),
 
     # -- Sim-LLM: KV reuse optimization ---------------------------------------
     # Whether to enable Sim-LLM KV reuse optimization. When set to 1, the Sim-LLM
