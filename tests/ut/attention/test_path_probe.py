@@ -58,3 +58,31 @@ def test_write_failure_disables_probe(tmp_path):
 
     assert probe._disabled is True
     assert probe._counts["paged_attention"] == 1
+
+
+def test_metadata_failure_disables_probe_without_escaping(tmp_path):
+    probe = AttentionPathProbe(tmp_path / "attention.jsonl", max_records=1)
+
+    probe.record(
+        path="paged_attention",
+        query=SimpleNamespace(shape=(1, 8, 128)),
+        attn_metadata=SimpleNamespace(),
+        sliding_window=None,
+        capturing=False,
+    )
+
+    assert probe._disabled is True
+
+
+def test_serialization_failure_disables_probe_without_escaping(tmp_path):
+    probe = AttentionPathProbe(tmp_path / "attention.jsonl", max_records=1)
+
+    probe.record(
+        path="paged_attention",
+        query=SimpleNamespace(shape=(1, 8, 128)),
+        attn_metadata=_metadata(),
+        sliding_window=object(),
+        capturing=False,
+    )
+
+    assert probe._disabled is True

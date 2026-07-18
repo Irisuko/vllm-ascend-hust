@@ -40,7 +40,7 @@ class AttentionPathProbe:
             return None
         try:
             max_records = max(0, envs.VLLM_ASCEND_ATTENTION_PATH_PROBE_MAX_RECORDS)
-        except ValueError:
+        except (TypeError, ValueError):
             logger.warning(
                 "Invalid VLLM_ASCEND_ATTENTION_PATH_PROBE_MAX_RECORDS; using %d",
                 _DEFAULT_MAX_RECORDS,
@@ -82,33 +82,32 @@ class AttentionPathProbe:
     ) -> None:
         if self._disabled:
             return
-
-        attn_state = attn_metadata.attn_state.name
-        self._counts[path] += 1
-        self._counts[f"{path}:{attn_state}"] += 1
-        if self._records >= self._max_records:
-            return
-
-        seq_lens = attn_metadata.seq_lens_list or []
-        record = {
-            "event": "attention_path",
-            "ts": time.time(),
-            "path": path,
-            "attn_state": attn_state,
-            "query_tokens": int(query.shape[0]),
-            "num_actual_tokens": int(attn_metadata.num_actual_tokens or 0),
-            "num_decode_tokens": int(attn_metadata.num_decode_tokens or 0),
-            "num_prefills": int(attn_metadata.num_prefills or 0),
-            "num_decodes": int(attn_metadata.num_decodes or 0),
-            "seq_count": len(seq_lens),
-            "seq_lens_head": [int(value) for value in seq_lens[:8]],
-            "sliding_window": sliding_window,
-            "capturing": bool(capturing),
-        }
         try:
+            attn_state = attn_metadata.attn_state.name
+            self._counts[path] += 1
+            self._counts[f"{path}:{attn_state}"] += 1
+            if self._records >= self._max_records:
+                return
+
+            seq_lens = attn_metadata.seq_lens_list or []
+            record = {
+                "event": "attention_path",
+                "ts": time.time(),
+                "path": path,
+                "attn_state": attn_state,
+                "query_tokens": int(query.shape[0]),
+                "num_actual_tokens": int(attn_metadata.num_actual_tokens or 0),
+                "num_decode_tokens": int(attn_metadata.num_decode_tokens or 0),
+                "num_prefills": int(attn_metadata.num_prefills or 0),
+                "num_decodes": int(attn_metadata.num_decodes or 0),
+                "seq_count": len(seq_lens),
+                "seq_lens_head": [int(value) for value in seq_lens[:8]],
+                "sliding_window": sliding_window,
+                "capturing": bool(capturing),
+            }
             self._write(record)
             self._records += 1
-        except OSError:
+        except Exception:
             self._disable_after_error()
 
     def flush_summary(self) -> None:
@@ -123,7 +122,7 @@ class AttentionPathProbe:
                 }
             )
             self._summary_written = True
-        except OSError:
+        except Exception:
             self._disable_after_error()
 
 
