@@ -47,7 +47,10 @@ from vllm_ascend.attention.kvcomp_attn.attention_utils import (
     is_enable_hamming_sparse,
     reshape_and_cache_kvcomp,
 )
-from vllm_ascend.attention.path_probe import ATTENTION_PATH_PROBE
+from vllm_ascend.attention.path_probe import (
+    ATTENTION_PATH_PROBE,
+    classify_dispatch_coverage,
+)
 from vllm_ascend.attention.utils import (
     AscendCommonAttentionMetadata,
     cache_graph_workspace,
@@ -442,6 +445,41 @@ class AscendAttentionBackendImpl(AttentionImpl):
         # attn_metadata during graph replay. Record the captured layer name only
         # for that path.
         self._layer_name: str | None = None
+
+    def _record_python_dispatch(
+        self,
+        *,
+        layer_id: str,
+        operator_id: str,
+        query: torch.Tensor,
+        attn_metadata: AscendMetadata,
+        is_c8: bool = False,
+        pooling: bool = False,
+    ) -> None:
+        if ATTENTION_PATH_PROBE is None:
+            return
+        capturing = bool(getattr(_EXTRA_CTX, "capturing", False))
+        ATTENTION_PATH_PROBE.record_dispatch(
+            operator_id=operator_id,
+            layer_id=layer_id,
+            coverage=classify_dispatch_coverage(
+                capturing=capturing,
+                is_c8=is_c8,
+                pooling=pooling,
+            ),
+            query=query,
+            attn_metadata=attn_metadata,
+            sliding_window=self.sliding_window,
+        )
+
+    def _selected_operator_id(self, query: torch.Tensor, attn_metadata: AscendMetadata) -> str:
+        if (
+            attn_metadata.attn_state == AscendAttentionState.DecodeOnly
+            and using_paged_attention(query.shape[0], self.vllm_config)
+            and self.sliding_window is None
+        ):
+            return "paged_attention"
+        return "fused_infer_attention"
 
     def _graph_metadata_layer_name(self, layer: AttentionLayer | None = None) -> str | None:
         layer_name = layer.layer_name if layer is not None else self._layer_name
@@ -1240,14 +1278,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
         # we inherit ForwardContext in model runner v2, when enable model
         # runner v2, there is not capturing attribute in forward_context,
         # just use getattr to avoid attribute error.
-        if ATTENTION_PATH_PROBE is not None:
-            ATTENTION_PATH_PROBE.record(
-                path="fused_infer_attention",
-                query=query,
-                attn_metadata=attn_metadata,
-                sliding_window=self.sliding_window,
-                capturing=bool(_EXTRA_CTX.capturing),
-            )
         if _EXTRA_CTX.capturing:
             if self.sinks is not None:
                 attn_output, num_tokens = self.full_graph_fia_v2(query, key, value, attn_metadata, output)
@@ -1363,14 +1393,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
         output: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        if ATTENTION_PATH_PROBE is not None:
-            ATTENTION_PATH_PROBE.record(
-                path="paged_attention",
-                query=query,
-                attn_metadata=attn_metadata,
-                sliding_window=self.sliding_window,
-                capturing=bool(_EXTRA_CTX.capturing),
-            )
         if _EXTRA_CTX.capturing:
             return self.full_graph_pa(query, attn_metadata, output)
         torch_npu._npu_paged_attention(
@@ -1470,12 +1492,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
-        num_tokens = query.shape[0]
-        if (
-            attn_metadata.attn_state == AscendAttentionState.DecodeOnly
-            and using_paged_attention(num_tokens, self.vllm_config)
-            and self.sliding_window is None
-        ):
+        if self._selected_operator_id(query, attn_metadata) == "paged_attention":
             output = self.forward_paged_attention(query, attn_metadata, output)
         else:
             output = self.forward_fused_infer_attention(query, key, value, attn_metadata, output, kv_cache)
@@ -1518,6 +1535,16 @@ class AscendAttentionBackendImpl(AttentionImpl):
         num_tokens = query.shape[0]
         if attn_metadata is None:
             return output.fill_(0)
+
+        if ATTENTION_PATH_PROBE is not None:
+            is_pooling = attn_metadata.model_runner_type == "pooling" and not attn_metadata.causal
+            self._record_python_dispatch(
+                layer_id=layer.layer_name,
+                operator_id=("encoder_attention" if is_pooling else self._selected_operator_id(query, attn_metadata)),
+                query=query,
+                attn_metadata=attn_metadata,
+                pooling=is_pooling,
+            )
 
         # Initialize key_cache and value_cache from kv_cache if not already set.
         # This is needed for DecodeOnly mode where key/value are None but we still
@@ -1582,6 +1609,16 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         num_tokens = query.shape[0]
         if attn_metadata is None:
             return output.fill_(0)
+
+        if ATTENTION_PATH_PROBE is not None:
+            self._record_python_dispatch(
+                layer_id=layer.layer_name,
+                operator_id="c8_attention_dispatch",
+                query=query,
+                attn_metadata=attn_metadata,
+                is_c8=True,
+                pooling=(attn_metadata.model_runner_type == "pooling" and not attn_metadata.causal),
+            )
 
         self._prepare_c8_scales(layer, query.device)
         float_key, float_value = None, None
