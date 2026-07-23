@@ -315,8 +315,7 @@ def _warn_top_k_top_p_fallback(reason: str) -> None:
     if _MISSING_TOP_K_TOP_P_OP_WARNED:
         return
     logger.warning(
-        "Custom op npu_apply_top_k_top_p is unavailable (%s); "
-        "falling back to the pytorch implementation.",
+        "Custom op npu_apply_top_k_top_p is unavailable (%s); falling back to the pytorch implementation.",
         reason,
     )
     _MISSING_TOP_K_TOP_P_OP_WARNED = True

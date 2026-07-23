@@ -7,7 +7,6 @@ from __future__ import annotations
 import atexit
 import json
 import os
-import re
 import threading
 import time
 from collections import Counter
@@ -15,11 +14,10 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, TextIO
 
-from vllm.logger import init_logger
+import regex as re
+from vllm.logger import logger
 
 from vllm_ascend import envs
-
-logger = init_logger(__name__)
 
 SCHEMA_VERSION = 1
 EVENT_SEMANTICS = "python_dispatch_or_capture_event_not_graph_replay_execution"
