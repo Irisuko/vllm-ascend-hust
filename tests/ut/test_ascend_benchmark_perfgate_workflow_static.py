@@ -12,6 +12,8 @@
 # limitations under the License.
 # This file is a part of the vllm-ascend project.
 
+import os
+import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +23,7 @@ MANAGER_HELPER = REPO_ROOT / "scripts/hust_ascend_manager_helper.sh"
 INSTALL_PLUGIN_SCRIPT = REPO_ROOT / "scripts/install_local_ascend_plugin.sh"
 INSTALL_DEV_HUB_SCRIPT = SCRIPT_DIR / "install_ascend_benchmark_with_dev_hub.sh"
 USE_SINGLE_ASCEND_ENV_SCRIPT = REPO_ROOT / "scripts/use_single_ascend_env.sh"
+PERFGATE_VALIDATE_REQUIRED_SCRIPT = SCRIPT_DIR / "perfgate_validate_required.sh"
 
 
 def test_perfgate_scripts_are_present() -> None:
@@ -30,6 +33,7 @@ def test_perfgate_scripts_are_present() -> None:
         "perfgate_stage2_rebase_and_benchmark.sh",
         "perfgate_compare.sh",
         "perfgate_store_baseline.sh",
+        "perfgate_validate_required.sh",
         "install_ascend_benchmark_with_dev_hub.sh",
         "parse_ascend_comment_command.py",
         "resolve_ascend_benchmark_scenario.py",
@@ -114,6 +118,155 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "VLLM_ASCEND_HUST_SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS || '300'" in workflow
     assert "vars.VLLM_ASCEND_HUST_COMPILE_CUSTOM_KERNELS || 'auto'" in workflow
     assert "VLLM_ASCEND_HUST_STAGE2_DEV_HUB_QUICKSTART_CONDA" not in workflow
+    assert "github.event_name == 'pull_request' && 'enforce'" in workflow
+    assert "Validate required PR perfgate scenario" in workflow
+    assert "Validate required performance gate completion" in workflow
+    assert 'PERFGATE_REQUIRED: "1"' in workflow
+    assert "PERFGATE_BASELINE_UNAVAILABLE_REASON" in workflow
+    assert "PERFGATE_STAGE2_NOT_RUN_REASON" in workflow
+    assert "always() && (github.event_name == 'pull_request' || github.event_name == 'issue_comment')" in workflow
+    assert "PERFGATE_STAGE2_REBASE_CONFLICT_FILE" in workflow
+
+
+def test_required_perfgate_scripts_fail_fast() -> None:
+    stage1_script = (SCRIPT_DIR / "perfgate_stage1_compare.sh").read_text(
+        encoding="utf-8"
+    )
+    stage2_script = (SCRIPT_DIR / "perfgate_stage2_rebase_and_benchmark.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'write_env PERFGATE_STAGE1_COMPLETED 1' in stage1_script
+    assert '"$MODE" == "enforce"' in stage1_script
+    assert '"$MODE" != "enforce"' in stage2_script
+    assert 'write_env PERFGATE_STAGE2_EXECUTED 1' in stage2_script
+    assert 'write_env PERFGATE_STAGE2_BASELINE_AVAILABLE "$stage2_baseline_available"' in stage2_script
+    assert stage2_script.count('if [[ "$MODE" == "enforce" ]]') >= 2
+
+
+def test_stage1_comparison_fails_only_in_enforce_mode(tmp_path: Path) -> None:
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        """#!/bin/bash
+set -euo pipefail
+report_file=""
+while (( $# > 0 )); do
+  if [[ "$1" == "--report-file" ]]; then
+    report_file=$2
+    break
+  fi
+  shift
+done
+printf '**Overall: FAIL**\n' > "$report_file"
+exit 2
+""",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    current = tmp_path / "current.json"
+    baseline = tmp_path / "baseline.json"
+    current.write_text("{}\n", encoding="utf-8")
+    baseline.write_text("{}\n", encoding="utf-8")
+
+    common_env = {
+        **os.environ,
+        "PYTHON_BIN": str(fake_python),
+        "PERFGATE_BASELINE_AVAILABLE": "1",
+        "PERFGATE_BASELINE_FILE": str(baseline),
+        "PERFGATE_STAGE1_CURRENT_FILE": str(current),
+        "PERFGATE_REPORT_FILE": str(tmp_path / "report.md"),
+        "GITHUB_ENV": str(tmp_path / "github-env"),
+    }
+    enforce_result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "perfgate_stage1_compare.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**common_env, "PERFGATE_MODE": "enforce"},
+    )
+    report_result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "perfgate_stage1_compare.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**common_env, "PERFGATE_MODE": "report"},
+    )
+
+    assert enforce_result.returncode == 2
+    assert report_result.returncode == 0
+
+
+def test_stage1_missing_baseline_fails_in_enforce_mode(tmp_path: Path) -> None:
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "perfgate_stage1_compare.sh")],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PERFGATE_MODE": "enforce",
+            "PERFGATE_BASELINE_AVAILABLE": "0",
+            "PERFGATE_REPORT_FILE": str(tmp_path / "report.md"),
+            "GITHUB_ENV": str(tmp_path / "github-env"),
+        },
+    )
+
+    assert result.returncode == 2
+    assert "Stage 1 performance gate skipped" in result.stdout
+
+
+def test_required_perfgate_validator_rejects_incomplete_gate() -> None:
+    result = subprocess.run(
+        ["bash", str(PERFGATE_VALIDATE_REQUIRED_SCRIPT)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PERFGATE_REQUIRED": "1"},
+    )
+
+    assert result.returncode == 2
+    assert "incomplete or failed" in result.stderr
+
+
+def test_required_perfgate_validator_accepts_complete_gate(tmp_path: Path) -> None:
+    stage1_baseline = tmp_path / "stage1-baseline.json"
+    stage2_current = tmp_path / "stage2-current.json"
+    stage2_baseline = tmp_path / "stage2-baseline.json"
+    report = tmp_path / "perfgate-report.md"
+    for path in (stage1_baseline, stage2_current, stage2_baseline, report):
+        path.write_text("{}\n", encoding="utf-8")
+
+    env = {
+        **os.environ,
+        "PERFGATE_REQUIRED": "1",
+        "PERFGATE_MODE": "enforce",
+        "BENCH_SCENARIO_COUNT": "1",
+        "BENCH_SCENARIO": "random-online",
+        "PERFGATE_BASELINE_AVAILABLE": "1",
+        "PERFGATE_STAGE1_COMPLETED": "1",
+        "PERFGATE_STAGE1_RESULT": "pass",
+        "PERFGATE_STAGE2_EXECUTED": "1",
+        "PERFGATE_STAGE2_BASELINE_AVAILABLE": "1",
+        "PERFGATE_STAGE2_COMPLETED": "1",
+        "PERFGATE_STAGE2_RESULT": "pass",
+        "PERFGATE_STAGE2_SKIPPED": "0",
+        "PERFGATE_STAGE2_REBASE_CONFLICT": "0",
+        "PERFGATE_RESULT": "pass",
+        "PERFGATE_BASELINE_FILE": str(stage1_baseline),
+        "PERFGATE_STAGE2_B1PRIME_FILE": str(stage2_current),
+        "PERFGATE_STAGE2_M2_BASELINE_FILE": str(stage2_baseline),
+        "PERFGATE_REPORT_FILE": str(report),
+    }
+    result = subprocess.run(
+        ["bash", str(PERFGATE_VALIDATE_REQUIRED_SCRIPT)],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    assert "completed successfully" in result.stdout
 
 
 def test_schedule_runs_registered_multi_scenario_benchmark_publish() -> None:

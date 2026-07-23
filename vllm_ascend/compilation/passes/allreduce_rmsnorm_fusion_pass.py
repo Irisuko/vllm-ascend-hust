@@ -24,7 +24,7 @@ from vllm.distributed.parallel_state import get_tp_group
 from vllm.logger import logger
 
 from vllm_ascend.compilation.passes.base_pattern import BasePattern
-from vllm_ascend.utils import is_add_rms_norm_bias_custom_op_available
+from vllm_ascend.utils import enable_add_rms_norm_bias_custom_op
 
 # computation-communication tiling block is 512
 ALLREDUCE_NORM_FUSE_THRESHOLD = 512
@@ -137,7 +137,7 @@ class MatmulAllReduceAddRMSNormPass(VllmInductorPass):
         super().__init__(vllm_config)
         self.pattern_match_passes: PatternMatcherPass = PatternMatcherPass(pass_name="allreduce_rmsnorm_fusion_pass")
 
-        if not is_add_rms_norm_bias_custom_op_available():
+        if not enable_add_rms_norm_bias_custom_op():
             logger.debug("AllReduce RMSNorm fusion disabled: AddRmsNormBias custom op unavailable")
             return
 

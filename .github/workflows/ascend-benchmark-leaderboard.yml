@@ -150,7 +150,7 @@ jobs:
       - name: Fetch PR metadata
         id: fetch-pr
         if: ${{ github.event.issue.pull_request }}
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const {owner, repo} = context.repo;
@@ -184,7 +184,7 @@ jobs:
       issues: write
     steps:
       - name: Reply with Ascend command help
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const body = [
@@ -227,7 +227,7 @@ jobs:
       issues: write
     steps:
       - name: Reply with Ascend command denial reason
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           ASCEND_COMMENT_DENY_REASON: ${{ needs.issue-comment-command.outputs.deny_reason }}
         with:
@@ -340,7 +340,7 @@ jobs:
       ASCEND_RT_VISIBLE_DEVICES: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_VISIBLE_DEVICES || '' }}
       ALLOW_RANDOM_HF_PUBLISH: ${{ vars.VLLM_ASCEND_HUST_ALLOW_RANDOM_HF_PUBLISH || '0' }}
       SAME_SPEC_BENCHMARK_ENABLED: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_BENCHMARK_ENABLED || '1' }}
-      PERFGATE_MODE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_MODE || 'report' }}
+      PERFGATE_MODE: ${{ github.event_name == 'pull_request' && 'enforce' || (vars.VLLM_ASCEND_HUST_PERFGATE_MODE || 'report') }}
       PERFGATE_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_SPEC_FILE || '' }}
       PERFGATE_BASELINE_BRANCH: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BASELINE_BRANCH || 'benchmark-baselines' }}
       MAIN_SAME_SPEC_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_MAIN_SAME_SPEC_SPEC_FILE || 'docs/official-baselines/official-ascend-jan-2026-v0180-random-online-qwen25-14b-910b2.json' }}
@@ -569,6 +569,19 @@ jobs:
             --scenario "${BENCH_SCENARIO}" \
             --explicit-chip-model "${HARDWARE_CHIP_MODEL}" \
             --explicit-same-spec-file ""
+
+      - name: Validate required PR perfgate scenario
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        run: |
+          if [[ "${BENCH_SCENARIO_COUNT:-0}" != "1" ]]; then
+            echo "Required PR perfgate supports exactly one scenario; got ${BENCH_SCENARIO_COUNT:-unset}." >&2
+            exit 2
+          fi
+          if [[ "${BENCH_SCENARIO:-}" != "random-online" ]]; then
+            echo "Required PR perfgate currently supports only random-online; got ${BENCH_SCENARIO:-unset}." >&2
+            exit 2
+          fi
 
       - name: Resolve main same-spec file
         if: ${{ github.event_name != 'pull_request' && github.event_name != 'issue_comment' && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
@@ -872,9 +885,16 @@ jobs:
           bash .github/workflows/scripts/perfgate_stage2_rebase_and_benchmark.sh
 
       - name: Performance gate - two-stage comparison
-        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
+        if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
         shell: bash
         run: bash .github/workflows/scripts/perfgate_compare.sh
+
+      - name: Validate required performance gate completion
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          PERFGATE_REQUIRED: "1"
+        run: bash .github/workflows/scripts/perfgate_validate_required.sh
 
       - name: Sync GitHub leaderboard snapshots
         if: ${{ success() && env.SYNC_GITHUB_SNAPSHOTS == '1' && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
@@ -1073,19 +1093,43 @@ jobs:
             baseline_notes.append(
               f"- Stage 1 baseline: `{stage1_commit or 'unknown'}` source `{stage1_source or 'unknown'}`"
             )
+          stage1_unavailable_reason = os.environ.get('PERFGATE_BASELINE_UNAVAILABLE_REASON', '').strip()
+          if stage1_unavailable_reason:
+            baseline_notes.append(f"- Stage 1 baseline unavailable: `{stage1_unavailable_reason}`")
           stage2_source = os.environ.get('PERFGATE_STAGE2_M2_BASELINE_SOURCE')
           stage2_commit = os.environ.get('PERFGATE_STAGE2_M2_BASELINE_COMMIT')
           if stage2_source or stage2_commit:
             baseline_notes.append(
               f"- Stage 2 baseline: `{stage2_commit or 'unknown'}` source `{stage2_source or 'unknown'}`"
             )
+          stage2_not_run_reason = os.environ.get('PERFGATE_STAGE2_NOT_RUN_REASON', '').strip()
+          if stage2_not_run_reason:
+            baseline_notes.append(f"- Stage 2 not run: `{stage2_not_run_reason}`")
           if baseline_notes:
             lines.extend(baseline_notes)
             comment_lines.extend(baseline_notes)
+          perfgate_markdown = ''
           if perfgate_report.is_file():
             perfgate_markdown = perfgate_report.read_text(encoding='utf-8').strip()
             lines.extend(['', perfgate_markdown])
             comment_lines.extend(['', perfgate_markdown])
+          conflict_file = os.environ.get('PERFGATE_STAGE2_REBASE_CONFLICT_FILE', '').strip()
+          if conflict_file:
+            conflict_path = Path(conflict_file)
+            if conflict_path.is_file():
+              conflict_details = conflict_path.read_text(encoding='utf-8', errors='replace').strip()[:12000]
+              if conflict_details and conflict_details not in perfgate_markdown:
+                conflict_details = conflict_details.replace('```', "'''")
+                conflict_block = [
+                  '',
+                  '### Stage 2 rebase conflict details',
+                  '',
+                  '```text',
+                  conflict_details,
+                  '```',
+                ]
+                lines.extend(conflict_block)
+                comment_lines.extend(conflict_block)
           if benchmark_exit_code == '75':
             contention_note = '- Benchmark execution: `shared-runner resource contention (temporary)`'
             lines.append(contention_note)

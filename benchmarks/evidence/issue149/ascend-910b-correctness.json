@@ -1,0 +1,123 @@
+{
+  "schema_version": "vllm-ascend-correctness-evidence/v1",
+  "issue": 149,
+  "pull_request": 151,
+  "recorded_at": "2026-07-20",
+  "subject": {
+    "backend_commit": "c3d6d2f390d868089cd2fab673c7ee11b5d27ed4",
+    "core_commit": "3daeb0b9d710b75f7cf9e6a23a357d747ee86558",
+    "backend_tree": "969ff7d2464d821091e0c52a902f5a82c0c64b85"
+  },
+  "runtime": {
+    "accelerator": "Ascend 910B2",
+    "accelerator_count": 1,
+    "cann": "9.0.0",
+    "torch": "2.10.0+cpu",
+    "torch_npu": "2.10.0",
+    "vllm": "0.21.0+empty",
+    "vllm_ascend": "0.21.0rc1"
+  },
+  "model": {
+    "id": "Qwen/Qwen2.5-14B-Instruct",
+    "revision": "cf98f3b3bbb457ad9e2bb7baf9a0125b6b88caa8",
+    "config_sha256": "5cff6f033af20d87cda80a61c90ef685db58aa444b6404031b605db1475a6484",
+    "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+    "weight_index_sha256": "46627f7a9e851d9cede6a7a4c49999082148ced9c22d2b9cfaaa5ba8b65dc68f"
+  },
+  "server_parameters": {
+    "tensor_parallel_size": 1,
+    "dtype": "float16",
+    "max_model_len": 4096,
+    "max_num_batched_tokens": 4096,
+    "max_num_seqs": 4,
+    "gpu_memory_utilization": 0.9,
+    "enable_prefix_caching": false,
+    "enable_chunked_prefill": false,
+    "generation_config": "vllm",
+    "graph": {
+      "enforce_eager": false,
+      "compilation_config": {}
+    },
+    "eager": {
+      "enforce_eager": true,
+      "compilation_config": {}
+    }
+  },
+  "request_parameters": {
+    "endpoint": "/v1/completions",
+    "prompt_count": 4,
+    "repeats_per_prompt_per_mode": 2,
+    "temperature": 0,
+    "seed": 149,
+    "max_tokens": 32,
+    "stream": false,
+    "return_token_ids": true
+  },
+  "prompt_results": [
+    {
+      "prompt_id": 0,
+      "semantic_response_sha256": "0476414b10deadbe85b7f6ab35cc5d243831b6d2d46ad51c70c2a6f3c48efc13",
+      "graph_full_response_sha256": [
+        "c7da64c9b58da9b8206e5c2d152333a1ebeb943d775419248c11f7a71f870f9a",
+        "fe48dad696d1a4be50b6780e9daa1e95dffcfbe9ec9ba71da13c6323253dccdc"
+      ],
+      "eager_full_response_sha256": [
+        "a4b53f74a9401444fdbf54fcf272af48abce4903cc278ddef18dc9f1320461d7",
+        "870981b3b11e0ad4ab07fdc0e87c6a2489fb048c451f6d0e367356fd61505502"
+      ]
+    },
+    {
+      "prompt_id": 1,
+      "semantic_response_sha256": "7bec280013ca20b4dc906e131751d908d05c7aea7ff0dbd53b9773a267090efa",
+      "graph_full_response_sha256": [
+        "09d1c4d5610cd4bc8cd49a06f79e88b138dc7a4c6f517999267d776fac0c43e3",
+        "3e9305dc2d9da9e697cf7642e5ca5fc29627efbd467472a1f7faba606607667e"
+      ],
+      "eager_full_response_sha256": [
+        "35ce0a6307b54fc5b4c6579522f05b57cde91e94b635107a529dcd97ea3c5cb4",
+        "cd8181c66a3eaef259f92d48d194ff02d911188abfc5ee460a2b559628a32922"
+      ]
+    },
+    {
+      "prompt_id": 2,
+      "semantic_response_sha256": "b7935daccdb6e050094f72048b898b428b83ecb8adec89bf92514ad646e3269f",
+      "graph_full_response_sha256": [
+        "30537ffccf80819e7587982db8f03c5d9763be60568b9529c9003b76a18291e3",
+        "e49f0a0087a7317af94597a1cfea3833a58fdcef5e0133f1769c336e59bea339"
+      ],
+      "eager_full_response_sha256": [
+        "caa9fa3b2a0beaf9fb463c8a467bd42ec362eb855623a9b05bb55802af2c2cc7",
+        "582781d7b8e38f4b8cbd1131211e75314b79a62c5df6f267103c0ce601593e97"
+      ]
+    },
+    {
+      "prompt_id": 3,
+      "semantic_response_sha256": "e0d0ba8e2114e94b1fec657cfe4103aed818dd8512d3072c6925367ae4779d62",
+      "graph_full_response_sha256": [
+        "7f7440da2c52f646ae42e7b9e8badd8caf41c11525a22c6c84dc9c2b7dae9295",
+        "5969ccb14c415de9452d2dd9bcc3dfa97ae003d32b6de7ed55ee77aeca54b801"
+      ],
+      "eager_full_response_sha256": [
+        "caf87c76c08fb1e9eaeb9de4b260d00957cd9bcc532c150e1946842ade0f2d64",
+        "5edef72be07f1b4e5b72709da8228576ee4eb8009c4ccabc58b4be379ba45a80"
+      ]
+    }
+  ],
+  "source_artifact_sha256": {
+    "graph_results_json": "2305e3f75d9e4565d3f4220cf8ecd739d2f92b5175e5e244a8ec814b219c57cb",
+    "graph_server_log": "d6d1c78c09583f98e3072f3edd802190882bf1c231f2bf0a93a29604ddf1d962",
+    "eager_results_json": "e92a933b9797845f48205384402638bf1f61bab2c15c1848c2f0f7d361661076",
+    "eager_server_log": "1423510472df53816b2f38d59209b12aa432860e08752127f94dc31751f14d30"
+  },
+  "outcome": {
+    "http_200": 16,
+    "errors": 0,
+    "repeat_stability": "exact",
+    "graph_eager_semantic_match": "exact",
+    "graph_eager_token_id_match": "exact",
+    "graph_fallback_observed": true,
+    "graph_compile_observed": true,
+    "graph_capture_observed": true,
+    "passed": true
+  }
+}

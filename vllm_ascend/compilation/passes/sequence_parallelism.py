@@ -8,7 +8,7 @@ from vllm.distributed import get_tensor_model_parallel_world_size, get_tp_group,
 from vllm.logger import logger
 
 from vllm_ascend.compilation.passes.noop_elimination import NoOpEliminationPass
-from vllm_ascend.utils import is_add_rms_norm_bias_custom_op_available, is_moe_model
+from vllm_ascend.utils import enable_add_rms_norm_bias_custom_op, is_moe_model
 
 SP_MIN_TOKEN_NUM_DEFAULT = 1000
 
@@ -198,7 +198,7 @@ class SequenceParallelismPass(VllmInductorPass):
         self.noop_cleanup = NoOpEliminationPass(config)
         self.min_tokens = get_sp_min_token_num(config)
 
-        if not is_add_rms_norm_bias_custom_op_available():
+        if not enable_add_rms_norm_bias_custom_op():
             logger.debug("SequenceParallelismPass disabled: AddRmsNormBias custom op unavailable")
             return
 

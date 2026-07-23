@@ -71,10 +71,21 @@ class NPUDmaCopyBackend:
         is_store: bool,
         event_idx: int,
         events_list: list[tuple[int, torch.npu.Event]],
+        wait_event: torch.npu.Event | None = None,
     ) -> None:
         params = self._store_params if is_store else self._load_params
         assert params is not None and self._queue is not None
-        self._queue.put((src_blocks, dst_blocks, params, is_store, event_idx, events_list))
+        self._queue.put(
+            (
+                src_blocks,
+                dst_blocks,
+                params,
+                is_store,
+                event_idx,
+                events_list,
+                wait_event,
+            )
+        )
 
     def shutdown(self) -> None:
         if self._shutdown:
@@ -89,14 +100,6 @@ class NPUDmaCopyBackend:
     # Worker thread main loop
     # ------------------------------------------------------------------
     def _copy_loop(self) -> None:
-        # NOTE: matches upstream cuda backend semantics — no cross-stream
-        # sync. The scheduler manager only schedules stores for blocks
-        # whose KV data is **confirmed computed** (see
-        # ``confirmed_tokens`` in ``SimpleCPUOffloadScheduler``), so
-        # those blocks have long been written and visible across streams
-        # by the time we read them here. Loads target GPU blocks held
-        # by ``BlockPool.touch`` until load completes, so they are also
-        # safe to write without a barrier.
         assert self._device is not None
         assert self._queue is not None
         assert self._load_stream is not None
@@ -114,10 +117,13 @@ class NPUDmaCopyBackend:
                 is_store,
                 event_idx,
                 events_list,
+                wait_event,
             ) = item
 
             stream = self._store_stream if is_store else self._load_stream
             with torch.npu.stream(stream):
+                if wait_event is not None:
+                    stream.wait_event(wait_event)
                 copy_blocks(src_blocks, dst_blocks, params)
                 event = torch.npu.Event()
                 event.record(stream)

@@ -236,6 +236,54 @@ hust_apply_default_hf_mirror() {
   export HF_ENDPOINT="${_HUST_DEFAULT_HF_ENDPOINT}"
 }
 
+hust_prioritize_conda_runtime_libs() {
+  local conda_prefix="${1:-}"
+  local conda_lib_dir
+  local conda_libstdcpp
+  local entry
+  local rebuilt_ld_library_path=""
+  local -a ld_library_path_entries
+
+  if [[ -z "${conda_prefix}" && -n "${VLLM_HUST_CONDA_PREFIX:-}" ]]; then
+    conda_prefix="${VLLM_HUST_CONDA_PREFIX}"
+  fi
+  if [[ -z "${conda_prefix}" && -n "${PYTHON_BIN:-}" ]]; then
+    conda_prefix="$(cd "$(dirname "${PYTHON_BIN}")/.." && pwd -P 2>/dev/null || true)"
+  fi
+  if [[ -z "${conda_prefix}" && -n "${VLLM_HUST_PYTHON_BIN:-}" ]]; then
+    conda_prefix="$(cd "$(dirname "${VLLM_HUST_PYTHON_BIN}")/.." && pwd -P 2>/dev/null || true)"
+  fi
+  if [[ -z "${conda_prefix}" && -n "${CONDA_PREFIX:-}" ]]; then
+    conda_prefix="${CONDA_PREFIX}"
+  fi
+
+  conda_lib_dir="${conda_prefix:+${conda_prefix}/lib}"
+  if [[ -z "${conda_lib_dir}" || ! -d "${conda_lib_dir}" ]]; then
+    return 0
+  fi
+
+  IFS=':' read -r -a ld_library_path_entries <<< "${LD_LIBRARY_PATH:-}"
+  for entry in "${ld_library_path_entries[@]}"; do
+    if [[ -z "${entry}" || "${entry}" == "${conda_lib_dir}" ]]; then
+      continue
+    fi
+    rebuilt_ld_library_path="${rebuilt_ld_library_path:+${rebuilt_ld_library_path}:}${entry}"
+  done
+
+  export LD_LIBRARY_PATH="${conda_lib_dir}${rebuilt_ld_library_path:+:${rebuilt_ld_library_path}}"
+  conda_libstdcpp="${conda_lib_dir}/libstdc++.so.6"
+  if [[ -f "${conda_libstdcpp}" ]]; then
+    case ":${LD_PRELOAD:-}:" in
+      *:"${conda_libstdcpp}":*)
+        ;;
+      *)
+        export LD_PRELOAD="${conda_libstdcpp}${LD_PRELOAD:+:${LD_PRELOAD}}"
+        ;;
+    esac
+  fi
+  echo "[INFO] LD_LIBRARY_PATH prioritized for conda runtime libs: ${conda_lib_dir}"
+}
+
 hust_ascend_manager_available() {
   if command -v hust-ascend-manager >/dev/null 2>&1; then
     return 0

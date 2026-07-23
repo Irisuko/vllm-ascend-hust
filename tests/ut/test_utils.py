@@ -151,6 +151,37 @@ class TestUtils(TestBase):
         ):
             self.assertTrue(utils.is_add_rms_norm_bias_custom_op_available())
 
+    def test_add_rms_norm_bias_enablement_checks_symbols_before_extension(self):
+        with (
+            mock.patch(
+                "vllm_ascend.utils.is_add_rms_norm_bias_custom_op_available",
+                return_value=False,
+            ),
+            mock.patch("vllm_ascend.utils.enable_custom_op") as enable_custom_op,
+        ):
+            self.assertFalse(utils.enable_add_rms_norm_bias_custom_op())
+            enable_custom_op.assert_not_called()
+
+    def test_add_rms_norm_bias_enablement_requires_custom_extension(self):
+        with (
+            mock.patch(
+                "vllm_ascend.utils.is_add_rms_norm_bias_custom_op_available",
+                return_value=True,
+            ),
+            mock.patch("vllm_ascend.utils.enable_custom_op", return_value=False),
+        ):
+            self.assertFalse(utils.enable_add_rms_norm_bias_custom_op())
+
+    def test_add_rms_norm_bias_enablement_accepts_symbols_and_extension(self):
+        with (
+            mock.patch(
+                "vllm_ascend.utils.is_add_rms_norm_bias_custom_op_available",
+                return_value=True,
+            ),
+            mock.patch("vllm_ascend.utils.enable_custom_op", return_value=True),
+        ):
+            self.assertTrue(utils.enable_add_rms_norm_bias_custom_op())
+
     @pytest.mark.skip("Skip as register_kernels has NPU SocName checking in CANN 8.5.0.")
     def test_enable_custom_op(self):
         result = utils.enable_custom_op()

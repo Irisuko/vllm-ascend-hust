@@ -190,6 +190,11 @@ ensure_cann_tbe_env() {
 
 ensure_cann_tbe_env || return 1
 
+# CANN setup may prepend its system runtime paths after the Python environment
+# was discovered. Move the selected Python/Conda runtime back to the front so
+# extension modules do not load an older system libstdc++ ABI.
+hust_prioritize_conda_runtime_libs
+
 normalize_visible_devices() {
   local raw_value="${1:-}"
   local device

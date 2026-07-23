@@ -182,6 +182,7 @@ from vllm_ascend.sample.rejection_sampler import AscendRejectionSampler
 if TYPE_CHECKING:
     import xgrammar as xgr  # type: ignore[import-untyped]
     from vllm.v1.core.sched.output import GrammarOutput, SchedulerOutput
+
     from vllm_ascend.spec_decode.ngram_proposer import AscendNgramProposer
 else:
     xgr = LazyLoader("xgr", globals(), "xgrammar")
@@ -1747,7 +1748,15 @@ class NPUModelRunner(GPUModelRunner):
             # Speculative decoding is not enabled.
             draft_token_ids = None
         elif self.speculative_config.method in ("ngram", "suffix"):
-            draft_token_ids = self.drafter.propose(valid_sampled_token_ids)
+            if self.speculative_config.method == "ngram":
+                draft_token_ids = self.drafter.propose(
+                    self.speculative_config.num_speculative_tokens,
+                    valid_sampled_token_ids,
+                    self.input_batch.num_tokens_no_spec,
+                    self.input_batch.token_ids_cpu,
+                )
+            else:
+                draft_token_ids = self.drafter.propose(valid_sampled_token_ids)
         elif isinstance(self.drafter, AscendNgramProposerNPU):
             batch_size = min(self.input_batch.num_reqs, self.token_ids_gpu_tensor.shape[0])
 

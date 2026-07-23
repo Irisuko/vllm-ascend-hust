@@ -8,16 +8,15 @@ name: PR Smart UT
 on:
   pull_request:
     branches:
-      - 'main'
-      - '*-dev'
+      # - 'main'
+      # - '*-dev'
       - 'releases/v*'
     paths:
       - '.github/workflows/pr_smart_ut.yaml'
-      - '.github/workflows/_optional_smart_e2e.yaml'
-      - '.github/workflows/scripts/determine_smart_e2e_scope.py'
+      - '.github/workflows/_selected_tests.yaml'
+      - '.github/workflows/scripts/select_tests.py'
       - '.github/workflows/scripts/runner_label.json'
-      - '.github/workflows/scripts/ut_blacklist.yaml'
-      - '.github/workflows/scripts/ut_config.yaml'
+      - '.github/workflows/scripts/test_config.yaml'
       - 'packages.txt'
       - 'pyproject.toml'
       - 'requirements-dev.txt'
@@ -44,22 +43,47 @@ jobs:
     name: Determine smart UT scope
     runs-on: ubuntu-latest
     outputs:
-      has_tests: ${{ steps.scope.outputs.has_tests }}
-      test_groups: ${{ steps.scope.outputs.test_groups }}
-      matched_modules: ${{ steps.scope.outputs.matched_modules }}
+      has_tests: ${{ steps.scope.outputs.has_tests || steps.noop.outputs.has_tests }}
+      test_groups: ${{ steps.scope.outputs.test_groups || steps.noop.outputs.test_groups }}
+      matched_modules: ${{ steps.scope.outputs.matched_modules || steps.noop.outputs.matched_modules }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            smart_ut:
+              - 'packages.txt'
+              - 'pyproject.toml'
+              - 'requirements-dev.txt'
+              - 'requirements.txt'
+              - 'setup.py'
+              - 'tests/ut/**'
+              - 'vllm_ascend/**'
+
       - name: Determine smart UT test scope
         id: scope
+        if: steps.filter.outputs.smart_ut == 'true'
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git fetch origin "${{ github.base_ref }}"
-          python3 -m pip install pyyaml
-          python3 .github/workflows/scripts/determine_smart_e2e_scope.py \
+          python3 -m pip install pyyaml regex
+          python3 .github/workflows/scripts/select_tests.py \
             --diff-base "origin/${{ github.base_ref }}"
+
+      - name: Set no-tests output when smart UT paths unchanged
+        id: noop
+        if: steps.filter.outputs.smart_ut != 'true'
+        run: |
+          echo "Smart UT matrix skipped: no runtime or unit-test paths changed."
+          {
+            echo "has_tests=false"
+            echo "test_groups=[]"
+            echo "matched_modules=workflow-only"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Post scope summary
         if: ${{ steps.scope.outputs.has_tests == 'true' }}
@@ -99,18 +123,26 @@ jobs:
 
       - name: Post no-test summary
         if: ${{ steps.scope.outputs.has_tests != 'true' }}
+        env:
+          MATCHED_MODULES: ${{ steps.scope.outputs.matched_modules || steps.noop.outputs.matched_modules }}
         run: |
           {
             echo "## Smart UT Test Scope"
             echo
-            echo "No Smart UT targets matched this PR."
+            if [ "$MATCHED_MODULES" = "workflow-only" ]; then
+              echo "Smart UT matrix skipped because no runtime or unit-test paths changed."
+            else
+              echo "No Smart UT targets matched this PR."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   smart-ut:
     name: smart unit test
     needs: [scope]
     if: ${{ needs.scope.outputs.has_tests == 'true' }}
-    uses: ./.github/workflows/_optional_smart_e2e.yaml
+    uses: ./.github/workflows/_selected_tests.yaml
     with:
       vllm: d886c26d4d4fef7d079696beb4ece1cfb4b008a8
+      ref: ${{ github.event.pull_request.head.sha }}
+      base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.scope.outputs.test_groups }}

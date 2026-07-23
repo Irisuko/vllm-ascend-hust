@@ -84,7 +84,7 @@ jobs:
     steps:
       - name: Parse trigger
         id: parse
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const eventName = context.eventName;
@@ -140,7 +140,7 @@ jobs:
           path: ./pr
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
 

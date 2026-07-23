@@ -176,7 +176,7 @@ jobs:
 
       - name: Create pull request
         if: steps.check.outputs.changed == 'true'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BRANCH: auto/update-estimated-times-${{ github.run_id }}

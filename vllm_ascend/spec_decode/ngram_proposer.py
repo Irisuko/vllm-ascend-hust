@@ -28,11 +28,13 @@ class AscendNgramProposer(NgramProposer):
 
     def propose(
         self,
+        num_speculative_tokens: int,
         sampled_token_ids: list[list[int]],
-        num_tokens_no_spec=None,
-        token_ids_cpu=None,
-        slot_masks: dict[str, torch.Tensor] | list[dict[str, torch.Tensor]] | None = None,
+        num_tokens_no_spec,
+        token_ids_cpu,
+        slot_mappings: dict[str, torch.Tensor] | list[dict[str, torch.Tensor]] | None = None,
     ) -> list[list[int]]:
+        del slot_mappings
         valid_ngram_requests = []
         for i, sampled_ids in enumerate(sampled_token_ids):
             num_sampled_ids = len(sampled_ids)
@@ -43,22 +45,23 @@ class AscendNgramProposer(NgramProposer):
             if req_id in self.runner.input_batch.spec_decode_unsupported_reqs:
                 continue
 
-            num_tokens = self.runner.input_batch.num_tokens_no_spec[i]
+            num_tokens = num_tokens_no_spec[i]
             if num_tokens >= self.runner.input_batch.max_model_len:
                 # Skip requests that have already reached the max model length.
                 continue
 
-            start_idx = self.runner.input_batch.num_tokens_no_spec[i]
+            start_idx = num_tokens_no_spec[i]
             end_idx = start_idx + num_sampled_ids
-            self.runner.input_batch.token_ids_cpu[i, start_idx:end_idx] = sampled_ids
+            token_ids_cpu[i, start_idx:end_idx] = sampled_ids
 
             valid_ngram_requests.append(i)
 
         draft_token_ids = self.batch_propose(
             len(sampled_token_ids),
             valid_ngram_requests,
-            self.runner.input_batch.num_tokens_no_spec,
-            self.runner.input_batch.token_ids_cpu,
+            num_tokens_no_spec,
+            token_ids_cpu,
+            num_speculative_tokens,
         )
 
         return draft_token_ids

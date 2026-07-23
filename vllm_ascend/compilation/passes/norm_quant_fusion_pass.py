@@ -27,7 +27,7 @@ from vllm_ascend.device.mxfp_compat import (
     is_add_rms_norm_dynamic_mx_quant_fusion_available,
     is_rms_norm_dynamic_mx_quant_fusion_available,
 )
-from vllm_ascend.utils import enable_custom_op, is_add_rms_norm_bias_custom_op_available
+from vllm_ascend.utils import enable_add_rms_norm_bias_custom_op
 
 
 class AddRMSNormQuantPattern(BasePattern):
@@ -692,7 +692,7 @@ class AddRMSNormQuantFusionPass(VllmInductorPass):
             if rms_norm_dynamic_mx_quant_fusion_available:
                 RMSNormDynamicMXQuantPattern(vllm_config, eps=eps).register(self.pattern_match_passes)
                 RMSNormDynamicMXQuantSPPattern(vllm_config, eps=eps).register(self.pattern_match_passes)
-            if enable_custom_op() and is_add_rms_norm_bias_custom_op_available():
+            if enable_add_rms_norm_bias_custom_op():
                 AddRMSNormQuantPattern(vllm_config, eps=eps).register(self.pattern_match_passes)
                 AddRMSNormQuantSPPattern(vllm_config, eps=eps).register(self.pattern_match_passes)
                 AddRMSNormQuantPatternWithBias(vllm_config, eps=eps).register(self.pattern_match_passes)

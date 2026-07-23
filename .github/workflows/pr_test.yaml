@@ -47,6 +47,7 @@ jobs:
       has_tests: ${{ steps.scope.outputs.has_tests || steps.noop.outputs.has_tests }}
       test_groups: ${{ steps.scope.outputs.test_groups || steps.noop.outputs.test_groups }}
       matched_modules: ${{ steps.scope.outputs.matched_modules || steps.noop.outputs.matched_modules }}
+      packaging_changed: ${{ steps.filter.outputs.packaging || 'false' }}
       main_commit: ${{ steps.vllm.outputs.main_commit }}
       release_tag: ${{ steps.vllm.outputs.release_tag }}
     steps:
@@ -125,21 +126,33 @@ jobs:
               - 'requirements.txt'
               - 'requirements-dev.txt'
               - 'requirements-lint.txt'
-            src:
-              - 'vllm_ascend/**'
-              - 'setup.py'
-              - 'csrc/**'
-              - 'requirements.txt'
+            packaging:
               - 'pyproject.toml'
-              - 'cmake/**'
-              - 'tests/**'
-              - 'tools/**'
+              - 'requirements.txt'
+              - 'setup.py'
+              - 'README.md'
+              - 'README.zh.md'
+              - 'tests/ut/test_build_metadata.py'
+              - 'tests/ut/test_runtime_metadata.py'
+            python_src:
+              - 'vllm_ascend/**'
+
+      - uses: dorny/paths-filter@v4
+        id: selection-filter
+        with:
+          predicate-quantifier: every
+          filters: |
+            test_selection:
+              - '{vllm_ascend,csrc,cmake,tests,tools}/**'
+              - '!tests/ut/test_build_metadata.py'
+              - '!tests/ut/test_runtime_metadata.py'
+            root_cmake:
               - 'CMakeLists.txt'
 
       - name: Install vllm-ascend dev (conditional)
         if: steps.filter.outputs.lint_tracker == 'true'
         env:
-          UV_INDEX_URL: http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple
+          UV_INDEX_URL: https://pypi.org/simple
           UV_EXTRA_INDEX_URL: "https://repo.huaweicloud.com/ascend/repos/pypi"
           UV_INDEX_STRATEGY: unsafe-best-match
           UV_NO_CACHE: 1
@@ -171,7 +184,7 @@ jobs:
           pre-commit run --files "${changed_files[@]}" --hook-stage manual --show-diff-on-failure
 
       - name: Run mypy
-        if: steps.filter.outputs.src == 'true'
+        if: steps.filter.outputs.python_src == 'true'
         run: |
           PYTHONPATH="$PYTHONPATH:$(pwd)/vllm-empty"
           export PYTHONPATH
@@ -183,14 +196,14 @@ jobs:
           done
 
       - name: Validate test coverage config
-        if: steps.filter.outputs.src == 'true'
+        if: steps.selection-filter.outputs.test_selection == 'true' || steps.selection-filter.outputs.root_cmake == 'true'
         run: |
           pip install pyyaml
           python3 .github/workflows/scripts/coverage.py
 
       - name: Select tests based on changed files
         id: scope
-        if: steps.filter.outputs.src == 'true'
+        if: steps.selection-filter.outputs.test_selection == 'true' || steps.selection-filter.outputs.root_cmake == 'true'
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git fetch origin ${{ github.base_ref }}
@@ -200,7 +213,7 @@ jobs:
 
       - name: Set no-tests output when source paths unchanged
         id: noop
-        if: steps.filter.outputs.src != 'true'
+        if: steps.selection-filter.outputs.test_selection != 'true' && steps.selection-filter.outputs.root_cmake != 'true'
         run: |
           {
             echo "has_tests=false"
@@ -222,3 +235,89 @@ jobs:
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.lint-and-select-tests.outputs.test_groups }}
+
+  validate-hust-dual-editable:
+    needs: lint-and-select-tests
+    if: ${{ needs.lint-and-select-tests.outputs.packaging_changed == 'true' && contains(github.event.pull_request.labels.*.name, 'e2e') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      UV_INDEX_URL: https://repo.huaweicloud.com/repository/pypi/simple
+      UV_HTTP_TIMEOUT: 60
+      UV_LINK_MODE: copy
+      TORCH_DEVICE_BACKEND_AUTOLOAD: 0
+    steps:
+      - name: Checkout vllm-ascend-hust
+        uses: actions/checkout@v7
+
+      - name: Checkout paired vllm-hust
+        uses: actions/checkout@v7
+        with:
+          repository: vLLM-HUST/vllm-hust
+          ref: main
+          path: vllm-hust
+
+      - name: Create clean Python environment
+        run: |
+          python3 -m pip install uv
+          uv venv --python 3.12 .venv-dual-editable
+
+      - name: Install Ascend target runtime and core build dependencies
+        run: |
+          UV_EXTRA_INDEX_URL=https://mirrors.huaweicloud.com/ascend/repos/pypi \
+          UV_INDEX_STRATEGY=unsafe-best-match \
+            uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -r ./vllm-hust/requirements/common.txt \
+            -r ./requirements.txt \
+            -r ./vllm-hust/requirements/build/empty.txt \
+            --verbose
+
+      - name: Install paired vllm-hust editable
+        run: |
+          VLLM_TARGET_DEVICE=empty uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -e ./vllm-hust \
+            --no-build-isolation \
+            --no-deps \
+            --verbose
+
+      - name: Install vllm-ascend-hust editable
+        run: |
+          COMPILE_CUSTOM_KERNELS=0 \
+          SOC_VERSION=ascend910b1 \
+            uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -e . \
+            --no-deps \
+            --verbose
+
+      - name: Validate metadata and dependencies
+        run: |
+          .venv-dual-editable/bin/python -m pytest --noconftest \
+            tests/ut/test_build_metadata.py \
+            tests/ut/test_runtime_metadata.py \
+            -q
+          .venv-dual-editable/bin/python - <<'PY'
+          import json
+          from importlib.metadata import distribution
+          from pathlib import Path
+          from sysconfig import get_path
+
+          for package in ("vllm", "vllm-ascend-hust"):
+              dist = distribution(package)
+              direct_url = dist.read_text("direct_url.json")
+              if direct_url is not None:
+                  assert json.loads(direct_url)["dir_info"]["editable"] is True, package
+                  continue
+
+              normalized_name = package.replace("-", "_")
+              editable_paths = list(
+                  Path(get_path("purelib")).glob(
+                      f"__editable__.{normalized_name}-*.pth"
+                  )
+              )
+              assert editable_paths, f"{package}: no editable-install metadata"
+              assert all(path.is_file() for path in editable_paths)
+          PY
+          uv pip check --python .venv-dual-editable/bin/python

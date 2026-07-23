@@ -454,6 +454,14 @@ def enable_custom_op():
     return _CUSTOM_OP_ENABLED
 
 
+def enable_add_rms_norm_bias_custom_op() -> bool:
+    """Return whether AddRmsNormBias-dependent graph rewrites are safe."""
+    if not is_add_rms_norm_bias_custom_op_available():
+        return False
+
+    return enable_custom_op()
+
+
 def find_hccl_library() -> str:
     """
     We either use the library file specified by the `HCCL_SO_PATH`

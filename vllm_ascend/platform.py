@@ -100,6 +100,26 @@ def _get_npu_memory_info(
 torch.accelerator.get_memory_info = _get_npu_memory_info  # type: ignore[attr-defined]
 
 
+def _ensure_ascend_compilation_config_dict(vllm_config: VllmConfig) -> dict:
+    """Return a mutable Ascend compilation config for worker serialization."""
+    additional = vllm_config.additional_config
+    if additional is None:
+        additional = {}
+        vllm_config.additional_config = additional
+    if not isinstance(additional, dict):
+        raise TypeError(f"additional_config must be a dict or None, got {type(additional).__name__}.")
+
+    asc_comp = additional.get("ascend_compilation_config")
+    if asc_comp is None:
+        asc_comp = {}
+        additional["ascend_compilation_config"] = asc_comp
+    elif not isinstance(asc_comp, dict):
+        raise TypeError(
+            f"additional_config.ascend_compilation_config must be a dict or None, got {type(asc_comp).__name__}."
+        )
+    return asc_comp
+
+
 def _sync_npugraph_ex_to_additional_config(
     vllm_config: VllmConfig,
     ascend_config,
@@ -111,13 +131,8 @@ def _sync_npugraph_ex_to_additional_config(
     this sync, workers silently fall back to ``enable_npugraph_ex=True``
     and use the wrong compilation backend.
     """
-    if vllm_config.additional_config is None:
-        vllm_config.additional_config = {}
-    additional = vllm_config.additional_config
-    asc_comp = additional.setdefault("ascend_compilation_config", {})
-    asc_comp["enable_npugraph_ex"] = (
-        ascend_config.ascend_compilation_config.enable_npugraph_ex
-    )
+    asc_comp = _ensure_ascend_compilation_config_dict(vllm_config)
+    asc_comp["enable_npugraph_ex"] = ascend_config.ascend_compilation_config.enable_npugraph_ex
 
 
 def config_deprecated_logging():
@@ -549,6 +564,10 @@ class NPUPlatform(Platform):
         cls._validate_draft_decode_context_parallel_config(vllm_config)
         cls._validate_parallel_config(vllm_config)
         cls._validate_pd_pp_mtp_config(vllm_config)
+
+        # Normalize the worker-serialized subsection before AscendConfig reads
+        # it and before the materialized config below updates it.
+        _ensure_ascend_compilation_config_dict(vllm_config)
 
         # initialize ascend config from vllm additional_config
         cls._fix_incompatible_config(vllm_config)
