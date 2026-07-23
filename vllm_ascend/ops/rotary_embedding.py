@@ -31,6 +31,7 @@ from vllm.model_executor.layers.rotary_embedding.common import ApplyRotaryEmb
 from vllm.triton_utils import HAS_TRITON
 
 from vllm_ascend.ascend_forward_context import _EXTRA_CTX
+from vllm_ascend.model_compat import uses_qwen2_rope
 from vllm_ascend.platform import NPUPlatform
 from vllm_ascend.utils import has_rope, is_vl_model
 
@@ -228,11 +229,7 @@ class AscendRotaryEmbedding(RotaryEmbedding):
         vllm_config = get_current_vllm_config()
         self.use_mtp = vllm_config.speculative_config and vllm_config.speculative_config.method == "mtp"
         self.force_native_qwen2_rope = (
-            bool(
-                {"Qwen2ForCausalLM", "SliceGPTQwen2ForCausalLM"}.intersection(
-                    getattr(vllm_config.model_config, "architectures", [])
-                )
-            )
+            uses_qwen2_rope(getattr(vllm_config.model_config, "architectures", None))
             and os.environ.get("VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE", "0") != "0"
         )
         _record_cos_sin_cache(self.cos_sin_cache)

@@ -9,6 +9,7 @@ from vllm.v1.attention.selector import AttentionSelectorConfig  # type: ignore
 
 from tests.ut.base import TestBase
 from vllm_ascend.ascend_forward_context import MoECommType, override_mrv2_in_profile_run
+from vllm_ascend.model_compat import uses_qwen2_rope
 from vllm_ascend.platform import (
     NPUPlatform,
     _ensure_ascend_compilation_config_dict,
@@ -82,6 +83,16 @@ class TestNPUPlatform(TestBase):
         self.assertEqual(NPUPlatform.device_control_env_var, "ASCEND_RT_VISIBLE_DEVICES")
         self.assertEqual(NPUPlatform.dispatch_key, "PrivateUse1")
         self.assertEqual(NPUPlatform.supported_quantization, [ASCEND_QUANTIZATION_METHOD, COMPRESSED_TENSORS_METHOD])
+
+    @pytest.mark.parametrize(
+        "architectures",
+        [
+            ["SliceGPTQwen2ForCausalLM"],
+            ["OtherModel", "SliceGPTQwen2ForCausalLM"],
+        ],
+    )
+    def test_slicegpt_qwen2_architecture_is_recognized(self, architectures):
+        assert uses_qwen2_rope(architectures)
 
     @pytest.mark.parametrize(
         "additional_config",

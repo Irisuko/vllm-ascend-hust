@@ -22,6 +22,7 @@ import pytest
 import torch
 from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding, YaRNScalingRotaryEmbedding
 
+from vllm_ascend.model_compat import uses_qwen2_rope
 from vllm_ascend.ops.rotary_embedding import AscendRotaryEmbedding, AscendYaRNRotaryEmbedding
 
 HEAD_SIZE = 64
@@ -151,17 +152,49 @@ class TestAscendEmbeddingForwardOOT:
 
         assert emb.force_native_qwen2_rope is True
 
-    def test_slicegpt_qwen2_native_fallback_requires_explicit_opt_in(
-        self, patch_init_side_effects, make_embedding
-    ):
-        patch_init_side_effects.return_value.model_config.architectures = [
-            "SliceGPTQwen2ForCausalLM"
-        ]
+    def test_slicegpt_qwen2_native_fallback_requires_explicit_opt_in(self, patch_init_side_effects, make_embedding):
+        patch_init_side_effects.return_value.model_config.architectures = ["SliceGPTQwen2ForCausalLM"]
 
         with patch.dict(os.environ, {"VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE": "1"}, clear=True):
             emb = make_embedding()
 
         assert emb.force_native_qwen2_rope is True
+
+    @pytest.mark.parametrize(
+        ("architectures", "expected"),
+        [
+            (["SliceGPTQwen2ForCausalLM"], True),
+            (["OtherModel", "SliceGPTQwen2ForCausalLM"], True),
+            (["Qwen2ForCausalLM"], True),
+            (["OtherModel"], False),
+            (None, False),
+        ],
+    )
+    def test_qwen2_rope_architecture_selection(self, architectures, expected):
+        assert uses_qwen2_rope(architectures) is expected
+
+    def test_slicegpt_native_fallback_matches_static_reference(self, patch_init_side_effects, make_embedding):
+        patch_init_side_effects.return_value.model_config.architectures = ["SliceGPTQwen2ForCausalLM"]
+        with patch.dict(os.environ, {"VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE": "1"}, clear=True):
+            emb = make_embedding()
+
+        positions, query, key = _make_tensors()
+        cache = torch.randn(MAX_POS, ROTARY_DIM)
+        emb.cos_sin_cache = cache
+        with patch.object(emb, "_match_cos_sin_cache_dtype", return_value=cache):
+            expected = RotaryEmbedding.forward_static(
+                positions,
+                query.clone(),
+                key.clone(),
+                emb.head_size,
+                emb.rotary_dim,
+                cache,
+                emb.is_neox_style,
+            )
+            actual = emb.forward_oot(positions, query, key)
+
+        torch.testing.assert_close(actual[0], expected[0])
+        torch.testing.assert_close(actual[1], expected[1])
 
     @patch("torch.ops.vllm.npu_rotary_embedding")
     @patch("vllm_ascend.ascend_forward_context.get_forward_context")

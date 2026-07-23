@@ -34,6 +34,7 @@ os.environ["VLLM_DISABLE_SHARED_EXPERTS_STREAM"] = "1"
 from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
 from vllm_ascend.ascend_config import init_ascend_config
+from vllm_ascend.model_compat import uses_qwen2_rope
 
 # isort: off
 from vllm_ascend.utils import (
@@ -636,18 +637,18 @@ class NPUPlatform(Platform):
         else:
             enforce_eager = getattr(model_config, "enforce_eager", False)
 
-        architecture = None
+        architectures = None
         if model_config is not None:
             architectures = getattr(model_config, "architectures", None)
-            if architectures:
-                architecture = architectures[0]
 
         from vllm.config.compilation import CUDAGraphMode
 
-        if model_config is not None and architecture in {
-            "Qwen2ForCausalLM",
-            "SliceGPTQwen2ForCausalLM",
-        }:
+        if model_config is not None and uses_qwen2_rope(architectures):
+            architecture = next(
+                architecture
+                for architecture in architectures or ()
+                if architecture in {"Qwen2ForCausalLM", "SliceGPTQwen2ForCausalLM"}
+            )
             if os.environ.get("VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE", "0") != "0":
                 logger.warning(
                     "Using native rotary fallback for %s on NPU because VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE=1.",
