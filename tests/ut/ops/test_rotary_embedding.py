@@ -160,6 +160,15 @@ class TestAscendEmbeddingForwardOOT:
 
         assert emb.force_native_qwen2_rope is True
 
+    def test_slicegpt_qwen2_native_fallback_is_disabled_by_default(self, patch_init_side_effects, make_embedding):
+        """SliceGPT follows the verified Qwen2 compatibility path by default."""
+        patch_init_side_effects.return_value.model_config.architectures = ["SliceGPTQwen2ForCausalLM"]
+
+        with patch.dict(os.environ, {}, clear=True):
+            emb = make_embedding()
+
+        assert emb.force_native_qwen2_rope is False
+
     @pytest.mark.parametrize(
         ("architectures", "expected"),
         [
