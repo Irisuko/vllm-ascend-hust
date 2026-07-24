@@ -91,6 +91,7 @@ def make_embedding(patch_init_side_effects):
             from vllm_ascend.ops.rotary_embedding import AscendRotaryEmbedding
 
             emb = AscendRotaryEmbedding.__new__(AscendRotaryEmbedding)
+            torch.nn.Module.__init__(emb)
             # Manually set attrs that the real parent would set
             emb.head_size = HEAD_SIZE
             emb.rotary_dim = ROTARY_DIM
@@ -116,6 +117,7 @@ def make_yarn_embedding(patch_init_side_effects):
             from vllm_ascend.ops.rotary_embedding import AscendYaRNRotaryEmbedding
 
             emb = AscendYaRNRotaryEmbedding.__new__(AscendYaRNRotaryEmbedding)
+            torch.nn.Module.__init__(emb)
             emb.head_size = HEAD_SIZE
             emb.rotary_dim = ROTARY_DIM
             emb.is_neox_style = is_neox_style
