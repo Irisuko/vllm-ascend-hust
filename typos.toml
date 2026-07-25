@@ -46,6 +46,8 @@ mata = "mata"
 iy = "iy"
 tendencias = "tendencias"
 PARD = "PARD"
+TBE = "TBE"
+tbe = "tbe"
 # intel cpu features
 tme = "tme"
 dout = "dout"
