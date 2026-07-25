@@ -1302,14 +1302,15 @@ jobs:
     if: >-
       ${{
         (
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-          (
-            github.event_name == 'workflow_dispatch' &&
-            inputs.benchmark_scenarios == 'perfgate-bootstrap' &&
-            inputs.ascend_hust_target == format('{0}@main', github.repository)
-          )
-        ) &&
-        vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/main' &&
+          vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''
+        ) ||
+        (
+          github.event_name == 'workflow_dispatch' &&
+          inputs.benchmark_scenarios == 'perfgate-bootstrap' &&
+          inputs.ascend_hust_target == format('{0}@main', github.repository)
+        )
       }}
     needs: ascend-benchmark
     runs-on: ubuntu-latest

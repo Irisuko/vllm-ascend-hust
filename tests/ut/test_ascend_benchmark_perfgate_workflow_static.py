@@ -377,6 +377,20 @@ def test_main_perfgate_baseline_bootstrap_is_reachable_and_pins_target() -> None
     assert "ref: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
     assert "BASELINE_TARGET_SHA: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
     assert 'GITHUB_SHA="$BASELINE_TARGET_SHA"' in workflow
+    store_job = workflow[workflow.index("  store-main-perfgate-baseline:") :]
+    push_guard = (
+        "github.event_name == 'push' &&\n"
+        "          github.ref == 'refs/heads/main' &&\n"
+        "          vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''"
+    )
+    bootstrap_guard = (
+        "github.event_name == 'workflow_dispatch' &&\n"
+        "          inputs.benchmark_scenarios == 'perfgate-bootstrap' &&\n"
+        "          inputs.ascend_hust_target == format('{0}@main', github.repository)"
+    )
+    assert push_guard in store_job
+    assert bootstrap_guard in store_job
+    assert store_job.index(") ||") < store_job.index(bootstrap_guard)
 
 
 def test_benchmark_disables_huggingface_xet_download_path() -> None:
