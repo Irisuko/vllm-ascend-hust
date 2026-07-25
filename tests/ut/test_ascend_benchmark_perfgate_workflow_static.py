@@ -332,7 +332,8 @@ def test_perfgate_baseline_events_match_pull_request_spec_size() -> None:
     fixed_spec_events = (
         "github.event_name == 'pull_request' || github.event_name == 'issue_comment' || "
         "github.event_name == 'push' || "
-        "(github.event_name == 'workflow_dispatch' && inputs.bootstrap_perfgate_baseline)"
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.benchmark_scenarios == 'perfgate-bootstrap')"
     )
     for setting in (
         "MODEL_NAME:",
@@ -359,8 +360,8 @@ def test_main_perfgate_baseline_bootstrap_is_reachable_and_pins_target() -> None
     assert "push:" in workflow
     assert "branches:\n      - main" in workflow
     assert "(github.event_name == 'push' && github.ref == 'refs/heads/main')" in workflow
-    assert "bootstrap_perfgate_baseline:" in workflow
-    assert "inputs.bootstrap_perfgate_baseline" in workflow
+    assert "inputs.benchmark_scenarios == 'perfgate-bootstrap'" in workflow
+    assert "inputs.benchmark_scenarios != 'perfgate-bootstrap'" in workflow
     assert "inputs.ascend_hust_target == format('{0}@main', github.repository)" in workflow
     assert "target_sha: ${{ steps.target-metadata.outputs.target_sha }}" in workflow
     assert 'echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"' in workflow
@@ -439,9 +440,10 @@ def test_benchmark_prepare_preserves_torch_npu_stack() -> None:
     assert '"$CONDA_BIN" run -n "vllm-hust-dev" bash "$inline_script"' not in prepare_step
     assert "find_library('stdc++')" in prepare_step
     assert 'PYTHON_BIN="${VLLM_HUST_PYTHON_BIN:-}"' in prepare_step
-    assert 'echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"' in prepare_step
+    assert 'echo "PYTHON_BIN=$PYTHON_BIN"' in prepare_step
     assert '"$PYTHON_BIN" - <<' in prepare_step
-    assert 'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"' in prepare_step
+    assert 'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"' in prepare_step
+    assert '} >> "$GITHUB_ENV"' in prepare_step
     assert 'python -m pip install -e "$VLLM_HUST_BENCHMARK_REPO[publish]" jsonschema' not in prepare_step
     assert 'python -m pip install "huggingface_hub>=0.20"' not in prepare_step
     assert 'python -m pip install "numpy<2.0.0" scipy attrs decorator psutil' not in prepare_step
