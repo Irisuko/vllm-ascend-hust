@@ -912,6 +912,7 @@ run_same_spec_current_benchmark() {
 
     "$PYTHON_BIN" - "$SAME_SPEC_SPEC_FILE" "$output_file" <<'PY'
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -926,9 +927,13 @@ client_parameters = dict(payload.get("client_parameters") or {})
 # defaults can exercise unstable plugin paths before the CI signal is useful.
 server_parameters["no_enable_chunked_prefill"] = True
 server_parameters["no_enable_prefix_caching"] = True
+server_parameters["gpu_memory_utilization"] = 0.6
 client_parameters.setdefault("temperature", 0)
 client_parameters["max_concurrency"] = 1
 client_parameters["request_rate"] = 1
+client_parameters["num_prompts"] = int(os.environ.get("BENCH_NUM_PROMPTS", "8"))
+client_parameters["input_len"] = int(os.environ.get("BENCH_RANDOM_INPUT_LEN", "64"))
+client_parameters["output_len"] = int(os.environ.get("BENCH_RANDOM_OUTPUT_LEN", "16"))
 
 payload["server_parameters"] = server_parameters
 payload["client_parameters"] = client_parameters
@@ -942,7 +947,10 @@ print(target)
 PY
   }
 
-  if [[ "$SAME_SPEC_PR_PREVIEW_COMPAT" == "1" && ( "${GITHUB_EVENT_NAME:-}" == "pull_request" || "${GITHUB_EVENT_NAME:-}" == "issue_comment" ) ]]; then
+  if [[ "$SAME_SPEC_PR_PREVIEW_COMPAT" == "1" && \
+    ( "${GITHUB_EVENT_NAME:-}" == "pull_request" || \
+      "${GITHUB_EVENT_NAME:-}" == "issue_comment" || \
+      ( "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "${MODEL_PARAMETERS:-}" == "3B" ) ) ]]; then
     effective_same_spec_file=$(prepare_same_spec_pr_preview_compat_file)
     echo "Using PR preview same-spec compatibility overlay: $effective_same_spec_file"
   fi

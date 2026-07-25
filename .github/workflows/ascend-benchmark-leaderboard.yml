@@ -567,7 +567,7 @@ jobs:
           python3 .github/workflows/scripts/resolve_ascend_benchmark_scenario.py
 
       - name: Resolve perfgate same-spec file
-        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
+        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
         shell: bash
         env:
           VLLM_HUST_BENCHMARK_REPO: ${{ github.workspace }}/vllm-hust-benchmark
@@ -592,7 +592,7 @@ jobs:
           fi
 
       - name: Resolve main same-spec file
-        if: ${{ github.event_name != 'pull_request' && github.event_name != 'issue_comment' && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
+        if: ${{ github.event_name != 'pull_request' && github.event_name != 'issue_comment' && !(github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
         shell: bash
         env:
           VLLM_HUST_BENCHMARK_REPO: ${{ github.workspace }}/vllm-hust-benchmark
