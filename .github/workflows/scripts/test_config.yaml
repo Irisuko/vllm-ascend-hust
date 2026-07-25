@@ -160,6 +160,7 @@
   optional: false
   source_file_dependencies:
     - vllm_ascend/compilation/passes/qknorm_rope_fusion_pass.py
+    - vllm_ascend/compilation/passes/qknorm_rope_pattern_specs.py
   tests:
     - tests/ut/compilation
     - tests/e2e/pull_request/one_card/compile/test_graphex_qknorm_rope_fusion.py
@@ -308,6 +309,7 @@
     - vllm_ascend/ops/fused_moe
     - vllm_ascend/ops/mla.py
   tests:
+    - tests/e2e/pull_request/two_card/test_expert_parallel.py
     - tests/e2e/pull_request/one_card/test_qwen3_5_0_8b.py
     - tests/e2e/pull_request/one_card/test_multistream_overlap_shared_expert.py
     - tests/e2e/pull_request/two_card/test_deepseek_multistream_moe.py
@@ -428,6 +430,7 @@
     - vllm_ascend/worker/v2/sample
   tests:
     - tests/ut/sample
+    - tests/e2e/pull_request/one_card/test_mixed_logprobs.py
     - tests/e2e/pull_request/one_card/test_sampler.py
 
 - name: simple_kv_offload
@@ -436,7 +439,17 @@
     - vllm_ascend/simple_kv_offload
     - vllm_ascend/distributed/kv_transfer/kv_pool/simple_cpu_offload
   tests:
+    - tests/ut/kv_connector/test_cpu_offload_copy_spans.py
+    - tests/ut/kv_connector/test_cpu_offload_req_meta.py
     - tests/e2e/pull_request/one_card/test_simple_cpu_offload.py
+
+# SimLLM
+- name: simllm
+  optional: false
+  source_file_dependencies:
+    - vllm_ascend/simllm
+  tests:
+    - tests/ut/simllm
 
 # Spec Decode
 - name: spec_decode_base
@@ -598,6 +611,7 @@
     - vllm_ascend/_version.py
     - vllm_ascend/ascend_config.py
     - vllm_ascend/ascend_forward_context.py
+    - vllm_ascend/compat.py
     - vllm_ascend/cpu_binding.py
     - vllm_ascend/envs.py
     - vllm_ascend/flash_common3_context.py
@@ -609,6 +623,7 @@
     - setup.py
   tests:
     - tests/ut/test_ascend_config.py
+    - tests/ut/test_build_metadata.py
     - tests/ut/test_ascend_forward_context.py
     - tests/ut/test_cpu_binding.py
     - tests/ut/test_envs.py
@@ -616,6 +631,8 @@
     - tests/ut/test_flash_common3_context.py
     - tests/ut/test_meta_registration.py
     - tests/ut/test_profiling_config.py
+    - tests/ut/test_platform_config_sync_host.py
+    - tests/ut/test_runtime_metadata.py
     - tests/ut/test_utils.py
     - tests/ut/test_platform.py
     - tests/e2e/pull_request/one_card/test_qwen3_0_6b.py
@@ -654,6 +671,15 @@
     - tools/
   tests:
     - tests/ut/_tools
+    - tests/ut/test_ascend_benchmark_perfgate_workflow_static.py
+    - tests/ut/test_parse_ascend_comment_command.py
+    - tests/ut/test_perfgate_fail_fast_scripts.py
+    - tests/ut/test_perfgate_summary_conflict.py
+    - tests/ut/test_resolve_ascend_benchmark_scenario.py
+    - tests/ut/test_resolve_perfgate_spec_file.py
+    - tests/ut/test_smart_ut_container_runtime.py
+    - tests/ut/test_smart_ut_runtime_workflow_static.py
+    - tests/ut/test_use_single_ascend_env_static.py
 
 ---
 # === Estimated Times ===
@@ -664,6 +690,7 @@
 # When both file-level and ``::nodeid`` entries exist, lookup uses
 # exact match first, then file-level fallback.
 estimated_times:
+  tests/e2e/pull_request/one_card/test_mixed_logprobs.py: 600
   tests/e2e/pull_request/one_card/_310p/test_classification_310p.py: 190
   tests/e2e/pull_request/one_card/_310p/test_dense_model_310p.py: 1300
   tests/e2e/pull_request/one_card/_310p/test_embedding_310p.py: 370
@@ -678,6 +705,7 @@ estimated_times:
   tests/e2e/pull_request/one_card/lora/test_llama32_lora.py: 130
   tests/e2e/pull_request/one_card/lora/test_lora_with_spec_decode.py: 570
   tests/e2e/pull_request/one_card/lora/test_qwen35_densemodel_lora.py: 330
+  tests/e2e/pull_request/two_card/test_expert_parallel.py: 600
   tests/e2e/pull_request/one_card/lora/test_qwen3_multi_loras.py: 180
   tests/e2e/pull_request/one_card/lora/test_qwen3_reranker_lora.py: 190
   tests/e2e/pull_request/one_card/model_runner_v2/test_basic.py: 30
@@ -814,11 +842,10 @@ runner_mapping:
 partition:
   310p_x1: 1
   310p_x4: 1
-  a2_x1: 5
+  a2_x1: 6
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-
 
 
 
