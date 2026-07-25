@@ -309,6 +309,7 @@ jobs:
       CURRENT_VLLM_CACHE_ROOT: ${{ github.workspace }}/../.hf-cache/vllm
       SAME_SPEC_READY_TIMEOUT_SECONDS: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_READY_TIMEOUT_SECONDS || '1800' }}
       SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS || '300' }}
+      SAME_SPEC_PR_PREVIEW_COMPAT: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '1' || '0' }}
       HF_TOKEN: ${{ (github.event_name != 'pull_request' && github.event_name != 'issue_comment') && secrets.HF_TOKEN || '' }}
       HF_REPO_ID: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_HF_REPO || 'intellistream/vllm-ascend-hust-benchmark-results' }}
       ASCEND_HUST_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.ascend_hust_target || format('{0}@{1}', github.repository, github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.pr_head_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name)) }}

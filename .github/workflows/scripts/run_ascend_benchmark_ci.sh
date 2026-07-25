@@ -947,10 +947,7 @@ print(target)
 PY
   }
 
-  if [[ "$SAME_SPEC_PR_PREVIEW_COMPAT" == "1" && \
-    ( "${GITHUB_EVENT_NAME:-}" == "pull_request" || \
-      "${GITHUB_EVENT_NAME:-}" == "issue_comment" || \
-      ( "${GITHUB_EVENT_NAME:-}" == "workflow_dispatch" && "${MODEL_PARAMETERS:-}" == "3B" ) ) ]]; then
+  if [[ "$SAME_SPEC_PR_PREVIEW_COMPAT" == "1" ]]; then
     effective_same_spec_file=$(prepare_same_spec_pr_preview_compat_file)
     echo "Using PR preview same-spec compatibility overlay: $effective_same_spec_file"
   fi

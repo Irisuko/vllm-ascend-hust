@@ -325,8 +325,6 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert 'client_parameters["request_rate"] = 1' in runner_script
     assert '"$SAME_SPEC_PR_PREVIEW_COMPAT" == "1"' in runner_script
     assert 'server_parameters["gpu_memory_utilization"] = 0.6' in runner_script
-    assert '"${GITHUB_EVENT_NAME:-}" == "workflow_dispatch"' in runner_script
-    assert '"${MODEL_PARAMETERS:-}" == "3B"' in runner_script
     assert '"$effective_same_spec_file"' in runner_script
     validation_failure_block = runner_script[runner_script.index('if [[ "$validation_status" -ne 0 ]]; then') :]
     validation_failure_block = validation_failure_block[: validation_failure_block.index("  fi")]
@@ -369,6 +367,7 @@ def test_main_perfgate_baseline_bootstrap_is_reachable_and_pins_target() -> None
     assert "(github.event_name == 'push' && github.ref == 'refs/heads/main')" in workflow
     assert "inputs.benchmark_scenarios == 'perfgate-bootstrap'" in workflow
     assert "inputs.benchmark_scenarios != 'perfgate-bootstrap'" in workflow
+    assert "SAME_SPEC_PR_PREVIEW_COMPAT:" in workflow
     assert (
         "github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap'"
     ) in workflow
