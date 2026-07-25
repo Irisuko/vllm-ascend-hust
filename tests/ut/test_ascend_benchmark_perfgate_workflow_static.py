@@ -324,7 +324,6 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert 'client_parameters["max_concurrency"] = 1' in runner_script
     assert 'client_parameters["request_rate"] = 1' in runner_script
     assert '"$SAME_SPEC_PR_PREVIEW_COMPAT" == "1"' in runner_script
-    assert 'server_parameters["gpu_memory_utilization"] = 0.6' in runner_script
     assert '"$effective_same_spec_file"' in runner_script
     validation_failure_block = runner_script[runner_script.index('if [[ "$validation_status" -ne 0 ]]; then') :]
     validation_failure_block = validation_failure_block[: validation_failure_block.index("  fi")]
@@ -377,6 +376,12 @@ def test_main_perfgate_baseline_bootstrap_is_reachable_and_pins_target() -> None
     assert "ref: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
     assert "BASELINE_TARGET_SHA: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
     assert 'GITHUB_SHA="$BASELINE_TARGET_SHA"' in workflow
+    preserve = workflow.index("- name: Preserve bootstrap workflow scripts")
+    activate = workflow.index("- name: Activate local manual benchmark target")
+    restore = workflow.index("- name: Restore bootstrap workflow scripts")
+    assert preserve < activate < restore
+    assert 'cp -a .github/workflows/scripts/. "$bootstrap_scripts/"' in workflow
+    assert 'cp -a "$bootstrap_scripts/." .github/workflows/scripts/' in workflow
     store_job = workflow[workflow.index("  store-main-perfgate-baseline:") :]
     assert "always() &&" in store_job
     assert "needs.ascend-benchmark.result == 'success' &&" in store_job

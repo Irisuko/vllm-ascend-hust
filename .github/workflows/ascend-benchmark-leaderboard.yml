@@ -491,6 +491,14 @@ jobs:
           ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
           persist-credentials: true
 
+      - name: Preserve bootstrap workflow scripts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
+        shell: bash
+        run: |
+          bootstrap_scripts="${RUNNER_TEMP}/perfgate-bootstrap-workflow-scripts"
+          mkdir -p "$bootstrap_scripts"
+          cp -a .github/workflows/scripts/. "$bootstrap_scripts/"
+
       - name: Checkout manual benchmark target
         if: ${{ github.event_name == 'workflow_dispatch' && env.ASCEND_HUST_LOCAL_CHECKOUT != '1' }}
         uses: actions/checkout@v7
@@ -506,6 +514,14 @@ jobs:
         shell: bash
         run: |
           git checkout --force "${ASCEND_HUST_REF}"
+
+      - name: Restore bootstrap workflow scripts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
+        shell: bash
+        run: |
+          bootstrap_scripts="${RUNNER_TEMP}/perfgate-bootstrap-workflow-scripts"
+          test -d "$bootstrap_scripts"
+          cp -a "$bootstrap_scripts/." .github/workflows/scripts/
 
       - name: Detect PR fork point
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'issue_comment' }}
