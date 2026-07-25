@@ -1,6 +1,5 @@
 import math
 from contextlib import contextmanager
-from contextvars import ContextVar
 from enum import Enum
 from typing import Any
 
@@ -31,7 +30,7 @@ class MoECommType(Enum):
     FUSED_MC2 = 3
 
 
-_MRV2_IN_PROFILE_RUN: ContextVar[bool] = ContextVar("_MRV2_IN_PROFILE_RUN", default=False)
+_mrv2_in_profile_run: bool = False
 
 
 @contextmanager
@@ -40,18 +39,21 @@ def override_mrv2_in_profile_run(enabled: bool):
 
     MRv2 builds the base forward context inside upstream vLLM, so Ascend's
     platform hook cannot tell whether the current forward is the extra MC2
-    profile dummy run. A ContextVar keeps this MRv2-only state scoped to the
-    current forward path without adding default fallback behavior.
+    profile dummy run. A module-level bool keeps this MRv2-only state
+    scoped to the current forward path without using contextvars.ContextVar,
+    which is incompatible with torch.compile(fullgraph=True).
     """
-    token = _MRV2_IN_PROFILE_RUN.set(enabled)
+    global _mrv2_in_profile_run
+    old = _mrv2_in_profile_run
+    _mrv2_in_profile_run = enabled
     try:
         yield
     finally:
-        _MRV2_IN_PROFILE_RUN.reset(token)
+        _mrv2_in_profile_run = old
 
 
 def get_mrv2_in_profile_run() -> bool:
-    return _MRV2_IN_PROFILE_RUN.get()
+    return _mrv2_in_profile_run
 
 
 @contextmanager

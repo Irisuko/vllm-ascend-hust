@@ -1,2 +1,133 @@
-def test_ascend_forward_context_placeholder():
-    pass
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+"""Tests for ascend_forward_context module.
+
+Verifies that get_mrv2_in_profile_run() and override_mrv2_in_profile_run()
+work correctly with and without torch.compile(fullgraph=True).
+"""
+
+import torch
+
+from vllm_ascend.ascend_forward_context import (
+    get_mrv2_in_profile_run,
+    override_mrv2_in_profile_run,
+)
+
+
+class ModelWithProfileFlag(torch.nn.Module):
+    """Minimal model that reads the MRv2 profile flag during forward."""
+
+    def forward(self, x):
+        if get_mrv2_in_profile_run():
+            x = x * 2
+        return x + 1
+
+
+def test_default_false():
+    """Default state must be False (no profile run)."""
+    assert get_mrv2_in_profile_run() is False
+
+
+def test_override_true():
+    """Inside override_mrv2_in_profile_run(True), get() returns True."""
+    with override_mrv2_in_profile_run(True):
+        assert get_mrv2_in_profile_run() is True
+    # Restored to default after exit
+    assert get_mrv2_in_profile_run() is False
+
+
+def test_override_false():
+    """override_mrv2_in_profile_run(False) keeps the value as False."""
+    with override_mrv2_in_profile_run(False):
+        assert get_mrv2_in_profile_run() is False
+
+
+def test_override_nested():
+    """Nested context managers must restore correctly."""
+    with override_mrv2_in_profile_run(True):
+        assert get_mrv2_in_profile_run() is True
+        with override_mrv2_in_profile_run(False):
+            assert get_mrv2_in_profile_run() is False
+        assert get_mrv2_in_profile_run() is True
+    assert get_mrv2_in_profile_run() is False
+
+
+def test_override_twice():
+    """Sequential overrides work independently."""
+    with override_mrv2_in_profile_run(True):
+        assert get_mrv2_in_profile_run() is True
+    assert get_mrv2_in_profile_run() is False
+    with override_mrv2_in_profile_run(True):
+        assert get_mrv2_in_profile_run() is True
+    assert get_mrv2_in_profile_run() is False
+
+
+def test_dynamo_fullgraph_compatible():
+    """get_mrv2_in_profile_run() must work inside torch.compile(fullgraph=True).
+
+    This is the core regression test for T22: ContextVar.get() is
+    incompatible with torch.compile(fullgraph=True), but a module-level
+    bool is not.  The fix replaced the original ContextVar with a plain
+    module-level variable so that models compiled with fullgraph=True
+    can read the profile-run flag without triggering a Dynamo error.
+    """
+    model = ModelWithProfileFlag()
+    compiled = torch.compile(model, fullgraph=True, backend="eager")
+
+    x = torch.randn(3, 3)
+
+    # Default (flag=False): read + add 1, no multiply
+    out_off = compiled(x)
+    expected_off = x + 1
+    assert torch.allclose(out_off, expected_off), f"Expected {expected_off}, got {out_off}"
+
+    # Flag=True: read + multiply by 2 + add 1
+    with override_mrv2_in_profile_run(True):
+        out_on = compiled(x)
+        expected_on = x * 2 + 1
+        assert torch.allclose(out_on, expected_on), f"Expected {expected_on}, got {out_on}"
+
+
+def test_dynamo_fullgraph_compatible_after_exit():
+    """After exiting override context, compiled model still works.
+
+    Verifies that the module-level flag restoration doesn't interfere
+    with subsequent torch.compile calls.
+    """
+    model = ModelWithProfileFlag()
+    compiled = torch.compile(model, fullgraph=True, backend="eager")
+
+    x = torch.randn(3, 3)
+
+    with override_mrv2_in_profile_run(True):
+        compiled(x)  # warm up with flag=True
+
+    # After exit, flag is False again
+    out = compiled(x)
+    expected = x + 1
+    assert torch.allclose(out, expected), f"Expected {expected}, got {out}"
+
+
+def test_override_isolated_between_calls():
+    """override_mrv2_in_profile_run must be scoped per forward call.
+
+    Two sequential forward calls with different override states should
+    each see the correct flag value.
+    """
+    model = ModelWithProfileFlag()
+    compiled = torch.compile(model, fullgraph=True, backend="eager")
+
+    x = torch.randn(3, 3)
+
+    # First call: flag=False
+    out1 = compiled(x)
+    assert torch.allclose(out1, x + 1)
+
+    # Second call: flag=True
+    with override_mrv2_in_profile_run(True):
+        out2 = compiled(x)
+        assert torch.allclose(out2, x * 2 + 1)
+
+    # Third call: flag=False (restored)
+    out3 = compiled(x)
+    assert torch.allclose(out3, x + 1)
