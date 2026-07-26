@@ -566,10 +566,22 @@ class cmake_build_ext(build_ext):
 
         cmake_args += [source_dir]
         logging.info("cmake config command: %s", cmake_args)
-        try:
-            subprocess.check_call(cmake_args, cwd=self.build_temp)
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"CMake configuration failed: {e}")
+        proc = subprocess.Popen(cmake_args, cwd=self.build_temp, stderr=subprocess.PIPE, text=True)
+        # Forward CMake stderr to the real stderr in real time while also
+        # accumulating it so the full error is visible on failure.
+        stderr_lines: list[str] = []
+        if proc.stderr is not None:
+            for line in proc.stderr:
+                sys.stderr.write(line)
+                stderr_lines.append(line)
+        proc.wait()
+        if proc.returncode != 0:
+            stderr_text = "".join(stderr_lines).strip()
+            if stderr_text:
+                logging.error("CMake configuration failed with stderr:")
+                for line in stderr_text.splitlines():
+                    logging.error("  | %s", line)
+            raise RuntimeError(f"CMake configuration failed (exit {proc.returncode})")
 
         subprocess.check_call(
             ["cmake", ext.cmake_lists_dir, *build_tool, *cmake_args],

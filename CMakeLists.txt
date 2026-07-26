@@ -9,10 +9,22 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/utils.cmake)
 
 # Suppress potential warnings about unused manually-specified variables
 set(ignoreMe "${VLLM_PYTHON_PATH}")
+set(ignoreMe2 "${FETCHCONTENT_BASE_DIR}")
+
+# Use the modern CMake FindPython module instead of the deprecated
+# FindPythonInterp/FindPythonLibs (suppresses pybind11 CMP0148 warning).
+set(PYBIND11_FINDPYTHON ON)
 
 set(PYTHON_SUPPORTED_VERSIONS "3.9" "3.10" "3.11" "3.12")
 
-find_package(pybind11 REQUIRED)
+# Auto-detect pybind11 via CMAKE_PREFIX_PATH first; fall back to Python
+# discovery so that running cmake directly (without setup.py) still works.
+find_package(pybind11 QUIET)
+if(NOT pybind11_FOUND)
+    message(STATUS "pybind11 not found via CMAKE_PREFIX_PATH, auto-detecting via Python...")
+    append_cmake_prefix_path("pybind11" "pybind11.get_cmake_dir()")
+    find_package(pybind11 REQUIRED)
+endif()
 
 append_cmake_prefix_path("torch" "torch.utils.cmake_prefix_path")
 set(VLLM_ASCEND_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}")
