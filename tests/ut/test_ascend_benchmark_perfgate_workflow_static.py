@@ -48,6 +48,7 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "PERFGATE_MODE" in workflow
     assert "PERFGATE_SPEC_FILE" in workflow
     assert "SOC_VERSION: ascend910b2" in workflow
+    assert ("runs-on:\n      - self-hosted\n      - linux-aarch64-a2b3-0\n      - ascend-benchmark") in workflow
     assert (
         "HARDWARE_CHIP_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware_chip_model || '910B2' }}"
         in workflow
@@ -90,11 +91,15 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "run_ascend_benchmark_scenario_list.sh" in workflow
     assert "steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1'" in workflow
     assert (
-        "(github.event_name == 'pull_request' || github.event_name == 'issue_comment') "
+        "(github.event_name == 'pull_request' || github.event_name == 'issue_comment' || "
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.benchmark_scenarios == 'perfgate-bootstrap')) "
         "&& steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1'"
     ) in workflow
     assert (
         "github.event_name != 'pull_request' && github.event_name != 'issue_comment' "
+        "&& !(github.event_name == 'workflow_dispatch' && "
+        "inputs.benchmark_scenarios == 'perfgate-bootstrap') "
         "&& steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1'"
     ) in workflow
     assert "vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''" in workflow
@@ -129,17 +134,13 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
 
 
 def test_required_perfgate_scripts_fail_fast() -> None:
-    stage1_script = (SCRIPT_DIR / "perfgate_stage1_compare.sh").read_text(
-        encoding="utf-8"
-    )
-    stage2_script = (SCRIPT_DIR / "perfgate_stage2_rebase_and_benchmark.sh").read_text(
-        encoding="utf-8"
-    )
+    stage1_script = (SCRIPT_DIR / "perfgate_stage1_compare.sh").read_text(encoding="utf-8")
+    stage2_script = (SCRIPT_DIR / "perfgate_stage2_rebase_and_benchmark.sh").read_text(encoding="utf-8")
 
-    assert 'write_env PERFGATE_STAGE1_COMPLETED 1' in stage1_script
+    assert "write_env PERFGATE_STAGE1_COMPLETED 1" in stage1_script
     assert '"$MODE" == "enforce"' in stage1_script
     assert '"$MODE" != "enforce"' in stage2_script
-    assert 'write_env PERFGATE_STAGE2_EXECUTED 1' in stage2_script
+    assert "write_env PERFGATE_STAGE2_EXECUTED 1" in stage2_script
     assert 'write_env PERFGATE_STAGE2_BASELINE_AVAILABLE "$stage2_baseline_available"' in stage2_script
     assert stage2_script.count('if [[ "$MODE" == "enforce" ]]') >= 2
 
@@ -303,8 +304,9 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert "official-ascend-jan-2026-v0180-random-online-qwen25-14b-910b2.json" not in runner_script
     assert 'if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then' in runner_script
     same_spec_block = runner_script[
-        runner_script.index('if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then') :
-        runner_script.index('else', runner_script.index('if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then'))
+        runner_script.index('if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then') : runner_script.index(
+            "else", runner_script.index('if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then')
+        )
     ]
     assert "EFFECTIVE_CONSTRAINTS_FILE=$SAME_SPEC_CONSTRAINTS_FILE" in same_spec_block
     assert "bench_args=()" in same_spec_block
@@ -324,50 +326,79 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert 'client_parameters["request_rate"] = 1' in runner_script
     assert '"$SAME_SPEC_PR_PREVIEW_COMPAT" == "1"' in runner_script
     assert '"$effective_same_spec_file"' in runner_script
-    validation_failure_block = runner_script[
-        runner_script.index('if [[ "$validation_status" -ne 0 ]]; then') :
-    ]
-    validation_failure_block = validation_failure_block[
-        : validation_failure_block.index("  fi")
-    ]
+    validation_failure_block = runner_script[runner_script.index('if [[ "$validation_status" -ne 0 ]]; then') :]
+    validation_failure_block = validation_failure_block[: validation_failure_block.index("  fi")]
     assert "print_same_spec_server_log_tail" in validation_failure_block
 
 
-def test_pull_request_defaults_match_perfgate_spec_size() -> None:
+def test_perfgate_baseline_events_match_pull_request_spec_size() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
+    fixed_spec_events = (
+        "github.event_name == 'pull_request' || github.event_name == 'issue_comment' || "
+        "github.event_name == 'push' || "
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.benchmark_scenarios == 'perfgate-bootstrap')"
+    )
+    for setting in (
+        "MODEL_NAME:",
+        "MODEL_PARAMETERS:",
+        "MODEL_PRECISION:",
+        "DTYPE:",
+        "BENCH_RANDOM_INPUT_LEN:",
+        "BENCH_RANDOM_OUTPUT_LEN:",
+    ):
+        line = next(line for line in workflow.splitlines() if line.strip().startswith(setting))
+        assert fixed_spec_events in line
+
+    assert "'Qwen/Qwen2.5-3B-Instruct'" in workflow
+    assert "&& '3B' || '14B'" in workflow
+    assert "&& 'BF16' ||" in workflow
+    assert "&& 'bfloat16' ||" in workflow
+    assert "&& '64' || '1024'" in workflow
+    assert "&& '16' || '256'" in workflow
+
+
+def test_main_perfgate_baseline_bootstrap_is_reachable_and_pins_target() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "push:" in workflow
+    assert "branches:\n      - main" in workflow
+    assert "(github.event_name == 'push' && github.ref == 'refs/heads/main')" in workflow
+    assert "inputs.benchmark_scenarios == 'perfgate-bootstrap'" in workflow
+    assert "inputs.benchmark_scenarios != 'perfgate-bootstrap'" in workflow
+    assert "SAME_SPEC_PR_PREVIEW_COMPAT:" in workflow
     assert (
-        "MODEL_NAME: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && "
-        "(github.event_name == 'issue_comment' && "
-        "needs.issue-comment-command.outputs.model_name || "
-        "'Qwen/Qwen2.5-3B-Instruct') || "
-        "(github.event_name == 'workflow_dispatch' && inputs.model_name || "
-        "'Qwen/Qwen2.5-14B-Instruct') }}"
+        "github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap'"
     ) in workflow
-    assert (
-        "MODEL_PARAMETERS: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && '3B' || '14B' }}"
-    ) in workflow
-    assert (
-        "MODEL_PRECISION: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && 'BF16' || "
-        "(github.event_name == 'workflow_dispatch' && inputs.model_precision || "
-        "'FP16') }}"
-    ) in workflow
-    assert (
-        "DTYPE: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && 'bfloat16' || "
-        "(github.event_name == 'workflow_dispatch' && inputs.dtype || 'float16') }}"
-    ) in workflow
-    assert (
-        "BENCH_RANDOM_INPUT_LEN: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && '64' || '1024' }}"
-    ) in workflow
-    assert (
-        "BENCH_RANDOM_OUTPUT_LEN: ${{ (github.event_name == 'pull_request' || "
-        "github.event_name == 'issue_comment') && '16' || '256' }}"
-    ) in workflow
+    assert "inputs.ascend_hust_target == format('{0}@main', github.repository)" in workflow
+    assert "target_sha: ${{ steps.target-metadata.outputs.target_sha }}" in workflow
+    assert 'echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"' in workflow
+    assert "ref: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
+    assert "BASELINE_TARGET_SHA: ${{ needs.ascend-benchmark.outputs.target_sha }}" in workflow
+    assert 'GITHUB_SHA="$BASELINE_TARGET_SHA"' in workflow
+    preserve = workflow.index("- name: Preserve bootstrap workflow scripts")
+    activate = workflow.index("- name: Activate local manual benchmark target")
+    restore = workflow.index("- name: Restore bootstrap workflow scripts")
+    assert preserve < activate < restore
+    assert 'cp -a .github/workflows/scripts/. "$bootstrap_scripts/"' in workflow
+    assert 'cp -a "$bootstrap_scripts/." .github/workflows/scripts/' in workflow
+    store_job = workflow[workflow.index("  store-main-perfgate-baseline:") :]
+    assert "always() &&" in store_job
+    assert "needs.ascend-benchmark.result == 'success' &&" in store_job
+    push_guard = (
+        "github.event_name == 'push' &&\n"
+        "            github.ref == 'refs/heads/main' &&\n"
+        "            vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''"
+    )
+    bootstrap_guard = (
+        "github.event_name == 'workflow_dispatch' &&\n"
+        "            inputs.benchmark_scenarios == 'perfgate-bootstrap' &&\n"
+        "            inputs.ascend_hust_target == format('{0}@main', github.repository)"
+    )
+    assert push_guard in store_job
+    assert bootstrap_guard in store_job
+    assert store_job.index(") ||") < store_job.index(bootstrap_guard)
 
 
 def test_benchmark_disables_huggingface_xet_download_path() -> None:
@@ -394,7 +425,7 @@ def test_local_ascend_manager_fallback_bootstraps_pip() -> None:
     assert prepare_step.index("source scripts/hust_ascend_manager_helper.sh") < prepare_step.index(
         'PYTHON_BIN="$(hust_resolve_python_bin)"'
     )
-    assert "export VLLM_HUST_PYTHON_BIN=\"$PYTHON_BIN\"" in workflow
+    assert 'export VLLM_HUST_PYTHON_BIN="$PYTHON_BIN"' in workflow
     assert "VLLM_HUST_PYTHON_BIN=$VLLM_HUST_PYTHON_BIN" in workflow
     assert "_hust_ascend_manager_command_needs_pip()" in helper
     assert "--install-python-stack|--install-plugin" in helper
@@ -409,13 +440,13 @@ def test_single_ascend_env_falls_back_when_manager_env_fails() -> None:
 
     assert "manager_env_status=0" in single_env
     assert 'manager_env="$(hust_ascend_manager_run env --shell' in single_env
-    assert 'manager_env_status=$?' in single_env
+    assert "manager_env_status=$?" in single_env
     assert 'if [[ "${manager_env_status}" -eq 0 ]]; then' in single_env
     assert 'eval "${manager_env}"' in single_env
     assert "falling back to local CANN set_env.sh discovery" in single_env
     assert "/usr/local/Ascend/cann-*/set_env.sh" in single_env
     assert '[[ -n "${ASCEND_HOME_PATH:-}" && -n "${ASCEND_OPP_PATH:-}" ]] && python_can_import_tbe' in single_env
-    assert 'ASCEND_OPP_PATH=${ASCEND_OPP_PATH:-<unset>}' in single_env
+    assert "ASCEND_OPP_PATH=${ASCEND_OPP_PATH:-<unset>}" in single_env
 
 
 def test_local_plugin_editable_install_bootstraps_build_metadata_deps() -> None:
@@ -435,18 +466,21 @@ def test_benchmark_prepare_preserves_torch_npu_stack() -> None:
 
     assert "install_ascend_benchmark_with_dev_hub.sh" in prepare_step
     assert "hust_ascend_manager_run setup --non-interactive" not in prepare_step
-    assert 'run_in_quickstart_env()' not in prepare_step
+    assert "run_in_quickstart_env()" not in prepare_step
     assert 'mktemp "${RUNNER_TEMP:-/tmp}/benchmark-quickstart-env.' not in prepare_step
     assert '"$CONDA_BIN" run -n "vllm-hust-dev" bash "$inline_script"' not in prepare_step
     assert "find_library('stdc++')" in prepare_step
     assert 'PYTHON_BIN="${VLLM_HUST_PYTHON_BIN:-}"' in prepare_step
-    assert 'echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"' in prepare_step
+    assert 'echo "PYTHON_BIN=$PYTHON_BIN"' in prepare_step
     assert '"$PYTHON_BIN" - <<' in prepare_step
-    assert 'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"' in prepare_step
+    assert 'echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"' in prepare_step
+    assert '} >> "$GITHUB_ENV"' in prepare_step
     assert 'python -m pip install -e "$VLLM_HUST_BENCHMARK_REPO[publish]" jsonschema' not in prepare_step
     assert 'python -m pip install "huggingface_hub>=0.20"' not in prepare_step
     assert 'python -m pip install "numpy<2.0.0" scipy attrs decorator psutil' not in prepare_step
-    assert 'python -m pip install -c "$torch_constraints" -r "$VLLM_HUST_REPO/requirements/common.txt"' not in prepare_step
+    assert (
+        'python -m pip install -c "$torch_constraints" -r "$VLLM_HUST_REPO/requirements/common.txt"'
+    ) not in prepare_step
     assert "VLLM_HUST_PYTHON_BIN" in prepare_step
 
 
@@ -459,7 +493,7 @@ def test_benchmark_verify_uses_resolved_python_not_conda_lookup() -> None:
     assert 'PYTHON_BIN="${VLLM_HUST_PYTHON_BIN:-}"' in verify_step
     assert 'PYTHON_BIN="$(hust_resolve_python_bin)"' in verify_step
     assert 'export VLLM_HUST_PYTHON_BIN="$PYTHON_BIN"' in verify_step
-    assert 'source scripts/use_single_ascend_env.sh' in verify_step
+    assert "source scripts/use_single_ascend_env.sh" in verify_step
     assert '"$PYTHON_BIN" --version' in verify_step
     assert '"$PYTHON_BIN" - <<' in verify_step
     assert "conda executable not found for Verify installation" not in verify_step
@@ -542,6 +576,11 @@ def test_stage2_trial_does_not_publish_benchmark_results() -> None:
     assert "install_ascend_benchmark_with_dev_hub.sh" in stage2_script
     assert "PERFGATE_STAGE2_DEV_HUB_QUICKSTART_CONDA" not in stage2_script
     assert "install_local_ascend_plugin.sh" not in stage2_script
+    assert 'GIT_AUTHOR_NAME="vLLM-HUST Benchmark Bot"' in stage2_script
+    assert 'GIT_AUTHOR_EMAIL="benchmark-bot@vllm-hust.local"' in stage2_script
+    assert 'GIT_COMMITTER_NAME="vLLM-HUST Benchmark Bot"' in stage2_script
+    assert 'GIT_COMMITTER_EMAIL="benchmark-bot@vllm-hust.local"' in stage2_script
+    assert "git config --global" not in stage2_script
 
 
 def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
@@ -563,7 +602,9 @@ def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
     assert "ASCEND_BENCHMARK_TRITON_ASCEND_INDEX_URL" in install_script
     assert "https://mirrors.huaweicloud.com/ascend/repos/pypi" in install_script
     assert "ensure_triton_ascend()" in install_script
-    assert 'run_env_pip install --no-deps --index-url "$ASCEND_BENCHMARK_TRITON_ASCEND_INDEX_URL" "$triton_ascend_spec"' in install_script
+    assert (
+        'run_env_pip install --no-deps --index-url "$ASCEND_BENCHMARK_TRITON_ASCEND_INDEX_URL" "$triton_ascend_spec"'
+    ) in install_script
     assert "Preinstall these packages on the self-hosted runner" not in install_script
     assert "ascend_custom_kernel_build_prereqs_present()" in install_script
     assert 'if [[ "$cann_major" == "9" ]] && ascend_custom_kernel_build_prereqs_present; then' in install_script

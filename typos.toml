@@ -36,6 +36,8 @@ nin_shortcut = "nin_shortcut"
 UperNetDecoder = "UperNetDecoder"
 subtile = "subtile"
 SFOuput = "SFOuput"
+# CANN exposes this legacy environment variable with the original spelling.
+ATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT = "ATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT"
 # huggingface transformers repo uses these words
 depthwise_seperable_out_channel = "depthwise_seperable_out_channel"
 DepthWiseSeperableConv1d = "DepthWiseSeperableConv1d"
@@ -46,6 +48,8 @@ mata = "mata"
 iy = "iy"
 tendencias = "tendencias"
 PARD = "PARD"
+TBE = "TBE"
+tbe = "tbe"
 # intel cpu features
 tme = "tme"
 dout = "dout"

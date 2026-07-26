@@ -1,6 +1,9 @@
 name: Ascend Benchmark Leaderboard
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     types: [labeled]
   issue_comment:
@@ -25,7 +28,7 @@ on:
           - random-online
           - sharegpt-online
       benchmark_scenarios:
-        description: Comma-separated benchmark scenarios to run in multi-scenario mode
+        description: Comma-separated scenarios, or perfgate-bootstrap for a fixed main baseline
         required: false
         type: string
         default: ""
@@ -268,11 +271,14 @@ jobs:
 
   ascend-benchmark:
     needs: [issue-comment-command]
+    outputs:
+      target_sha: ${{ steps.target-metadata.outputs.target_sha }}
     if: >-
       always() &&
       (
         github.event_name == 'workflow_dispatch' ||
         github.event_name == 'schedule' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
         (
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
@@ -287,6 +293,7 @@ jobs:
     runs-on:
       - self-hosted
       - linux-aarch64-a2b3-0
+      - ascend-benchmark
     timeout-minutes: 60
     env:
       BENCHMARK_CHECKOUT_USE_SSH_443: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY != '' && '1' || '0' }}
@@ -303,6 +310,7 @@ jobs:
       CURRENT_VLLM_CACHE_ROOT: ${{ github.workspace }}/../.hf-cache/vllm
       SAME_SPEC_READY_TIMEOUT_SECONDS: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_READY_TIMEOUT_SECONDS || '1800' }}
       SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS || '300' }}
+      SAME_SPEC_PR_PREVIEW_COMPAT: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '1' || '0' }}
       HF_TOKEN: ${{ (github.event_name != 'pull_request' && github.event_name != 'issue_comment') && secrets.HF_TOKEN || '' }}
       HF_REPO_ID: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_HF_REPO || 'intellistream/vllm-ascend-hust-benchmark-results' }}
       ASCEND_HUST_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.ascend_hust_target || format('{0}@{1}', github.repository, github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.pr_head_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name)) }}
@@ -310,21 +318,21 @@ jobs:
       VLLM_HUST_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.vllm_hust_ref || vars.VLLM_ASCEND_HUST_VLLM_HUST_REF || 'main' }}
       VLLM_HUST_BENCHMARK_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_ref || vars.VLLM_ASCEND_HUST_BENCHMARK_REF || 'main' }}
       HUST_ASCEND_MANAGER_REF: ${{ vars.VLLM_ASCEND_HUST_MANAGER_REF || 'main' }}
-      MODEL_NAME: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.model_name || 'Qwen/Qwen2.5-3B-Instruct') || (github.event_name == 'workflow_dispatch' && inputs.model_name || 'Qwen/Qwen2.5-14B-Instruct') }}
+      MODEL_NAME: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.model_name || 'Qwen/Qwen2.5-3B-Instruct') || (github.event_name == 'workflow_dispatch' && inputs.model_name || 'Qwen/Qwen2.5-14B-Instruct') }}
       SOC_VERSION: ascend910b2
       BENCH_SCENARIO: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.benchmark_scenario || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenario || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_SCENARIO) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIO) || 'random-online') }}
-      BENCH_SCENARIOS: ${{ (github.event_name == 'schedule' && (vars.VLLM_ASCEND_HUST_SCHEDULE_BENCHMARK_SCENARIOS || 'random-online,sharegpt-online,prefix-repetition-online,random-latency,sharegpt-throughput,sonnet-throughput,instructcoder-online,agent-research-online,visionarena-online')) || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios) || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_SCENARIOS) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS) || '' }}
+      BENCH_SCENARIOS: ${{ (github.event_name == 'schedule' && (vars.VLLM_ASCEND_HUST_SCHEDULE_BENCHMARK_SCENARIOS || 'random-online,sharegpt-online,prefix-repetition-online,random-latency,sharegpt-throughput,sonnet-throughput,instructcoder-online,agent-research-online,visionarena-online')) || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios != 'perfgate-bootstrap' && inputs.benchmark_scenarios) || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_SCENARIOS) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS) || '' }}
       BENCH_DATASET_PATH: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.dataset_path || (github.event_name == 'workflow_dispatch' && inputs.dataset_path || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_DATASET_PATH) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_DATASET_PATH) || '') }}
       BENCH_CONSTRAINTS_FILE: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.constraints_file || (github.event_name == 'workflow_dispatch' && inputs.constraints_file || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_CONSTRAINTS_FILE) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_CONSTRAINTS_FILE) || '') }}
-      MODEL_PARAMETERS: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && '3B' || '14B' }}
-      MODEL_PRECISION: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && 'BF16' || (github.event_name == 'workflow_dispatch' && inputs.model_precision || 'FP16') }}
+      MODEL_PARAMETERS: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '3B' || '14B' }}
+      MODEL_PRECISION: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'BF16' || (github.event_name == 'workflow_dispatch' && inputs.model_precision || 'FP16') }}
       MODEL_QUANTIZATION: ${{ github.event_name == 'workflow_dispatch' && inputs.model_quantization || '' }}
-      DTYPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && 'bfloat16' || (github.event_name == 'workflow_dispatch' && inputs.dtype || 'float16') }}
+      DTYPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'bfloat16' || (github.event_name == 'workflow_dispatch' && inputs.dtype || 'float16') }}
       MAX_MODEL_LEN: ""
       MAX_NUM_SEQS: "1"
       BENCH_NUM_PROMPTS: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.num_prompts || (github.event_name == 'workflow_dispatch' && inputs.num_prompts || '200') }}
-      BENCH_RANDOM_INPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && '64' || '1024' }}
-      BENCH_RANDOM_OUTPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && '16' || '256' }}
+      BENCH_RANDOM_INPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '64' || '1024' }}
+      BENCH_RANDOM_OUTPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '16' || '256' }}
       BENCH_REQUEST_RATE: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.request_rate || (github.event_name == 'workflow_dispatch' && inputs.request_rate || '1') }}
       BENCH_MAX_CONCURRENCY: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.max_concurrency || (github.event_name == 'workflow_dispatch' && inputs.max_concurrency || '4') }}
       BENCH_INPUT_LEN: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.input_length || (github.event_name == 'workflow_dispatch' && inputs.input_length || '') }}
@@ -484,6 +492,14 @@ jobs:
           ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
           persist-credentials: true
 
+      - name: Preserve bootstrap workflow scripts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
+        shell: bash
+        run: |
+          bootstrap_scripts="${RUNNER_TEMP}/perfgate-bootstrap-workflow-scripts"
+          mkdir -p "$bootstrap_scripts"
+          cp -a .github/workflows/scripts/. "$bootstrap_scripts/"
+
       - name: Checkout manual benchmark target
         if: ${{ github.event_name == 'workflow_dispatch' && env.ASCEND_HUST_LOCAL_CHECKOUT != '1' }}
         uses: actions/checkout@v7
@@ -499,6 +515,14 @@ jobs:
         shell: bash
         run: |
           git checkout --force "${ASCEND_HUST_REF}"
+
+      - name: Restore bootstrap workflow scripts
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
+        shell: bash
+        run: |
+          bootstrap_scripts="${RUNNER_TEMP}/perfgate-bootstrap-workflow-scripts"
+          test -d "$bootstrap_scripts"
+          cp -a "$bootstrap_scripts/." .github/workflows/scripts/
 
       - name: Detect PR fork point
         if: ${{ github.event_name == 'pull_request' || github.event_name == 'issue_comment' }}
@@ -516,9 +540,11 @@ jobs:
           echo "Fork point: $fork_point"
 
       - name: Capture benchmark target metadata
+        id: target-metadata
         run: |
           target_sha="$(git rev-parse HEAD)"
           target_sha_short="$(printf '%s' "$target_sha" | cut -c1-8)"
+          echo "target_sha=$target_sha" >> "$GITHUB_OUTPUT"
           {
             echo "ASCEND_HUST_TARGET_REPOSITORY=${ASCEND_HUST_REPOSITORY}"
             echo "ASCEND_HUST_TARGET_REF=${ASCEND_HUST_REF}"
@@ -559,7 +585,7 @@ jobs:
           python3 .github/workflows/scripts/resolve_ascend_benchmark_scenario.py
 
       - name: Resolve perfgate same-spec file
-        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
+        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
         shell: bash
         env:
           VLLM_HUST_BENCHMARK_REPO: ${{ github.workspace }}/vllm-hust-benchmark
@@ -584,7 +610,7 @@ jobs:
           fi
 
       - name: Resolve main same-spec file
-        if: ${{ github.event_name != 'pull_request' && github.event_name != 'issue_comment' && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
+        if: ${{ github.event_name != 'pull_request' && github.event_name != 'issue_comment' && !(github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap') && steps.resolve-scenario.outputs.BENCH_SCENARIO_COUNT == '1' }}
         shell: bash
         env:
           VLLM_HUST_BENCHMARK_REPO: ${{ github.workspace }}/vllm-hust-benchmark
@@ -737,6 +763,7 @@ jobs:
           source scripts/hust_ascend_manager_helper.sh
           PYTHON_BIN="${VLLM_HUST_PYTHON_BIN:-}"
           if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
+            # shellcheck disable=SC2119
             PYTHON_BIN="$(hust_resolve_python_bin)"
           fi
           if [[ ! -x "$PYTHON_BIN" ]]; then
@@ -744,13 +771,15 @@ jobs:
             exit 1
           fi
           export VLLM_HUST_PYTHON_BIN="$PYTHON_BIN"
-          echo "VLLM_HUST_PYTHON_BIN=$VLLM_HUST_PYTHON_BIN" >> "$GITHUB_ENV"
           source scripts/use_single_ascend_env.sh
 
           export PYTHONPATH="$VLLM_HUST_REPO:$VLLM_HUST_BENCHMARK_REPO/src${PYTHONPATH:+:$PYTHONPATH}"
-          echo "PYTHONPATH=$PYTHONPATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          {
+            echo "VLLM_HUST_PYTHON_BIN=$VLLM_HUST_PYTHON_BIN"
+            echo "PYTHONPATH=$PYTHONPATH"
+            echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+            echo "PYTHON_BIN=$PYTHON_BIN"
+          } >> "$GITHUB_ENV"
           "$PYTHON_BIN" - <<'PY'
           import decorator
           import scipy
@@ -788,6 +817,7 @@ jobs:
           source scripts/hust_ascend_manager_helper.sh
           PYTHON_BIN="${VLLM_HUST_PYTHON_BIN:-}"
           if [[ -z "$PYTHON_BIN" || ! -x "$PYTHON_BIN" ]]; then
+            # shellcheck disable=SC2119
             PYTHON_BIN="$(hust_resolve_python_bin)"
           fi
           if [[ ! -x "$PYTHON_BIN" ]]; then
@@ -1286,7 +1316,23 @@ jobs:
 
   store-main-perfgate-baseline:
     name: Store main perfgate baseline
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == '' }}
+    if: >-
+      ${{
+        always() &&
+        needs.ascend-benchmark.result == 'success' &&
+        (
+          (
+            github.event_name == 'push' &&
+            github.ref == 'refs/heads/main' &&
+            vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''
+          ) ||
+          (
+            github.event_name == 'workflow_dispatch' &&
+            inputs.benchmark_scenarios == 'perfgate-bootstrap' &&
+            inputs.ascend_hust_target == format('{0}@main', github.repository)
+          )
+        )
+      }}
     needs: ascend-benchmark
     runs-on: ubuntu-latest
     permissions:
@@ -1297,6 +1343,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ needs.ascend-benchmark.outputs.target_sha }}
 
       - name: Checkout benchmark repo
         shell: bash
@@ -1323,13 +1370,14 @@ jobs:
         shell: bash
         env:
           PYTHON_BIN: python3
+          BASELINE_TARGET_SHA: ${{ needs.ascend-benchmark.outputs.target_sha }}
           PERFGATE_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_SPEC_FILE || '' }}
           PERFGATE_BASELINE_BRANCH: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BASELINE_BRANCH || 'benchmark-baselines' }}
           MAIN_BENCH_SCENARIO: ${{ vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIO || 'random-online' }}
           HARDWARE_CHIP_MODEL: 910B2
         run: |
           set -euo pipefail
-          target_sha_short="$(printf '%s' "$GITHUB_SHA" | cut -c1-8)"
+          target_sha_short="$(printf '%s' "$BASELINE_TARGET_SHA" | cut -c1-8)"
           run_id="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${target_sha_short}"
           perfgate_spec_file="${PERFGATE_SPEC_FILE:-}"
           if [[ -z "$perfgate_spec_file" ]]; then
@@ -1352,4 +1400,5 @@ jobs:
           RUN_ID="$run_id" \
             RESULT_ROOT="${GITHUB_WORKSPACE}/.benchmarks/ci/$run_id" \
             SAME_SPEC_SPEC_FILE="${same_spec_spec_file}" \
+            GITHUB_SHA="$BASELINE_TARGET_SHA" \
             bash .github/workflows/scripts/perfgate_store_baseline.sh
