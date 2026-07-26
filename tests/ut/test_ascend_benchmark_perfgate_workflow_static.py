@@ -576,6 +576,11 @@ def test_stage2_trial_does_not_publish_benchmark_results() -> None:
     assert "install_ascend_benchmark_with_dev_hub.sh" in stage2_script
     assert "PERFGATE_STAGE2_DEV_HUB_QUICKSTART_CONDA" not in stage2_script
     assert "install_local_ascend_plugin.sh" not in stage2_script
+    assert 'GIT_AUTHOR_NAME="vLLM-HUST Benchmark Bot"' in stage2_script
+    assert 'GIT_AUTHOR_EMAIL="benchmark-bot@vllm-hust.local"' in stage2_script
+    assert 'GIT_COMMITTER_NAME="vLLM-HUST Benchmark Bot"' in stage2_script
+    assert 'GIT_COMMITTER_EMAIL="benchmark-bot@vllm-hust.local"' in stage2_script
+    assert "git config --global" not in stage2_script
 
 
 def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
