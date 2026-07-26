@@ -293,6 +293,7 @@ jobs:
     runs-on:
       - self-hosted
       - linux-aarch64-a2b3-0
+      - ascend-benchmark
     timeout-minutes: 60
     env:
       BENCHMARK_CHECKOUT_USE_SSH_443: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY != '' && '1' || '0' }}

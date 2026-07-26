@@ -48,6 +48,7 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "PERFGATE_MODE" in workflow
     assert "PERFGATE_SPEC_FILE" in workflow
     assert "SOC_VERSION: ascend910b2" in workflow
+    assert ("runs-on:\n      - self-hosted\n      - linux-aarch64-a2b3-0\n      - ascend-benchmark") in workflow
     assert (
         "HARDWARE_CHIP_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware_chip_model || '910B2' }}"
         in workflow
