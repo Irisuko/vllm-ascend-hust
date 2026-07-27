@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import regex as re
@@ -31,9 +32,37 @@ PYRAMIDKV_ASCEND_PROVIDER = "pyramidkv_ascend"
 SUPPORTED_DEVICE_NAME = "Ascend910B2"
 SUPPORTED_CANN_VERSION_PREFIXES = ("8.5.1", "9.0")
 SUPPORTED_BACKEND = "AscendAttentionBackend"
-SUPPORTED_MODEL_ARCHITECTURE = "LlamaForCausalLM"
 SUPPORTED_CACHE_LAYOUT = "standard_bf16_paged"
 SUPPORTED_BLOCK_SIZE = 128
+
+
+@dataclass(frozen=True)
+class _PyramidKVModelProfile:
+    name: str
+    num_hidden_layers: int
+    num_attention_heads: int
+    num_kv_heads: int
+    head_dim: int
+
+
+_SUPPORTED_MODEL_PROFILES = MappingProxyType(
+    {
+        "LlamaForCausalLM": _PyramidKVModelProfile(
+            name="llama-3-8b",
+            num_hidden_layers=32,
+            num_attention_heads=32,
+            num_kv_heads=8,
+            head_dim=128,
+        ),
+        "Qwen2ForCausalLM": _PyramidKVModelProfile(
+            name="qwen2.5-14b",
+            num_hidden_layers=48,
+            num_attention_heads=40,
+            num_kv_heads=8,
+            head_dim=128,
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -532,9 +561,9 @@ class PyramidKVAttentionBatchView:
     ) -> None:
         """Fill address-stable FULL graph staging matrices without advancing state."""
         ordered_layers = self._prepare_decode_values()
-        if ordered_layers != layer_names:
+        if set(ordered_layers) != set(layer_names):
             raise RuntimeError(
-                "PyramidKV FULL decode layer order does not match the KV cache "
+                "PyramidKV FULL decode layers do not match the KV cache "
                 f"group: view={ordered_layers}, group={layer_names}"
             )
         expected_shape = (len(layer_names), slot_staging.shape[1])
@@ -561,7 +590,8 @@ class PyramidKVAttentionBatchView:
         # positive length for every padded request row.
         slot_staging.fill_(-1)
         length_staging.fill_(1)
-        for layer_index, layer_name in enumerate(layer_names):
+        for layer_name in ordered_layers:
+            layer_index = self.layer_indices[layer_name]
             slot_staging[layer_index, :num_reqs] = torch.tensor(
                 self.decode_slot_values_by_layer[layer_name],
                 dtype=torch.int32,
@@ -979,7 +1009,7 @@ class PyramidKVAscendProvider:
         for layer_name in layer_names:
             match = re.fullmatch(r"model\.layers\.(\d+)\.self_attn\.attn", layer_name)
             if match is None:
-                raise RuntimeError(f"PyramidKV requires canonical Llama attention layer names, got {layer_name!r}")
+                raise RuntimeError(f"PyramidKV requires canonical decoder attention layer names, got {layer_name!r}")
             index = int(match.group(1))
             if index in indices.values():
                 raise RuntimeError(f"duplicate PyramidKV layer index {index} in {layer_names}")
@@ -1017,8 +1047,8 @@ class PyramidKVAscendProvider:
             raise RuntimeError("PyramidKV runner batch fields must have the same non-zero request count")
         if block_size != SUPPORTED_BLOCK_SIZE:
             raise RuntimeError(f"PyramidKV requires block_size 128, got {block_size}")
-        if len(layer_names) != 32:
-            raise RuntimeError(f"PyramidKV requires 32 attention layers, got {len(layer_names)}")
+        if len(layer_names) <= 1:
+            raise RuntimeError(f"PyramidKV requires at least two attention layers, got {len(layer_names)}")
         layer_indices = self._layer_indices(layer_names)
         destinations = destination_block_ids or {}
         unknown_destinations = set(destinations).difference(request_ids)
@@ -1205,6 +1235,7 @@ class PyramidKVAscendProvider:
     ) -> list[KVCacheCompressionPlan] | None:
         """Commit successful prefill chunks or atomically advance decodes."""
         expected_layers = set(layer_names)
+        expected_layer_count = len(expected_layers)
         deferred_layers: dict[str, set[str]] = {}
         for deferred_prefill in view.deferred_prefills:
             layers = deferred_layers.setdefault(deferred_prefill.request_id, set())
@@ -1232,14 +1263,14 @@ class PyramidKVAscendProvider:
                             "completed/deferred layers "
                             f"{tuple(sorted(completed))}/"
                             f"{tuple(sorted(recorded_deferred_layers))}, "
-                            "expected all 32 layers"
+                            f"expected all {expected_layer_count} layers"
                         )
                 else:
                     if query_layers != expected_layers:
                         raise RuntimeError(
                             f"request {request.request_id!r} chunk staged query "
                             f"layers {tuple(sorted(query_layers))}, expected all "
-                            "32 layers"
+                            f"{expected_layer_count} layers"
                         )
                     if request.is_final_prefill_chunk:
                         completed = deferred_layers.get(request.request_id, set())
@@ -1247,14 +1278,15 @@ class PyramidKVAscendProvider:
                             raise RuntimeError(
                                 f"request {request.request_id!r} final chunk "
                                 f"deferred layers {tuple(sorted(completed))}, "
-                                "expected all 32 layers"
+                                f"expected all {expected_layer_count} layers"
                             )
             else:
                 completed = view.completed_decode_layers
                 if completed != expected_layers:
                     raise RuntimeError(
                         f"request {request.request_id!r} decode completed layers "
-                        f"{tuple(sorted(completed))}, expected all 32 layers"
+                        f"{tuple(sorted(completed))}, expected all "
+                        f"{expected_layer_count} layers"
                     )
         self._compact_deferred_prefills(view)
 
@@ -1278,10 +1310,11 @@ class PyramidKVAscendProvider:
                     logger.info(
                         "Finalized PyramidKV prefill compression: request_id=%s "
                         "semantic_tokens=%d physical_tokens=%d "
-                        "source_blocks=%d destination_blocks=%d",
+                        "layers=%d source_blocks=%d destination_blocks=%d",
                         request.request_id,
                         request.semantic_num_tokens,
                         plans[-1].physical_num_tokens,
+                        len(plans[-1].per_layer_physical_num_tokens),
                         len(request.block_ids),
                         len(request.destination_block_ids or request.block_ids),
                     )
@@ -1420,6 +1453,17 @@ class PyramidKVAscendProvider:
         report = self.compatibility_report(core_config, context, provider_factory)
         if report.supported:
             self.prefix_caching = context.prefix_caching
+            model_profile = _SUPPORTED_MODEL_PROFILES[context.model_architecture]
+            logger.info(
+                "Validated PyramidKV model profile: profile=%s architecture=%s "
+                "layers=%d query_heads=%d kv_heads=%d head_dim=%d",
+                model_profile.name,
+                context.model_architecture,
+                context.num_hidden_layers,
+                context.num_attention_heads,
+                context.num_kv_heads,
+                context.head_dim,
+            )
         return report
 
     @staticmethod
@@ -1466,9 +1510,10 @@ class PyramidKVAscendProvider:
             context.backend == SUPPORTED_BACKEND,
             f"attention backend must be {SUPPORTED_BACKEND}, got {context.backend!r}",
         )
+        model_profile = _SUPPORTED_MODEL_PROFILES.get(context.model_architecture)
         require(
-            context.model_architecture == SUPPORTED_MODEL_ARCHITECTURE,
-            f"model architecture must be {SUPPORTED_MODEL_ARCHITECTURE}, got {context.model_architecture!r}",
+            model_profile is not None,
+            f"model architecture must be one of {tuple(_SUPPORTED_MODEL_PROFILES)}, got {context.model_architecture!r}",
         )
         require(
             context.dtype in {"bfloat16", "torch.bfloat16"},
@@ -1478,22 +1523,25 @@ class PyramidKVAscendProvider:
             context.quantization is None,
             f"model quantization is unsupported, got {context.quantization!r}",
         )
-        require(
-            context.num_attention_heads == 32,
-            f"query heads must be 32, got {context.num_attention_heads}",
-        )
-        require(
-            context.num_kv_heads == 8,
-            f"KV heads must be 8, got {context.num_kv_heads}",
-        )
-        require(
-            context.head_dim == 128,
-            f"head_dim must be 128, got {context.head_dim}",
-        )
-        require(
-            context.num_hidden_layers == 32,
-            f"hidden layers must be 32, got {context.num_hidden_layers}",
-        )
+        if model_profile is not None:
+            require(
+                context.num_attention_heads == model_profile.num_attention_heads,
+                f"query heads must be {model_profile.num_attention_heads}, got "
+                f"{context.num_attention_heads} for {model_profile.name}",
+            )
+            require(
+                context.num_kv_heads == model_profile.num_kv_heads,
+                f"KV heads must be {model_profile.num_kv_heads}, got {context.num_kv_heads} for {model_profile.name}",
+            )
+            require(
+                context.head_dim == model_profile.head_dim,
+                f"head_dim must be {model_profile.head_dim}, got {context.head_dim} for {model_profile.name}",
+            )
+            require(
+                context.num_hidden_layers == model_profile.num_hidden_layers,
+                f"hidden layers must be {model_profile.num_hidden_layers}, got "
+                f"{context.num_hidden_layers} for {model_profile.name}",
+            )
         require(
             context.cache_layout == SUPPORTED_CACHE_LAYOUT,
             f"cache layout must be {SUPPORTED_CACHE_LAYOUT}, got {context.cache_layout!r}",

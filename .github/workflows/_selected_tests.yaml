@@ -23,6 +23,11 @@ on:
         type: string
         required: true
         description: 'The vllm commit hash or tag to test.'
+      vllm_repository:
+        type: string
+        required: false
+        default: 'vllm-project/vllm'
+        description: 'The vllm repository paired with the requested ref.'
       test_groups:
         type: string
         required: true
@@ -117,7 +122,7 @@ jobs:
       - name: Checkout vllm-project/vllm repo
         uses: actions/checkout@v6.0.1
         with:
-          repository: vllm-project/vllm
+          repository: ${{ inputs.vllm_repository }}
           ref: ${{ inputs.vllm }}
           path: ./vllm-empty
 

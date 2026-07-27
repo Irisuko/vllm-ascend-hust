@@ -50,6 +50,7 @@ jobs:
       packaging_changed: ${{ steps.filter.outputs.packaging || 'false' }}
       main_commit: ${{ steps.vllm.outputs.main_commit }}
       release_tag: ${{ steps.vllm.outputs.release_tag }}
+      pyramidkv_core_commit: ${{ steps.vllm.outputs.pyramidkv_core_commit }}
     steps:
       - name: Validate PR title prefix
         run: |
@@ -88,6 +89,7 @@ jobs:
         run: |
           main_commit="$(tr -d '[:space:]' < .github/vllm-main-verified.commit)"
           release_tag="$(tr -d '[:space:]' < .github/vllm-release-tag.commit)"
+          pyramidkv_core_commit="$(tr -d '[:space:]' < .github/vllm-hust-pyramidkv.commit)"
           [[ "${main_commit}" =~ ^[0-9a-f]{7,40}$ ]] || {
             echo "::error file=.github/vllm-main-verified.commit::invalid vLLM main commit: ${main_commit}"
             exit 1
@@ -96,9 +98,14 @@ jobs:
             echo "::error file=.github/vllm-release-tag.commit::invalid vLLM release tag: ${release_tag}"
             exit 1
           }
+          [[ "${pyramidkv_core_commit}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error file=.github/vllm-hust-pyramidkv.commit::invalid paired vllm-hust commit: ${pyramidkv_core_commit}"
+            exit 1
+          }
           {
             echo "main_commit=${main_commit}"
             echo "release_tag=${release_tag}"
+            echo "pyramidkv_core_commit=${pyramidkv_core_commit}"
           } >> "$GITHUB_OUTPUT"
 
       - name: cp problem matchers
@@ -114,9 +121,9 @@ jobs:
       - name: Checkout vllm-project/vllm repo
         uses: actions/checkout@v7
         with:
-          repository: vllm-project/vllm
+          repository: vLLM-HUST/vllm-hust
           path: ./vllm-empty
-          ref: ${{ steps.vllm.outputs.main_commit }}
+          ref: ${{ steps.vllm.outputs.pyramidkv_core_commit }}
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -223,7 +230,7 @@ jobs:
 
   run-selected-tests:
     needs: lint-and-select-tests
-    if: ${{ needs.lint-and-select-tests.outputs.has_tests == 'true' && contains(github.event.pull_request.labels.*.name, 'e2e') }}
+    if: ${{ needs.lint-and-select-tests.outputs.has_tests == 'true' && !contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression') && contains(github.event.pull_request.labels.*.name, 'e2e') }}
     strategy:
       matrix:
         vllm_version:
@@ -232,6 +239,17 @@ jobs:
     uses: ./.github/workflows/_selected_tests.yaml
     with:
       vllm: ${{ matrix.vllm_version }}
+      ref: ${{ github.event.pull_request.head.sha }}
+      base_ref: ${{ github.base_ref }}
+      test_groups: ${{ needs.lint-and-select-tests.outputs.test_groups }}
+
+  run-pyramidkv-selected-tests:
+    needs: lint-and-select-tests
+    if: ${{ needs.lint-and-select-tests.outputs.has_tests == 'true' && contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression') && contains(github.event.pull_request.labels.*.name, 'e2e') }}
+    uses: ./.github/workflows/_selected_tests.yaml
+    with:
+      vllm_repository: vLLM-HUST/vllm-hust
+      vllm: ${{ needs.lint-and-select-tests.outputs.pyramidkv_core_commit }}
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.lint-and-select-tests.outputs.test_groups }}
@@ -254,7 +272,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: vLLM-HUST/vllm-hust
-          ref: main
+          ref: ${{ needs.lint-and-select-tests.outputs.pyramidkv_core_commit }}
           path: vllm-hust
 
       - name: Create clean Python environment

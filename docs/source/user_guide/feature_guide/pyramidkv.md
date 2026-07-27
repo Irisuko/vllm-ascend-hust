@@ -1,8 +1,8 @@
 # PyramidKV KV cache compression (experimental)
 
-PyramidKV KV cache compression is an opt-in experimental feature for one
-validated Ascend configuration. It reduces the number of request-owned KV
-cache blocks after a complete prefill. It is disabled unless
+PyramidKV KV cache compression is an opt-in experimental feature for validated
+Llama-3-8B and Qwen2.5-14B Ascend configurations. It reduces the number of
+request-owned KV cache blocks after a complete prefill. It is disabled unless
 `--kv-cache-compression-config` is provided.
 
 The first release keeps token IDs, sequence positions, RoPE, sampling, the KV
@@ -26,8 +26,14 @@ allocation if a requirement is not met:
 - V1 model runner with async scheduling enabled or disabled. Balance scheduling
   and dual-batch overlap must remain disabled. Execution must be eager (`NONE`),
   `PIECEWISE`, or `FULL_DECODE_ONLY` as described below.
-- `LlamaForCausalLM` with 32 layers, 32 query heads, 8 KV heads, head dimension
-  128, and BF16 model/KV cache data.
+- One of these BF16 model/KV cache profiles:
+
+  | Validated model | Architecture | Layers | Query heads | KV heads | Head dimension |
+  | --- | --- | ---: | ---: | ---: | ---: |
+  | Meta-Llama-3-8B-Instruct | `LlamaForCausalLM` | 32 | 32 | 8 | 128 |
+  | Qwen2.5-14B-Instruct | `Qwen2ForCausalLM` | 48 | 40 | 8 | 128 |
+
+  Other geometries sharing these architecture names are rejected.
 - Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
   size 128. With prefix caching, the prefix hash block size must also be 128;
   partial-block aliases are not supported.
@@ -55,7 +61,7 @@ Use the same JSON object for the CLI and the Python `EngineArgs`/
 
 ```bash
 VLLM_KNORM_ENABLED=0 VLLM_USE_V2_MODEL_RUNNER=0 \
-vllm serve /path/to/Meta-Llama-3-8B-Instruct \
+vllm serve /workspace/models/Qwen2.5-14B-Instruct \
   --dtype bfloat16 \
   --tensor-parallel-size 1 \
   --pipeline-parallel-size 1 \
@@ -81,8 +87,10 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
   }'
 ```
 
-The command above selects eager chunked-prefill execution and therefore
-requires CANN 9.0. For unchunked execution, use
+The command above uses the validated Qwen2.5-14B profile and selects eager
+chunked-prefill execution, so it requires CANN 9.0. The same command supports
+the validated Llama profile after replacing the model path. For unchunked
+execution, use
 `--no-enable-chunked-prefill`; that mode also supports eager CANN 8.5.1. On
 CANN 9.0, remove
 `--enforce-eager` and add one of the following compilation configurations to
@@ -107,9 +115,10 @@ enable graph execution:
 Do not combine either graph configuration with `--enforce-eager`. Startup
 fails rather than silently falling back if the requested mode, CANN version,
 or FIA/PA configuration is unsupported. `FULL_DECODE_ONLY` allocates stable
-`int32[32, max_num_seqs]` slot-mapping and physical-length buffers. Each layer
-uses its own row during replay, while padding rows use an invalid slot and
-cannot write a real KV block.
+`int32[num_hidden_layers, max_num_seqs]` slot-mapping and physical-length
+buffers: 32 rows for Llama-3-8B and 48 for Qwen2.5-14B. Each layer uses its own
+row during replay, while padding rows use an invalid slot and cannot write a
+real KV block.
 
 `max_capacity_prompt` must be greater than `window_size`; `kernel_size` must be
 positive and odd; `beta` must be positive. The other fields are fixed to the
@@ -123,7 +132,7 @@ from vllm.config import KVCacheCompressionConfig
 from vllm.engine.arg_utils import EngineArgs
 
 engine_args = EngineArgs(
-    model="/path/to/Meta-Llama-3-8B-Instruct",
+    model="/workspace/models/Qwen2.5-14B-Instruct",
     kv_cache_compression_config=KVCacheCompressionConfig(
         provider="pyramidkv_ascend",
         provider_config={
@@ -180,11 +189,11 @@ measurements.
 
 With the default provider configuration, prompts longer than 512 tokens are
 compressed, at least the final 8 query tokens are recomputed, and the largest
-physical length for an 8192-token, 32-layer Llama model is 991 tokens. The
-scheduler consequently reserves at most 8 extra 128-token destination blocks
-per compressing request. These blocks are temporary before commit and remain
-request-private while the compressed request is active. They never receive a
-prefix hash and cannot be reused as a semantic prefix.
+physical length for an 8192-token prompt is 991 tokens for both validated
+profiles. The scheduler consequently reserves at most 8 extra 128-token
+destination blocks per compressing request. These blocks are temporary before
+commit and remain request-private while the compressed request is active. They
+never receive a prefix hash and cannot be reused as a semantic prefix.
 
 For a compressing request, the maximum prefix hit is
 `prompt_length - window_size`, rounded down by vLLM's complete-block hit rule.
@@ -200,11 +209,12 @@ view for those requests so replay cannot use stale CPU slot metadata.
 For a compressible chunked request, intermediate chunks write their full K/V
 to the semantic cache positions and emit no compression plan. The provider
 retains only the final `window_size` query vectors for each layer. With the
-default Llama-3 shape this committed query tail is about 2 MiB per request.
-Step-local transactional staging can coexist with the committed tail, giving a
-worst-case bound of about 4 MiB per active request or 128 MiB at
+default Llama-3 shape this committed query tail is about 2 MiB per request; for
+Qwen2.5-14B it is about 3.75 MiB. Step-local transactional staging can coexist
+with the committed tail, giving worst-case bounds of about 4 MiB and 7.5 MiB
+per active request respectively, or 128 MiB and 240 MiB at
 `max_num_seqs=32`. The chunk end, block table, and query tail are committed only
-after all 32 attention layers and the model forward succeed.
+after every configured attention layer and the model forward succeed.
 
 The final chunk reconstructs the complete key from paged cache plus the current
 chunk and computes the same per-head indices as the unchunked path. It first

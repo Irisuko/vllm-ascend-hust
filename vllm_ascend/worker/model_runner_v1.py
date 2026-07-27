@@ -829,18 +829,18 @@ class NPUModelRunner(GPUModelRunner):
                 "PyramidKV FULL decode requires exactly one KV cache group"
             )
         layer_names = tuple(self.kv_cache_config.kv_cache_groups[0].layer_names)
-        if len(layer_names) != 32:
+        if len(layer_names) != num_layers:
             raise RuntimeError(
-                "PyramidKV FULL decode requires exactly 32 attention layers, "
-                f"got {len(layer_names)}"
+                "PyramidKV FULL decode layer count does not match the model "
+                f"configuration: expected {num_layers}, got {len(layer_names)}"
             )
 
         shape = (len(layer_names), self.max_num_reqs)
         pin_memory = bool(self.pin_memory)
         self._kv_cache_compression_full_layer_names = layer_names
-        self._kv_cache_compression_full_layer_indices = {
-            name: index for index, name in enumerate(layer_names)
-        }
+        self._kv_cache_compression_full_layer_indices = (
+            provider._layer_indices(layer_names)
+        )
         self._kv_cache_compression_full_slot_staging = torch.full(
             shape,
             -1,

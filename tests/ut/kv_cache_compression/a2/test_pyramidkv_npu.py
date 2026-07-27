@@ -27,6 +27,7 @@ DTYPE = torch.bfloat16
 BLOCK_SIZE = 128
 NUM_BLOCKS = 8
 NUM_HEADS = 32
+QWEN_NUM_HEADS = 40
 NUM_KV_HEADS = 8
 HEAD_DIM = 128
 PROMPT_TOKENS = 384
@@ -34,6 +35,7 @@ LAYER_NAMES = (
     "model.layers.0.self_attn.attn",
     "model.layers.1.self_attn.attn",
 )
+QWEN_LAYER_NAMES = tuple(f"model.layers.{index}.self_attn.attn" for index in range(48))
 
 
 def _core_config() -> KVCacheCompressionConfig:
@@ -52,16 +54,16 @@ def _core_config() -> KVCacheCompressionConfig:
     )
 
 
-def _backend() -> AscendAttentionBackendImpl:
+def _backend(num_heads: int = NUM_HEADS) -> AscendAttentionBackendImpl:
     backend = object.__new__(AscendAttentionBackendImpl)
     backend.vllm_config = SimpleNamespace(
         speculative_config=None,
         compilation_config=SimpleNamespace(cudagraph_mode=CUDAGraphMode.NONE),
     )
-    backend.num_heads = NUM_HEADS
+    backend.num_heads = num_heads
     backend.num_kv_heads = NUM_KV_HEADS
     backend.head_size = HEAD_DIM
-    backend.hidden_size = NUM_HEADS * HEAD_DIM
+    backend.hidden_size = num_heads * HEAD_DIM
     backend.scale = HEAD_DIM**-0.5
     backend.sliding_window = None
     backend.sinks = None
@@ -162,11 +164,11 @@ def _forward(
     return output
 
 
-def _inputs(seed: int):
+def _inputs(seed: int, num_heads: int = NUM_HEADS):
     generator = torch.Generator().manual_seed(seed)
     query = torch.randn(
         PROMPT_TOKENS,
-        NUM_HEADS,
+        num_heads,
         HEAD_DIM,
         generator=generator,
         dtype=torch.float32,
@@ -264,6 +266,106 @@ def test_grouped_gqa_selection_matches_legacy_repeat_bf16() -> None:
     assert torch.equal(actual.selected_past_indices, expected_indices)
     torch.testing.assert_close(actual.key, expected_key, rtol=0, atol=0)
     torch.testing.assert_close(actual.value, expected_value, rtol=0, atol=0)
+
+
+def test_qwen_grouped_gqa_selection_matches_legacy_repeat_bf16() -> None:
+    query, key, value = _inputs(778, QWEN_NUM_HEADS)
+    query = query.permute(1, 0, 2).unsqueeze(0)
+    key = key.permute(1, 0, 2).unsqueeze(0)
+    value = value.permute(1, 0, 2).unsqueeze(0)
+    provider = PyramidKVAscendProvider.from_core_config(_core_config())
+    retained_tokens = provider.config.retained_tokens(
+        PROMPT_TOKENS,
+        47,
+        len(QWEN_LAYER_NAMES),
+    )
+
+    actual = select_pyramid_kv(
+        query,
+        key,
+        value,
+        provider.config,
+        layer_index=47,
+        num_hidden_layers=len(QWEN_LAYER_NAMES),
+    )
+    expected_key, expected_value, expected_indices = _legacy_repeat_selection(
+        query,
+        key,
+        value,
+        retained_tokens,
+        provider.config.window_size,
+    )
+    torch.npu.synchronize()
+
+    assert torch.equal(actual.selected_past_indices, expected_indices)
+    torch.testing.assert_close(actual.key, expected_key, rtol=0, atol=0)
+    torch.testing.assert_close(actual.value, expected_value, rtol=0, atol=0)
+
+
+def test_qwen_prefill_cache_write_uses_48_layer_40_to_8_geometry() -> None:
+    provider = PyramidKVAscendProvider.from_core_config(_core_config())
+    block_ids = (1, 2, 3)
+    provider.begin_request("qwen", PROMPT_TOKENS, (block_ids,))
+    layer_name = QWEN_LAYER_NAMES[-1]
+    layer_indices = {name: index for index, name in enumerate(QWEN_LAYER_NAMES)}
+    view = PyramidKVAttentionBatchView(
+        provider=provider,
+        requests=(
+            PyramidKVAttentionRequest(
+                request_id="qwen",
+                query_start=0,
+                query_end=PROMPT_TOKENS,
+                semantic_num_tokens=PROMPT_TOKENS,
+                num_computed_tokens=0,
+                num_prompt_tokens=PROMPT_TOKENS,
+                block_ids=block_ids,
+                is_prefill=True,
+            ),
+        ),
+        layer_indices=layer_indices,
+        num_hidden_layers=len(QWEN_LAYER_NAMES),
+    )
+    query, key, value = _inputs(779, QWEN_NUM_HEADS)
+    expected = select_pyramid_kv(
+        query.permute(1, 0, 2).unsqueeze(0),
+        key.permute(1, 0, 2).unsqueeze(0),
+        value.permute(1, 0, 2).unsqueeze(0),
+        provider.config,
+        layer_index=47,
+        num_hidden_layers=len(QWEN_LAYER_NAMES),
+    )
+    cache = _cache()
+
+    _forward(
+        _backend(QWEN_NUM_HEADS),
+        layer_name,
+        query,
+        key,
+        value,
+        cache,
+        _metadata(
+            AscendAttentionState.PrefillNoCache,
+            block_ids,
+            PROMPT_TOKENS,
+            PROMPT_TOKENS,
+            view,
+        ),
+    )
+
+    torch.testing.assert_close(
+        _read_cache(cache[0], block_ids, expected.retained_tokens),
+        expected.key.squeeze(0).permute(1, 0, 2),
+        rtol=0,
+        atol=0,
+    )
+    torch.testing.assert_close(
+        _read_cache(cache[1], block_ids, expected.retained_tokens),
+        expected.value.squeeze(0).permute(1, 0, 2),
+        rtol=0,
+        atol=0,
+    )
+    assert view.completed_prefill_lengths == {"qwen": {layer_name: expected.retained_tokens}}
+    provider.cleanup_request("qwen")
 
 
 def _attention_oracle(

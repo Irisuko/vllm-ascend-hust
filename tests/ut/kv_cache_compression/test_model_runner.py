@@ -12,6 +12,7 @@ from vllm.forward_context import BatchDescriptor
 from vllm_ascend.worker.model_runner_v1 import NPUModelRunner
 
 LAYER_NAMES = [f"model.layers.{index}.self_attn.attn" for index in range(32)]
+QWEN_LAYER_NAMES = [f"model.layers.{index}.self_attn.attn" for index in range(48)]
 
 
 class FakeProvider:
@@ -36,6 +37,10 @@ class FakeProvider:
         self.finished = (view, kwargs)
         return ["plan"]
 
+    @staticmethod
+    def _layer_indices(layer_names):
+        return {name: int(name.split(".layers.", 1)[1].split(".", 1)[0]) for name in layer_names}
+
 
 class FakeBlockTable:
     def __init__(self) -> None:
@@ -45,7 +50,13 @@ class FakeBlockTable:
         self.rows.append((block_ids, row_index))
 
 
-def _runner(provider: FakeProvider) -> NPUModelRunner:
+def _runner(
+    provider: FakeProvider,
+    *,
+    layer_names=LAYER_NAMES,
+    num_hidden_layers: int = 32,
+    num_attention_heads: int = 32,
+) -> NPUModelRunner:
     runner = NPUModelRunner.__new__(NPUModelRunner)
     runner.kv_cache_compression_provider = provider
     runner._kv_cache_compression_step_view = None
@@ -63,10 +74,17 @@ def _runner(provider: FakeProvider) -> NPUModelRunner:
     )
     runner.optimistic_seq_lens_cpu = torch.tensor([20], dtype=torch.int32)
     group = SimpleNamespace(
-        layer_names=LAYER_NAMES,
+        layer_names=layer_names,
         kv_cache_spec=SimpleNamespace(block_size=128),
     )
     runner.kv_cache_config = SimpleNamespace(kv_cache_groups=[group])
+    runner.model_config = SimpleNamespace(
+        hf_text_config=SimpleNamespace(
+            num_hidden_layers=num_hidden_layers,
+            num_attention_heads=num_attention_heads,
+            hidden_size=num_attention_heads * 128,
+        )
+    )
     runner.vllm_config = SimpleNamespace(kv_cache_compression_config=SimpleNamespace(schema_version=1))
     return runner
 
@@ -261,9 +279,27 @@ def test_runner_takes_an_independent_plan_snapshot_for_async_output() -> None:
     assert runner._kv_cache_compression_plans is None
 
 
-def test_full_decode_buffers_keep_addresses_across_updates() -> None:
+@pytest.mark.parametrize(
+    ("layer_names", "num_hidden_layers", "num_attention_heads"),
+    [
+        (LAYER_NAMES, 32, 32),
+        (QWEN_LAYER_NAMES, 48, 40),
+        (list(reversed(QWEN_LAYER_NAMES)), 48, 40),
+    ],
+    ids=["llama-3-8b", "qwen2.5-14b", "qwen2.5-14b-unordered"],
+)
+def test_full_decode_buffers_keep_addresses_across_updates(
+    layer_names,
+    num_hidden_layers: int,
+    num_attention_heads: int,
+) -> None:
     provider = FakeProvider()
-    runner = _runner(provider)
+    runner = _runner(
+        provider,
+        layer_names=layer_names,
+        num_hidden_layers=num_hidden_layers,
+        num_attention_heads=num_attention_heads,
+    )
     runner.compilation_config = SimpleNamespace(cudagraph_mode=CUDAGraphMode.FULL_DECODE_ONLY)
     runner.max_num_reqs = 4
     runner.pin_memory = False
@@ -273,6 +309,8 @@ def test_full_decode_buffers_keep_addresses_across_updates() -> None:
     lengths = runner._kv_cache_compression_full_lengths
     assert slots is not None
     assert lengths is not None
+    assert tuple(slots.shape) == (num_hidden_layers, 4)
+    assert tuple(lengths.shape) == (num_hidden_layers, 4)
     slot_ptr = slots.untyped_storage().data_ptr()
     length_ptr = lengths.untyped_storage().data_ptr()
 
@@ -304,9 +342,21 @@ def test_full_decode_buffers_keep_addresses_across_updates() -> None:
     assert torch.equal(lengths[0], torch.tensor([12, 12, 1, 1]))
 
 
-def test_full_graph_completion_marks_layers_only_in_post_forward_finish() -> None:
+@pytest.mark.parametrize(
+    "layer_names",
+    [LAYER_NAMES, QWEN_LAYER_NAMES],
+    ids=["llama-3-8b", "qwen2.5-14b"],
+)
+def test_full_graph_completion_marks_layers_only_in_post_forward_finish(
+    layer_names,
+) -> None:
     provider = FakeProvider()
-    runner = _runner(provider)
+    runner = _runner(
+        provider,
+        layer_names=layer_names,
+        num_hidden_layers=len(layer_names),
+        num_attention_heads=40 if len(layer_names) == 48 else 32,
+    )
     view = SimpleNamespace(
         requests=(SimpleNamespace(is_prefill=False),),
         completed_decode_layers=set(),
@@ -316,10 +366,10 @@ def test_full_graph_completion_marks_layers_only_in_post_forward_finish() -> Non
     assert view.completed_decode_layers == set()
     runner._finish_kv_cache_compression_forward(full_graph_decode=True)
 
-    assert view.completed_decode_layers == set(LAYER_NAMES)
+    assert view.completed_decode_layers == set(layer_names)
     assert provider.finished == (
         view,
-        {"layer_names": tuple(LAYER_NAMES), "schema_version": 1},
+        {"layer_names": tuple(layer_names), "schema_version": 1},
     )
 
 

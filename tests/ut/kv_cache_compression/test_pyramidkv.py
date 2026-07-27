@@ -27,6 +27,7 @@ from vllm_ascend.kv_cache_compression.pyramidkv import (
 )
 
 LAYER_NAMES = tuple(f"model.layers.{index}.self_attn.attn" for index in range(32))
+QWEN_LAYER_NAMES = tuple(f"model.layers.{index}.self_attn.attn" for index in range(48))
 
 
 def _config(**updates) -> PyramidKVAscendConfig:
@@ -86,6 +87,19 @@ def _context(**updates) -> PyramidKVCapabilityContext:
     }
     values.update(updates)
     return PyramidKVCapabilityContext(**values)
+
+
+def _qwen_context(**updates) -> PyramidKVCapabilityContext:
+    values = {
+        "model_architecture": "Qwen2ForCausalLM",
+        "num_attention_heads": 40,
+        "num_kv_heads": 8,
+        "head_dim": 128,
+        "num_hidden_layers": 48,
+        "max_model_len": 8192,
+    }
+    values.update(updates)
+    return _context(**values)
 
 
 def _core_config() -> KVCacheCompressionConfig:
@@ -195,6 +209,41 @@ def test_gqa_mean_topk_and_gather_match_cpu_oracle() -> None:
     torch.testing.assert_close(result.value[:, :, -4:, :], value[:, :, -4:, :])
 
 
+def test_qwen_40_to_8_gqa_selection_matches_cpu_oracle() -> None:
+    generator = torch.Generator().manual_seed(20260726)
+    query = torch.randn(1, 40, 1024, 8, generator=generator)
+    key = torch.randn(1, 8, 1024, 8, generator=generator)
+    value = torch.randn(1, 8, 1024, 8, generator=generator)
+    config = _config(
+        max_capacity_prompt=512,
+        window_size=8,
+        kernel_size=1,
+        beta=20,
+    )
+
+    result = select_pyramid_kv(
+        query,
+        key,
+        value,
+        config,
+        layer_index=47,
+        num_hidden_layers=48,
+    )
+    expected_key, expected_value, expected_indices = _independent_selection(
+        query,
+        key,
+        value,
+        retained_tokens=51,
+        window_size=8,
+    )
+
+    assert result.compressed
+    assert result.retained_tokens == 51
+    assert torch.equal(result.selected_past_indices, expected_indices)
+    torch.testing.assert_close(result.key, expected_key)
+    torch.testing.assert_close(result.value, expected_value)
+
+
 def test_below_threshold_returns_original_tensors_without_selection() -> None:
     query = torch.randn(1, 4, 11, 8)
     key = torch.randn(1, 2, 11, 8)
@@ -210,14 +259,21 @@ def test_below_threshold_returns_original_tensors_without_selection() -> None:
 
 def _run_chunked_prefill(
     chunk_lengths: tuple[int, ...],
+    *,
+    layer_names: tuple[str, ...] | None = None,
+    num_query_heads: int = 4,
+    num_kv_heads: int = 2,
+    head_dim: int = 8,
 ) -> tuple[
     dict[str, torch.Tensor],
     dict[str, PyramidKVSelection],
     list,
     PyramidKVAscendProvider,
+    tuple[int, ...] | None,
 ]:
     prompt_tokens = sum(chunk_lengths)
-    layer_names = tuple(f"model.layers.{index}.self_attn.attn" for index in range(2))
+    if layer_names is None:
+        layer_names = tuple(f"model.layers.{index}.self_attn.attn" for index in range(2))
     provider = PyramidKVAscendProvider(
         _config(
             max_capacity_prompt=128,
@@ -232,9 +288,27 @@ def _run_chunked_prefill(
     generator = torch.Generator().manual_seed(20260725)
     layer_inputs = {
         layer_name: (
-            torch.randn(prompt_tokens, 4, 8, generator=generator, dtype=torch.bfloat16),
-            torch.randn(prompt_tokens, 2, 8, generator=generator, dtype=torch.bfloat16),
-            torch.randn(prompt_tokens, 2, 8, generator=generator, dtype=torch.bfloat16),
+            torch.randn(
+                prompt_tokens,
+                num_query_heads,
+                head_dim,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
+            torch.randn(
+                prompt_tokens,
+                num_kv_heads,
+                head_dim,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
+            torch.randn(
+                prompt_tokens,
+                num_kv_heads,
+                head_dim,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
         )
         for layer_name in layer_names
     }
@@ -252,20 +326,33 @@ def _run_chunked_prefill(
     num_blocks = (prompt_tokens + 127) // 128
     layer_caches = {
         layer_name: (
-            torch.zeros(num_blocks, 128, 2, 8, dtype=torch.bfloat16),
-            torch.zeros(num_blocks, 128, 2, 8, dtype=torch.bfloat16),
+            torch.zeros(
+                num_blocks,
+                128,
+                num_kv_heads,
+                head_dim,
+                dtype=torch.bfloat16,
+            ),
+            torch.zeros(
+                num_blocks,
+                128,
+                num_kv_heads,
+                head_dim,
+                dtype=torch.bfloat16,
+            ),
         )
         for layer_name in layer_names
     }
 
     def write_cache(layer, write_key, write_value, kv_cache, slots):
-        kv_cache[0].view(-1, 2, 8)[slots.long()] = write_key
-        kv_cache[1].view(-1, 2, 8)[slots.long()] = write_value
+        kv_cache[0].view(-1, num_kv_heads, head_dim)[slots.long()] = write_key
+        kv_cache[1].view(-1, num_kv_heads, head_dim)[slots.long()] = write_value
 
     backend = SimpleNamespace(do_kv_cache_update=write_cache)
     computed = 0
     selected_by_layer: dict[str, torch.Tensor] = {}
     final_plans = None
+    intermediate_tail_shape = None
     for chunk_index, chunk_length in enumerate(chunk_lengths):
         end = computed + chunk_length
         block_ids = tuple(range((end + 127) // 128))
@@ -317,6 +404,8 @@ def _run_chunked_prefill(
             assert state.expected_block_ids == (block_ids,)
             assert not state.layers
             assert not state.plan_emitted
+            assert state.prefill_query_tail is not None
+            intermediate_tail_shape = tuple(state.prefill_query_tail.shape)
         else:
             selected_by_layer = {
                 deferred.layer.layer_name: deferred.selected_past_indices for deferred in view.deferred_prefills
@@ -327,8 +416,8 @@ def _run_chunked_prefill(
     assert final_plans is not None and len(final_plans) == 1
     for layer_name, selection in expected.items():
         key_cache, value_cache = layer_caches[layer_name]
-        actual_key = key_cache.view(-1, 2, 8)[: selection.retained_tokens]
-        actual_value = value_cache.view(-1, 2, 8)[: selection.retained_tokens]
+        actual_key = key_cache.view(-1, num_kv_heads, head_dim)[: selection.retained_tokens]
+        actual_value = value_cache.view(-1, num_kv_heads, head_dim)[: selection.retained_tokens]
         torch.testing.assert_close(
             actual_key,
             selection.key.squeeze(0).permute(1, 0, 2),
@@ -341,7 +430,13 @@ def _run_chunked_prefill(
             rtol=1e-2,
             atol=1e-2,
         )
-    return selected_by_layer, expected, final_plans, provider
+    return (
+        selected_by_layer,
+        expected,
+        final_plans,
+        provider,
+        intermediate_tail_shape,
+    )
 
 
 @pytest.mark.parametrize(
@@ -357,7 +452,7 @@ def _run_chunked_prefill(
 def test_chunked_prefill_matches_single_prefill_selection_and_compact_kv(
     chunk_lengths: tuple[int, ...],
 ) -> None:
-    selected, expected, plans, provider = _run_chunked_prefill(chunk_lengths)
+    selected, expected, plans, provider, _ = _run_chunked_prefill(chunk_lengths)
 
     if len(chunk_lengths) > 1:
         assert set(selected) == set(expected)
@@ -369,6 +464,21 @@ def test_chunked_prefill_matches_single_prefill_selection_and_compact_kv(
     plan = plans[0]
     assert plan.semantic_num_tokens == 768
     assert plan.physical_num_tokens < plan.semantic_num_tokens
+    state = provider.get_request_state("request")
+    assert state.plan_emitted
+    assert state.prefill_query_tail is None
+
+
+def test_qwen_chunked_prefill_tracks_48_layer_query_tail_and_plan() -> None:
+    _, _, plans, provider, intermediate_tail_shape = _run_chunked_prefill(
+        (128, 128),
+        layer_names=QWEN_LAYER_NAMES,
+        num_query_heads=40,
+        num_kv_heads=8,
+    )
+
+    assert intermediate_tail_shape == (48, 8, 40, 8)
+    assert len(plans[0].per_layer_physical_num_tokens) == 48
     state = provider.get_request_state("request")
     assert state.plan_emitted
     assert state.prefill_query_tail is None
@@ -838,6 +948,59 @@ def test_supported_capability_has_no_reasons() -> None:
     assert report.runtime_spec.max_physical_num_tokens == 16
 
 
+def test_qwen_14b_capability_has_no_reasons() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    core_config = KVCacheCompressionConfig(
+        provider="pyramidkv_ascend",
+        provider_config={},
+    )
+
+    report = provider.compatibility_report(
+        core_config,
+        _qwen_context(),
+        "registry:get",
+    )
+
+    assert report.supported
+    assert report.reasons == ()
+    assert report.runtime_spec is not None
+    assert report.runtime_spec.max_physical_num_tokens == 991
+
+
+def test_qwen_7b_geometry_is_rejected_by_the_14b_profile() -> None:
+    report = PyramidKVAscendProvider(_config()).compatibility_report(
+        _core_config(),
+        _qwen_context(
+            num_attention_heads=28,
+            num_kv_heads=4,
+            num_hidden_layers=28,
+        ),
+        "registry:get",
+    )
+
+    assert not report.supported
+    message = "\n".join(report.reasons)
+    assert "query heads must be 40" in message
+    assert "KV heads must be 8" in message
+    assert "hidden layers must be 48" in message
+
+
+@pytest.mark.parametrize(
+    "architecture",
+    ["Qwen3ForCausalLM", "Qwen2VLForConditionalGeneration"],
+)
+def test_unvalidated_qwen_architectures_are_rejected(architecture: str) -> None:
+    report = PyramidKVAscendProvider(_config()).compatibility_report(
+        _core_config(),
+        _qwen_context(model_architecture=architecture),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert len(report.reasons) == 1
+    assert "model architecture must be one of" in report.reasons[0]
+
+
 def test_async_scheduling_is_supported_without_relaxing_other_guards() -> None:
     provider = PyramidKVAscendProvider(_config())
 
@@ -1048,6 +1211,30 @@ def _selection(retained_tokens: int, index: int) -> PyramidKVSelection:
         retained_tokens=retained_tokens,
         compressed=True,
     )
+
+
+def test_qwen_plan_contains_all_48_layer_lengths() -> None:
+    config = PyramidKVAscendConfig.from_dict({})
+    provider = PyramidKVAscendProvider(config)
+    block_ids = tuple(range(64))
+    provider.begin_request("qwen", 8192, (block_ids,))
+
+    expected_lengths = []
+    for layer_index, layer_name in enumerate(QWEN_LAYER_NAMES):
+        retained_tokens = config.retained_tokens(8192, layer_index, 48)
+        expected_lengths.append(retained_tokens)
+        provider.record_prefill_layer(
+            "qwen",
+            layer_name,
+            _selection(retained_tokens, layer_index),
+        )
+
+    plan = provider.finalize_plan("qwen", QWEN_LAYER_NAMES, 1)
+
+    assert len(plan.per_layer_physical_num_tokens) == 48
+    assert plan.per_layer_physical_num_tokens == tuple(zip(QWEN_LAYER_NAMES, expected_lengths))
+    assert plan.physical_num_tokens == 991
+    assert expected_lengths[-1] == 51
 
 
 def test_request_states_are_isolated_finalize_commit_decode_and_cleanup() -> None:
@@ -1452,8 +1639,21 @@ def test_full_decode_staging_is_layer_specific_and_padding_is_safe() -> None:
         lengths,
         torch.tensor([[11, 21, 1, 1], [9, 21, 1, 1]], dtype=torch.int32),
     )
+    view.fill_full_decode_metadata(
+        layer_names=tuple(reversed(layer_names)),
+        slot_staging=slots,
+        length_staging=lengths,
+        num_reqs_padded=4,
+    )
+    assert torch.equal(
+        slots,
+        torch.tensor(
+            [[138, 404, -1, -1], [136, 404, -1, -1]],
+            dtype=torch.int32,
+        ),
+    )
     assert view.completed_decode_layers == set()
-    with pytest.raises(RuntimeError, match="expected all 32 layers"):
+    with pytest.raises(RuntimeError, match="expected all 2 layers"):
         provider.finish_model_forward(view, layer_names=layer_names, schema_version=1)
     assert provider.get_request_state("compressed").semantic_num_tokens == 20
 
@@ -1712,7 +1912,7 @@ def test_missing_layer_or_failed_forward_does_not_commit_chunk_state() -> None:
         kv_cache=cache,
         attn_metadata=metadata,
     )
-    with pytest.raises(RuntimeError, match="expected all 32 layers"):
+    with pytest.raises(RuntimeError, match="expected all 2 layers"):
         provider.finish_model_forward(incomplete, layer_names=layer_names, schema_version=1)
     state = provider.get_request_state("request")
     assert state.prefill_num_computed_tokens == 0
