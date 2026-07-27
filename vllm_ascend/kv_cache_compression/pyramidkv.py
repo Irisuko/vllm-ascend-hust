@@ -21,6 +21,7 @@ from vllm.logger import logger
 from vllm.v1.kv_cache_compression import (
     KVCacheCompressionCompatibility,
     KVCacheCompressionPlan,
+    KVCacheCompressionRuntimeSpec,
 )
 
 if TYPE_CHECKING:
@@ -140,6 +141,8 @@ class PyramidKVCapabilityContext:
     num_hidden_layers: int
     cache_layout: str
     block_size: int
+    hash_block_size: int
+    max_model_len: int
     num_kv_cache_groups: int
     full_attention_only: bool
     prefix_caching: bool
@@ -154,6 +157,7 @@ class PyramidKVCapabilityContext:
     prefill_context_parallel_size: int
     decode_context_parallel_size: int
     async_scheduling: bool
+    balance_scheduling: bool
     dbo_enabled: bool
     knorm_enabled: bool
     missing_ops: tuple[str, ...] = ()
@@ -394,6 +398,7 @@ class PyramidKVRequestState:
     semantic_num_tokens: int
     expected_block_ids: tuple[tuple[int, ...], ...]
     prefill_num_computed_tokens: int = 0
+    initial_prefill_num_computed_tokens: int = 0
     prefill_query_tail: torch.Tensor | None = None
     prefill_query_tail_length: int = 0
     layers: dict[str, PyramidKVLayerState] = field(default_factory=dict)
@@ -413,6 +418,7 @@ class PyramidKVAttentionRequest:
     num_prompt_tokens: int
     block_ids: tuple[int, ...]
     is_prefill: bool
+    destination_block_ids: tuple[int, ...] | None = None
     compress: bool = True
 
     @property
@@ -440,6 +446,7 @@ class PyramidKVDeferredPrefill:
     semantic_num_tokens: int
     retained_tokens: int
     selected_past_indices: torch.Tensor
+    destination_block_ids: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -619,13 +626,15 @@ class PyramidKVAttentionBatchView:
                 f"{request.num_computed_tokens}, expected "
                 f"{state.prefill_num_computed_tokens}"
             )
-        if request.num_computed_tokens == 0:
-            if previous_tail is not None or previous_length != 0:
-                raise RuntimeError(f"request {request.request_id!r} has stale prefill query state")
+        if previous_tail is None:
+            if previous_length != 0:
+                raise RuntimeError(f"request {request.request_id!r} has stale prefill query tail length")
+            if request.num_computed_tokens != state.initial_prefill_num_computed_tokens:
+                raise RuntimeError(f"request {request.request_id!r} is missing its committed query tail")
             combined = request_query
         else:
-            if previous_tail is None or not 0 < previous_length <= self.provider.config.window_size:
-                raise RuntimeError(f"request {request.request_id!r} is missing its committed query tail")
+            if not 0 < previous_length <= self.provider.config.window_size:
+                raise RuntimeError(f"request {request.request_id!r} has an invalid committed query tail")
             if (
                 previous_tail.device != request_query.device
                 or previous_tail.dtype != request_query.dtype
@@ -790,8 +799,10 @@ class PyramidKVAttentionBatchView:
         compact_values: list[torch.Tensor] = []
         slot_tensors: list[torch.Tensor] = []
         decode_lengths = list(attn_metadata.seq_lens_list)
-        compact_before_attention = state_name == "PrefillNoCache" and all(
-            request.is_complete_prefill for request in self.requests
+        compact_before_attention = (
+            not self.provider.prefix_caching
+            and state_name == "PrefillNoCache"
+            and all(request.is_complete_prefill for request in self.requests)
         )
 
         for request_index, request in enumerate(self.requests):
@@ -886,6 +897,7 @@ class PyramidKVAttentionBatchView:
                                 semantic_num_tokens=request.num_prompt_tokens,
                                 retained_tokens=retained_tokens,
                                 selected_past_indices=selected,
+                                destination_block_ids=(request.destination_block_ids),
                             )
                         )
             elif not request.is_prefill and request.compress:
@@ -934,6 +946,12 @@ class PyramidKVAttentionBatchView:
                         attn_metadata.slot_mapping[request.query_start : request.query_end].to(dtype=torch.int32)
                     )
 
+        if self.provider.prefix_caching and phases == {True}:
+            # Preserve the ordinary full-KV writer for source blocks. Selection
+            # and materialization remain deferred until every model layer has
+            # completed successfully.
+            return False
+
         write_key = torch.cat(compact_keys, dim=0)
         write_value = torch.cat(compact_values, dim=0)
         write_slots = torch.cat(slot_tensors, dim=0)
@@ -953,6 +971,7 @@ class PyramidKVAscendProvider:
     def __init__(self, config: PyramidKVAscendConfig) -> None:
         self.config = config
         self._requests: dict[str, PyramidKVRequestState] = {}
+        self.prefix_caching = False
 
     @staticmethod
     def _layer_indices(layer_names: tuple[str, ...]) -> dict[str, int]:
@@ -983,6 +1002,7 @@ class PyramidKVAscendProvider:
         block_ids: tuple[tuple[tuple[int, ...], ...], ...],
         layer_names: tuple[str, ...],
         block_size: int,
+        destination_block_ids: (dict[str, tuple[tuple[int, ...], ...]] | None) = None,
     ) -> PyramidKVAttentionBatchView:
         """Build a step-local view after runner state and commit-ack updates."""
         counts = {
@@ -1000,6 +1020,12 @@ class PyramidKVAscendProvider:
         if len(layer_names) != 32:
             raise RuntimeError(f"PyramidKV requires 32 attention layers, got {len(layer_names)}")
         layer_indices = self._layer_indices(layer_names)
+        destinations = destination_block_ids or {}
+        unknown_destinations = set(destinations).difference(request_ids)
+        if unknown_destinations:
+            raise RuntimeError(
+                f"PyramidKV destination tables contain unscheduled requests: {tuple(sorted(unknown_destinations))}"
+            )
 
         phases = tuple(computed < prompt for computed, prompt in zip(num_computed_tokens, num_prompt_tokens))
         requests: list[PyramidKVAttentionRequest] = []
@@ -1010,6 +1036,7 @@ class PyramidKVAscendProvider:
             computed = num_computed_tokens[index]
             prompt = num_prompt_tokens[index]
             request_blocks = block_ids[index]
+            request_destination = destinations.get(request_id)
             if query_length <= 0:
                 raise RuntimeError(f"request {request_id!r} has no scheduled tokens")
             if len(request_blocks) != 1 or not request_blocks[0]:
@@ -1029,48 +1056,88 @@ class PyramidKVAscendProvider:
                     self.config.retained_tokens(prompt, layer_index, len(layer_names)) < prompt
                     for layer_index in range(len(layer_names))
                 )
-                if compress:
-                    request_state = self._requests.get(request_id)
-                    if request_state is None:
-                        if computed != 0:
-                            raise RuntimeError(
-                                f"request {request_id!r} starts PyramidKV "
-                                f"chunked prefill at {computed} without state"
-                            )
-                        request_state = self.begin_request(request_id, prompt, request_blocks)
-                    if request_state.plan_emitted or request_state.committed:
-                        raise RuntimeError(f"request {request_id!r} prefill state is sealed")
-                    if request_state.semantic_num_tokens != prompt:
+            destination = None
+            if request_destination is not None:
+                if len(request_destination) != 1 or not request_destination[0]:
+                    raise RuntimeError(f"request {request_id!r} requires one non-empty PyramidKV destination table")
+                destination = request_destination[0]
+                if set(destination).intersection(request_blocks[0]):
+                    raise RuntimeError(f"request {request_id!r} source and destination block tables overlap")
+                if not is_prefill or not compress:
+                    raise RuntimeError(
+                        f"request {request_id!r} received a destination table outside a compressing prefill"
+                    )
+            if compress:
+                if self.prefix_caching and semantic_length == prompt:
+                    if destination is None:
                         raise RuntimeError(
-                            f"request {request_id!r} prompt length changed "
-                            f"from {request_state.semantic_num_tokens} to "
-                            f"{prompt}"
+                            f"request {request_id!r} final prefill is missing its private destination table"
                         )
-                    if request_state.prefill_num_computed_tokens != computed:
+                    max_retained = max(
+                        self.config.retained_tokens(prompt, layer_index, len(layer_names))
+                        for layer_index in range(len(layer_names))
+                    )
+                    if len(destination) * block_size < max_retained:
                         raise RuntimeError(
-                            f"request {request_id!r} chunk starts at "
-                            f"{computed}, expected "
-                            f"{request_state.prefill_num_computed_tokens}"
+                            f"request {request_id!r} private destination "
+                            f"capacity {len(destination) * block_size} is "
+                            f"smaller than required {max_retained}"
                         )
-                    expected_blocks = request_state.expected_block_ids[0]
-                    actual_blocks = request_blocks[0]
-                    if (
-                        len(actual_blocks) < len(expected_blocks)
-                        or actual_blocks[: len(expected_blocks)] != expected_blocks
-                    ):
+                elif destination is not None:
+                    raise RuntimeError(
+                        f"request {request_id!r} received a destination table outside a prefix-cached final prefill"
+                    )
+                request_state = self._requests.get(request_id)
+                if request_state is None:
+                    if computed % block_size != 0:
                         raise RuntimeError(
-                            f"request {request_id!r} prefill block table is not "
-                            "a monotonic extension: expected prefix "
-                            f"{expected_blocks}, got {actual_blocks}"
+                            f"request {request_id!r} starts PyramidKV prefill at unaligned cached offset {computed}"
                         )
-                    required_blocks = (semantic_length + block_size - 1) // block_size
-                    if len(actual_blocks) < required_blocks:
+                    if prompt - computed < self.config.window_size:
                         raise RuntimeError(
-                            f"request {request_id!r} needs {required_blocks} "
-                            f"blocks through token {semantic_length}, got "
-                            f"{len(actual_blocks)}"
+                            f"request {request_id!r} cached suffix has "
+                            f"{prompt - computed} tokens, fewer than query "
+                            f"window {self.config.window_size}"
                         )
-            else:
+                    request_state = self.begin_request(
+                        request_id,
+                        prompt,
+                        request_blocks,
+                        prefill_num_computed_tokens=computed,
+                    )
+                if request_state.plan_emitted or request_state.committed:
+                    raise RuntimeError(f"request {request_id!r} prefill state is sealed")
+                if request_state.semantic_num_tokens != prompt:
+                    raise RuntimeError(
+                        f"request {request_id!r} prompt length changed "
+                        f"from {request_state.semantic_num_tokens} to "
+                        f"{prompt}"
+                    )
+                if request_state.prefill_num_computed_tokens != computed:
+                    raise RuntimeError(
+                        f"request {request_id!r} chunk starts at "
+                        f"{computed}, expected "
+                        f"{request_state.prefill_num_computed_tokens}"
+                    )
+                expected_blocks = request_state.expected_block_ids[0]
+                actual_blocks = request_blocks[0]
+                if (
+                    len(actual_blocks) < len(expected_blocks)
+                    or actual_blocks[: len(expected_blocks)] != expected_blocks
+                ):
+                    raise RuntimeError(
+                        f"request {request_id!r} prefill block table is not "
+                        "a monotonic extension: expected prefix "
+                        f"{expected_blocks}, got {actual_blocks}"
+                    )
+                required_blocks = (semantic_length + block_size - 1) // block_size
+                if len(actual_blocks) < required_blocks:
+                    raise RuntimeError(
+                        f"request {request_id!r} needs {required_blocks} "
+                        f"blocks through token {semantic_length}, got "
+                        f"{len(actual_blocks)}"
+                    )
+            elif not is_prefill:
                 if query_length != 1 or semantic_length != computed + 1:
                     raise RuntimeError(f"request {request_id!r} must execute ordinary one-token decode")
                 request_state = self._requests.get(request_id)
@@ -1091,6 +1158,7 @@ class PyramidKVAscendProvider:
                     num_prompt_tokens=prompt,
                     block_ids=request_blocks[0],
                     is_prefill=is_prefill,
+                    destination_block_ids=destination,
                     compress=compress,
                 )
             )
@@ -1099,7 +1167,7 @@ class PyramidKVAscendProvider:
         compressing_prefills = [request for request in requests if request.is_prefill and request.compress]
         if compressing_prefills:
             logger.info(
-                "Prepared PyramidKV prefill step: chunks=%s mixed_decode=%s",
+                "Prepared PyramidKV prefill step: chunks=%s prefix_hit_tokens=%s mixed_decode=%s",
                 tuple(
                     (
                         request.request_id,
@@ -1107,6 +1175,13 @@ class PyramidKVAscendProvider:
                         request.semantic_num_tokens,
                         request.num_prompt_tokens,
                         "final" if request.is_final_prefill_chunk else "intermediate",
+                    )
+                    for request in compressing_prefills
+                ),
+                tuple(
+                    (
+                        request.request_id,
+                        self._requests[request.request_id].initial_prefill_num_computed_tokens,
                     )
                     for request in compressing_prefills
                 ),
@@ -1201,10 +1276,14 @@ class PyramidKVAscendProvider:
                     state.prefill_query_tail_length = 0
                     plans.append(self.finalize_plan(request.request_id, layer_names, schema_version))
                     logger.info(
-                        "Finalized PyramidKV prefill compression: request_id=%s semantic_tokens=%d physical_tokens=%d",
+                        "Finalized PyramidKV prefill compression: request_id=%s "
+                        "semantic_tokens=%d physical_tokens=%d "
+                        "source_blocks=%d destination_blocks=%d",
                         request.request_id,
                         request.semantic_num_tokens,
                         plans[-1].physical_num_tokens,
+                        len(request.block_ids),
+                        len(request.destination_block_ids or request.block_ids),
                     )
                 else:
                     state.prefill_query_tail = view.pending_query_tails[request.request_id]
@@ -1259,7 +1338,11 @@ class PyramidKVAscendProvider:
                 compact_value,
                 deferred.kv_cache,
                 _slots_for_positions(
-                    deferred.block_ids,
+                    (
+                        deferred.destination_block_ids
+                        if deferred.destination_block_ids is not None
+                        else deferred.block_ids
+                    ),
                     0,
                     deferred.retained_tokens,
                     view.block_size,
@@ -1271,6 +1354,15 @@ class PyramidKVAscendProvider:
                 deferred.layer.layer_name,
                 deferred.retained_tokens,
             )
+            if deferred.destination_block_ids is not None:
+                logger.debug(
+                    "Materialized PyramidKV request %s layer %s from %d "
+                    "source blocks into %d private destination blocks",
+                    deferred.request_id,
+                    deferred.layer.layer_name,
+                    len(deferred.block_ids),
+                    len(deferred.destination_block_ids),
+                )
         view.deferred_prefills.clear()
 
     @classmethod
@@ -1284,6 +1376,24 @@ class PyramidKVAscendProvider:
         provider_factory: str,
     ) -> KVCacheCompressionCompatibility:
         reasons = self._compatibility_reasons(context)
+        runtime_spec = None
+        if not reasons:
+            max_physical_num_tokens = max(
+                self.config.retained_tokens(
+                    context.max_model_len,
+                    layer_index,
+                    context.num_hidden_layers,
+                )
+                for layer_index in range(context.num_hidden_layers)
+            )
+            runtime_spec = KVCacheCompressionRuntimeSpec(
+                schema_version=core_config.schema_version,
+                provider=core_config.provider,
+                requires_private_destination=True,
+                compression_threshold_tokens=(self.config.max_capacity_prompt),
+                required_recompute_tokens=self.config.window_size,
+                max_physical_num_tokens=max_physical_num_tokens,
+            )
         return KVCacheCompressionCompatibility(
             schema_version=core_config.schema_version,
             provider=core_config.provider,
@@ -1296,6 +1406,7 @@ class PyramidKVAscendProvider:
             dtype=context.dtype,
             cache_layout=context.cache_layout,
             block_size=context.block_size,
+            runtime_spec=runtime_spec,
         )
 
     def validate_worker(
@@ -1306,7 +1417,10 @@ class PyramidKVAscendProvider:
     ) -> KVCacheCompressionCompatibility:
         """Inspect the initialized worker without allocating a KV tensor."""
         context = _capability_context_from_worker(worker)
-        return self.compatibility_report(core_config, context, provider_factory)
+        report = self.compatibility_report(core_config, context, provider_factory)
+        if report.supported:
+            self.prefix_caching = context.prefix_caching
+        return report
 
     @staticmethod
     def _compatibility_reasons(
@@ -1396,7 +1510,13 @@ class PyramidKVAscendProvider:
             context.full_attention_only,
             "all KV cache layers must use full attention",
         )
-        require(not context.prefix_caching, "prefix caching is unsupported")
+        if context.prefix_caching:
+            require(
+                context.hash_block_size == context.block_size == SUPPORTED_BLOCK_SIZE,
+                "prefix caching requires hash_block_size == block_size == "
+                f"{SUPPORTED_BLOCK_SIZE}, got hash={context.hash_block_size} "
+                f"and block={context.block_size}",
+            )
         if context.chunked_prefill:
             require(
                 context.cann_version.startswith("9.0"),
@@ -1435,6 +1555,7 @@ class PyramidKVAscendProvider:
             f"decode context parallel size must be 1, got {context.decode_context_parallel_size}",
         )
         require(not context.async_scheduling, "async scheduling is unsupported")
+        require(not context.balance_scheduling, "balance scheduling is unsupported")
         require(not context.dbo_enabled, "dual-batch overlap is unsupported")
         require(not context.knorm_enabled, "VLLM_KNORM_ENABLED must be 0")
         reasons.extend(f"required NPU op is unavailable: {op}" for op in context.missing_ops)
@@ -1445,6 +1566,7 @@ class PyramidKVAscendProvider:
         request_id: str,
         semantic_num_tokens: int,
         expected_block_ids: tuple[tuple[int, ...], ...],
+        prefill_num_computed_tokens: int = 0,
     ) -> PyramidKVRequestState:
         if request_id in self._requests:
             raise RuntimeError(f"request {request_id!r} already has PyramidKV state")
@@ -1452,10 +1574,14 @@ class PyramidKVAscendProvider:
             raise ValueError("semantic_num_tokens must be positive")
         if len(expected_block_ids) != 1 or not expected_block_ids[0]:
             raise ValueError("PyramidKV requires one non-empty block table")
+        if prefill_num_computed_tokens < 0:
+            raise ValueError("prefill_num_computed_tokens must be non-negative")
         state = PyramidKVRequestState(
             request_id=request_id,
             semantic_num_tokens=semantic_num_tokens,
             expected_block_ids=expected_block_ids,
+            prefill_num_computed_tokens=prefill_num_computed_tokens,
+            initial_prefill_num_computed_tokens=(prefill_num_computed_tokens),
         )
         self._requests[request_id] = state
         return state
@@ -1639,6 +1765,8 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         num_hidden_layers=int(getattr(hf_config, "num_hidden_layers", 0)),
         cache_layout=(SUPPORTED_CACHE_LAYOUT if standard_layout else "unsupported"),
         block_size=block_size,
+        hash_block_size=int(cache_config.hash_block_size or cache_config.block_size),
+        max_model_len=int(model_config.max_model_len),
         num_kv_cache_groups=len(signatures),
         full_attention_only=full_attention_only,
         prefix_caching=bool(cache_config.enable_prefix_caching),
@@ -1653,6 +1781,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         prefill_context_parallel_size=(parallel_config.prefill_context_parallel_size),
         decode_context_parallel_size=parallel_config.decode_context_parallel_size,
         async_scheduling=bool(scheduler_config.async_scheduling),
+        balance_scheduling=bool(worker.model_runner.ascend_config.enable_balance_scheduling),
         dbo_enabled=bool(parallel_config.enable_dbo),
         knorm_enabled=bool(envs_vllm.VLLM_KNORM_ENABLED),
         missing_ops=missing_ops,

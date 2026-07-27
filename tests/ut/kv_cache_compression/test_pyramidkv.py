@@ -2,6 +2,7 @@
 # Copyright (c) 2026 Huawei Technologies Co., Ltd. All Rights Reserved.
 
 import math
+import os
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -62,6 +63,8 @@ def _context(**updates) -> PyramidKVCapabilityContext:
         "num_hidden_layers": 32,
         "cache_layout": "standard_bf16_paged",
         "block_size": 128,
+        "hash_block_size": 128,
+        "max_model_len": 8192,
         "num_kv_cache_groups": 1,
         "full_attention_only": True,
         "prefix_caching": False,
@@ -76,6 +79,7 @@ def _context(**updates) -> PyramidKVCapabilityContext:
         "prefill_context_parallel_size": 1,
         "decode_context_parallel_size": 1,
         "async_scheduling": False,
+        "balance_scheduling": False,
         "dbo_enabled": False,
         "knorm_enabled": False,
         "missing_ops": (),
@@ -370,6 +374,401 @@ def test_chunked_prefill_matches_single_prefill_selection_and_compact_kv(
     assert state.prefill_query_tail is None
 
 
+@pytest.mark.parametrize(
+    "num_computed_tokens",
+    [0, 128],
+    ids=["cold", "prefix-hit"],
+)
+def test_prefix_cached_prefill_materializes_private_destination_without_source_mutation(
+    num_computed_tokens: int,
+) -> None:
+    prompt_tokens = 256
+    query_length = prompt_tokens - num_computed_tokens
+    layer_names = (
+        "model.layers.0.self_attn.attn",
+        "model.layers.1.self_attn.attn",
+    )
+    provider = PyramidKVAscendProvider(
+        _config(
+            max_capacity_prompt=128,
+            window_size=8,
+            kernel_size=7,
+            beta=20,
+        )
+    )
+    provider.prefix_caching = True
+    provider.begin_request(
+        "request",
+        prompt_tokens,
+        ((0, 1),),
+        prefill_num_computed_tokens=num_computed_tokens,
+    )
+    generator = torch.Generator().manual_seed(20260726)
+    layer_inputs = {
+        layer_name: (
+            torch.randn(
+                prompt_tokens,
+                4,
+                8,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
+            torch.randn(
+                prompt_tokens,
+                2,
+                8,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
+            torch.randn(
+                prompt_tokens,
+                2,
+                8,
+                generator=generator,
+                dtype=torch.bfloat16,
+            ),
+        )
+        for layer_name in layer_names
+    }
+    expected = {
+        layer_name: select_pyramid_kv(
+            query.permute(1, 0, 2).unsqueeze(0),
+            key.permute(1, 0, 2).unsqueeze(0),
+            value.permute(1, 0, 2).unsqueeze(0),
+            provider.config,
+            layer_index=layer_index,
+            num_hidden_layers=len(layer_names),
+        )
+        for layer_index, (layer_name, (query, key, value)) in enumerate(layer_inputs.items())
+    }
+    layer_caches = {
+        layer_name: (
+            torch.zeros(4, 128, 2, 8, dtype=torch.bfloat16),
+            torch.zeros(4, 128, 2, 8, dtype=torch.bfloat16),
+        )
+        for layer_name in layer_names
+    }
+    for layer_name, (_, key, value) in layer_inputs.items():
+        if num_computed_tokens:
+            layer_caches[layer_name][0].view(-1, 2, 8)[:num_computed_tokens] = key[:num_computed_tokens]
+            layer_caches[layer_name][1].view(-1, 2, 8)[:num_computed_tokens] = value[:num_computed_tokens]
+
+    def write_cache(layer, write_key, write_value, kv_cache, slots):
+        kv_cache[0].view(-1, 2, 8)[slots.long()] = write_key
+        kv_cache[1].view(-1, 2, 8)[slots.long()] = write_value
+
+    backend = SimpleNamespace(do_kv_cache_update=write_cache)
+    request = PyramidKVAttentionRequest(
+        request_id="request",
+        query_start=0,
+        query_end=query_length,
+        semantic_num_tokens=prompt_tokens,
+        num_computed_tokens=num_computed_tokens,
+        num_prompt_tokens=prompt_tokens,
+        block_ids=(0, 1),
+        is_prefill=True,
+        destination_block_ids=(2, 3),
+    )
+    view = PyramidKVAttentionBatchView(
+        provider=provider,
+        requests=(request,),
+        layer_indices={layer_name: index for index, layer_name in enumerate(layer_names)},
+        num_hidden_layers=len(layer_names),
+    )
+    metadata = AscendMetadata(
+        attn_state=(
+            AscendAttentionState.PrefillNoCache if num_computed_tokens == 0 else AscendAttentionState.PrefillCacheHit
+        ),
+        num_actual_tokens=query_length,
+        slot_mapping=torch.arange(
+            num_computed_tokens,
+            prompt_tokens,
+            dtype=torch.int32,
+        ),
+        seq_lens=torch.tensor([prompt_tokens], dtype=torch.int32),
+        seq_lens_cpu=torch.tensor([prompt_tokens], dtype=torch.int32),
+        seq_lens_list=[prompt_tokens],
+    )
+
+    source_snapshots = {}
+    for layer_name in layer_names:
+        query, key, value = layer_inputs[layer_name]
+        cache = layer_caches[layer_name]
+        suppress_default_write = view.before_cache_write(
+            layer=SimpleNamespace(layer_name=layer_name),
+            backend=backend,
+            query=query[num_computed_tokens:],
+            key=key[num_computed_tokens:],
+            value=value[num_computed_tokens:],
+            kv_cache=cache,
+            attn_metadata=metadata,
+        )
+        assert not suppress_default_write
+        write_cache(
+            SimpleNamespace(layer_name=layer_name),
+            key[num_computed_tokens:],
+            value[num_computed_tokens:],
+            cache,
+            metadata.slot_mapping,
+        )
+        source_snapshots[layer_name] = (
+            cache[0][:2].clone(),
+            cache[1][:2].clone(),
+        )
+
+    assert provider.get_request_state("request").layers == {}
+    plans = provider.finish_model_forward(
+        view,
+        layer_names=layer_names,
+        schema_version=1,
+    )
+
+    assert plans is not None and len(plans) == 1
+    assert plans[0].expected_block_ids == ((0, 1),)
+    assert plans[0].physical_num_tokens == max(selection.retained_tokens for selection in expected.values())
+    for layer_name, selection in expected.items():
+        key_cache, value_cache = layer_caches[layer_name]
+        source_key, source_value = source_snapshots[layer_name]
+        torch.testing.assert_close(key_cache[:2], source_key)
+        torch.testing.assert_close(value_cache[:2], source_value)
+        retained_tokens = selection.retained_tokens
+        torch.testing.assert_close(
+            key_cache[2:].reshape(-1, 2, 8)[:retained_tokens],
+            selection.key.squeeze(0).permute(1, 0, 2),
+            rtol=1e-2,
+            atol=1e-2,
+        )
+        torch.testing.assert_close(
+            value_cache[2:].reshape(-1, 2, 8)[:retained_tokens],
+            selection.value.squeeze(0).permute(1, 0, 2),
+            rtol=1e-2,
+            atol=1e-2,
+        )
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_PYRAMIDKV_NPU_TEST") != "1",
+    reason="set RUN_PYRAMIDKV_NPU_TEST=1 on an Ascend worker",
+)
+def test_npu_bf16_private_materialization_preserves_source_and_decodes() -> None:
+    device = torch.device("npu")
+    layer_name = "model.layers.0.self_attn.attn"
+    provider = PyramidKVAscendProvider(
+        _config(
+            max_capacity_prompt=128,
+            window_size=8,
+            kernel_size=7,
+            beta=20,
+        )
+    )
+    provider.prefix_caching = True
+    provider.begin_request(
+        "request",
+        256,
+        ((0, 1),),
+        prefill_num_computed_tokens=128,
+    )
+    torch.manual_seed(20260726)
+    query = torch.randn(256, 4, 8, dtype=torch.bfloat16, device=device)
+    key = torch.randn(256, 2, 8, dtype=torch.bfloat16, device=device)
+    value = torch.randn(256, 2, 8, dtype=torch.bfloat16, device=device)
+    expected = select_pyramid_kv(
+        query.permute(1, 0, 2).unsqueeze(0),
+        key.permute(1, 0, 2).unsqueeze(0),
+        value.permute(1, 0, 2).unsqueeze(0),
+        provider.config,
+        layer_index=0,
+        num_hidden_layers=2,
+    )
+    cache = (
+        torch.zeros(4, 128, 2, 8, dtype=torch.bfloat16, device=device),
+        torch.zeros(4, 128, 2, 8, dtype=torch.bfloat16, device=device),
+    )
+    cache[0].view(-1, 2, 8)[:128].copy_(key[:128])
+    cache[1].view(-1, 2, 8)[:128].copy_(value[:128])
+
+    def write_cache(layer, write_key, write_value, kv_cache, slots):
+        indices = slots.to(dtype=torch.int64)
+        kv_cache[0].view(-1, 2, 8).index_copy_(0, indices, write_key)
+        kv_cache[1].view(-1, 2, 8).index_copy_(0, indices, write_value)
+
+    backend = SimpleNamespace(do_kv_cache_update=write_cache)
+    request = PyramidKVAttentionRequest(
+        request_id="request",
+        query_start=0,
+        query_end=128,
+        semantic_num_tokens=256,
+        num_computed_tokens=128,
+        num_prompt_tokens=256,
+        block_ids=(0, 1),
+        is_prefill=True,
+        destination_block_ids=(2, 3),
+    )
+    view = PyramidKVAttentionBatchView(
+        provider=provider,
+        requests=(request,),
+        layer_indices={layer_name: 0},
+        num_hidden_layers=2,
+    )
+    prefill_metadata = AscendMetadata(
+        attn_state=AscendAttentionState.PrefillCacheHit,
+        num_actual_tokens=128,
+        slot_mapping=torch.arange(128, 256, dtype=torch.int32, device=device),
+        seq_lens=torch.tensor([256], dtype=torch.int32),
+        seq_lens_cpu=torch.tensor([256], dtype=torch.int32),
+        seq_lens_list=[256],
+    )
+
+    assert not view.before_cache_write(
+        layer=SimpleNamespace(layer_name=layer_name),
+        backend=backend,
+        query=query[128:],
+        key=key[128:],
+        value=value[128:],
+        kv_cache=cache,
+        attn_metadata=prefill_metadata,
+    )
+    write_cache(
+        SimpleNamespace(layer_name=layer_name),
+        key[128:],
+        value[128:],
+        cache,
+        prefill_metadata.slot_mapping,
+    )
+    source_key = cache[0][:2].clone()
+    source_value = cache[1][:2].clone()
+
+    plans = provider.finish_model_forward(
+        view,
+        layer_names=(layer_name,),
+        schema_version=1,
+    )
+    torch.npu.synchronize()
+
+    assert plans is not None and len(plans) == 1
+    torch.testing.assert_close(cache[0][:2], source_key)
+    torch.testing.assert_close(cache[1][:2], source_value)
+    retained_tokens = expected.retained_tokens
+    torch.testing.assert_close(
+        cache[0][2:].reshape(-1, 2, 8)[:retained_tokens],
+        expected.key.squeeze(0).permute(1, 0, 2),
+        rtol=1e-2,
+        atol=1e-2,
+    )
+    torch.testing.assert_close(
+        cache[1][2:].reshape(-1, 2, 8)[:retained_tokens],
+        expected.value.squeeze(0).permute(1, 0, 2),
+        rtol=1e-2,
+        atol=1e-2,
+    )
+
+    provider.mark_committed("request", ((2, 3),))
+    decode_view = PyramidKVAttentionBatchView(
+        provider=provider,
+        requests=(
+            PyramidKVAttentionRequest(
+                request_id="request",
+                query_start=0,
+                query_end=1,
+                semantic_num_tokens=257,
+                num_computed_tokens=256,
+                num_prompt_tokens=256,
+                block_ids=(2, 3),
+                is_prefill=False,
+            ),
+        ),
+        layer_indices={layer_name: 0},
+        num_hidden_layers=2,
+    )
+    decode_metadata = AscendMetadata(
+        attn_state=AscendAttentionState.DecodeOnly,
+        num_actual_tokens=1,
+        slot_mapping=torch.tensor([-1], dtype=torch.int32, device=device),
+        seq_lens=torch.tensor([257], dtype=torch.int32),
+        seq_lens_cpu=torch.tensor([257], dtype=torch.int32),
+        seq_lens_list=[257],
+    )
+    assert decode_view.before_cache_write(
+        layer=SimpleNamespace(layer_name=layer_name),
+        backend=backend,
+        query=query[:1],
+        key=key[:1],
+        value=value[:1],
+        kv_cache=cache,
+        attn_metadata=decode_metadata,
+    )
+    assert (
+        provider.finish_model_forward(
+            decode_view,
+            layer_names=(layer_name,),
+            schema_version=1,
+        )
+        is None
+    )
+    torch.npu.synchronize()
+
+
+def test_prefix_hit_view_initializes_at_aligned_offset_and_requires_destination() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    provider.prefix_caching = True
+    common = {
+        "request_ids": ("request",),
+        "query_lengths": (129,),
+        "semantic_num_tokens": (769,),
+        "num_computed_tokens": (640,),
+        "num_prompt_tokens": (769,),
+        "block_ids": ((tuple(range(7)),),),
+        "layer_names": LAYER_NAMES,
+        "block_size": 128,
+    }
+
+    with pytest.raises(RuntimeError, match="missing its private destination"):
+        provider.build_attention_batch_view(**common)
+
+    view = provider.build_attention_batch_view(
+        **common,
+        destination_block_ids={"request": (tuple(range(7, 15)),)},
+    )
+
+    state = provider.get_request_state("request")
+    assert view.requests[0].num_computed_tokens == 640
+    assert view.requests[0].destination_block_ids == tuple(range(7, 15))
+    assert state.initial_prefill_num_computed_tokens == 640
+    assert state.prefill_num_computed_tokens == 640
+
+
+@pytest.mark.parametrize(
+    ("computed", "query_length", "destination", "error_match"),
+    [
+        (641, 128, tuple(range(7, 15)), "unaligned cached offset"),
+        (768, 1, tuple(range(7, 15)), "fewer than query window"),
+        (640, 129, (0, 7, 8, 9), "source and destination.*overlap"),
+        (640, 129, (7,), "capacity 128 is smaller than required 512"),
+    ],
+)
+def test_prefix_hit_view_rejects_invalid_cached_or_destination_state(
+    computed: int,
+    query_length: int,
+    destination: tuple[int, ...],
+    error_match: str,
+) -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    provider.prefix_caching = True
+
+    with pytest.raises(RuntimeError, match=error_match):
+        provider.build_attention_batch_view(
+            request_ids=("request",),
+            query_lengths=(query_length,),
+            semantic_num_tokens=(769,),
+            num_computed_tokens=(computed,),
+            num_prompt_tokens=(769,),
+            block_ids=((tuple(range(7)),),),
+            layer_names=LAYER_NAMES,
+            block_size=128,
+            destination_block_ids={"request": (destination,)},
+        )
+
+
 @pytest.mark.parametrize("prompt_tokens", [256, 4096, 7168])
 def test_planned_prompt_lengths_produce_valid_compact_shapes(
     prompt_tokens: int,
@@ -419,7 +818,6 @@ def test_capability_report_aggregates_all_reasons() -> None:
     assert "OtherBackend" in message
     assert "model quantization" in message
     assert "KV heads must be 8, got 4" in message
-    assert "prefix caching" in message
     assert "tensor parallel size" in message
     assert "dual-batch overlap" in message
     assert "VLLM_KNORM_ENABLED" in message
@@ -434,6 +832,65 @@ def test_supported_capability_has_no_reasons() -> None:
 
     assert report.supported
     assert report.reasons == ()
+    assert report.runtime_spec is not None
+    assert report.runtime_spec.compression_threshold_tokens == 12
+    assert report.runtime_spec.required_recompute_tokens == 4
+    assert report.runtime_spec.max_physical_num_tokens == 16
+
+
+def test_prefix_caching_requires_matching_128_token_hash_blocks() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    supported = provider.compatibility_report(
+        _core_config(),
+        _context(prefix_caching=True),
+        "registry:get",
+    )
+    rejected = provider.compatibility_report(
+        _core_config(),
+        _context(prefix_caching=True, hash_block_size=64),
+        "registry:get",
+    )
+
+    assert supported.supported
+    assert supported.runtime_spec is not None
+    assert supported.runtime_spec.requires_private_destination
+    assert not rejected.supported
+    assert rejected.runtime_spec is None
+    assert "hash_block_size == block_size == 128" in rejected.reasons[0]
+
+
+def test_balance_scheduling_is_rejected() -> None:
+    report = PyramidKVAscendProvider(_config()).compatibility_report(
+        _core_config(),
+        _context(balance_scheduling=True),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert report.runtime_spec is None
+    assert "balance scheduling is unsupported" in report.reasons
+
+
+def test_default_runtime_spec_reserves_eight_private_blocks() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    core_config = KVCacheCompressionConfig(
+        provider="pyramidkv_ascend",
+        provider_config={},
+    )
+
+    report = provider.compatibility_report(
+        core_config,
+        _context(prefix_caching=True, max_model_len=8192),
+        "registry:get",
+    )
+
+    assert report.supported
+    assert report.runtime_spec is not None
+    assert report.runtime_spec.compression_threshold_tokens == 512
+    assert report.runtime_spec.required_recompute_tokens == 8
+    assert report.runtime_spec.max_physical_num_tokens == 991
+    assert math.ceil(report.runtime_spec.max_physical_num_tokens / 128) == 8
 
 
 def test_cann_9_capability_is_supported() -> None:

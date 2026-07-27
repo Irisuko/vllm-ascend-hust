@@ -7,13 +7,13 @@ cache blocks after a complete prefill. It is disabled unless
 
 The first release keeps token IDs, sequence positions, RoPE, sampling, the KV
 cache tensor shape, and the selected attention backend unchanged. During
-prefill, every layer computes attention from the original full Q/K/V. With an
-unchunked prefill it writes a compact K/V representation immediately. With
-chunked prefill, intermediate chunks keep full K/V and the final chunk compacts
-the complete prompt only after the whole model forward succeeds. The scheduler
-releases only the common tail blocks that no layer needs. During decode, each
-layer appends to its own compact physical length while the request continues to
-use its semantic sequence length.
+prefill, every layer computes attention from the original full Q/K/V. When
+prefix caching is enabled, the complete token-addressed K/V remains in the
+ordinary immutable prefix-cache source blocks and the compact K/V is written
+to a separate request-private, unhashed destination table. The core swaps the
+request to that destination only after all layers and the model forward
+succeed. During decode, each layer appends to its own compact physical length
+while the request continues to use its semantic sequence length.
 
 ## Supported configuration
 
@@ -23,18 +23,20 @@ allocation if a requirement is not met:
 - Ascend 910B2 with the required torch-npu cache-write and
   fused-infer-attention operators. Eager execution supports CANN 8.5.1 and
   CANN 9.0; graph execution requires CANN 9.0.
-- V1 model runner with async scheduling and dual-batch overlap explicitly
-  disabled. Execution must be eager (`NONE`), `PIECEWISE`, or
+- V1 model runner with async scheduling, balance scheduling, and dual-batch
+  overlap explicitly disabled. Execution must be eager (`NONE`), `PIECEWISE`, or
   `FULL_DECODE_ONLY` as described below.
 - `LlamaForCausalLM` with 32 layers, 32 query heads, 8 KV heads, head dimension
   128, and BF16 model/KV cache data.
 - Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
-  size 128.
+  size 128. With prefix caching, the prefix hash block size must also be 128;
+  partial-block aliases are not supported.
 - TP, PP, PCP, and DCP all equal to 1.
 - Chunked prefill is supported on CANN 9.0 with default FIA. It continues to
   fail closed on CANN 8.5.1; unchunked eager execution remains supported there.
-- Prefix caching, sliding-window attention, speculative decoding, KV transfer,
-  KV offload, KNorm, and quantized KV cache disabled.
+- Prefix caching may be enabled. Sliding-window attention, speculative
+  decoding, KV transfer, KV offload, KNorm, and quantized KV cache remain
+  disabled.
 - Graph execution uses the default fused-infer-attention (FIA) path and an
   empty `pa_shape_list`. Paged-attention graph shapes, `FULL`, and
   `FULL_AND_PIECEWISE` are not supported.
@@ -62,7 +64,7 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
   --no-async-scheduling \
   --enable-chunked-prefill \
   --max-num-batched-tokens 2048 \
-  --no-enable-prefix-caching \
+  --enable-prefix-caching \
   --kv-cache-compression-config '{
     "schema_version": 1,
     "provider": "pyramidkv_ascend",
@@ -145,10 +147,12 @@ vLLM-HUST and vLLM-Ascend-HUST revisions matched because their compression
 schema and scheduler/worker transaction are versioned together.
 
 At startup, logs include the provider, schema, actual platform/backend/model/
-dtype/cache layout/block size, compatibility result, and complete provider
-configuration. They also include whether chunked prefill is enabled and its
-query-tail staging bound. After a successful final prefill chunk, the scheduler
-logs the semantic and physical token lengths and released block IDs.
+dtype/cache layout/block size, compatibility result, complete provider
+configuration, and the provider-derived runtime limits. They also include
+whether chunked prefill is enabled and its query-tail staging bound. Prefix-hit
+traces report the hit length. A successful transaction logs semantic and
+physical token lengths, source/destination block counts, released references,
+retained hashed source blocks, and the later commit acknowledgement.
 
 ## Capacity and memory semantics
 
@@ -164,6 +168,20 @@ lengths have unused slots inside those shared retained blocks. Do not estimate
 device-memory savings by summing theoretical per-layer capacities, and do not
 assume a performance or quality improvement without workload-specific
 measurements.
+
+With the default provider configuration, prompts longer than 512 tokens are
+compressed, at least the final 8 query tokens are recomputed, and the largest
+physical length for an 8192-token, 32-layer Llama model is 991 tokens. The
+scheduler consequently reserves at most 8 extra 128-token destination blocks
+per compressing request. These blocks are temporary before commit and remain
+request-private while the compressed request is active. They never receive a
+prefix hash and cannot be reused as a semantic prefix.
+
+For a compressing request, the maximum prefix hit is
+`prompt_length - window_size`, rounded down by vLLM's complete-block hit rule.
+For example, a repeated 7168-token prompt may hit 7040 tokens and recomputes
+128; a 769-token prompt may hit only 640 and recomputes 129. Requests below the
+compression threshold retain the ordinary vLLM hit limit.
 
 A batch made entirely of prompts at or below the compression threshold uses
 the original attention and cache-write path and does not emit a compression
@@ -181,17 +199,21 @@ after all 32 attention layers and the model forward succeed.
 
 The final chunk reconstructs the complete key from paged cache plus the current
 chunk and computes the same per-head indices as the unchunked path. It first
-finishes attention with full history, then compacts the complete paged K/V in
-place and emits the existing schema-v1 plan. No partial-prefill plan is sent to
-the scheduler, and no request-long dense K/V copy is retained.
+finishes attention with full history. With prefix caching enabled, the ordinary
+writer completes and hashes the full source table, after which the provider
+gathers that source and materializes compact K/V into the private destination.
+The source tensor is never compacted or overwritten. With prefix caching
+disabled, the original in-place compaction and tail-truncation fast path is
+preserved. No partial-prefill plan is sent to the scheduler, and no
+request-long dense K/V copy is retained.
 
 For a mixed prefill/decode batch, compact decodes use their layer-specific
-physical slots and lengths. A new prefill remains complete in paged K/V while
-the existing `PrefillCacheHit` attention runs. Only after the whole model
-forward succeeds does the provider compact that prefill in place and emit its
-plan. A decode block table may grow only by the exact monotonic tail allocation
-required for its next physical token; shrinking, reordering, or adding excess
-blocks is an error before the cache write.
+physical slots and lengths. A new prefill remains complete in its source table
+while the existing `PrefillCacheHit` attention runs. Only after the whole model
+forward succeeds does the provider materialize that prefill into its private
+destination and emit its plan. A decode block table may grow only by the exact
+monotonic tail allocation required for its next physical token; shrinking,
+reordering, or adding excess blocks is an error before the cache write.
 
 For `FULL_DECODE_ONLY`, only all-decode scheduler steps enter the full graph.
 Any semantic prefill, including a one-token final chunk, disables `FULL` for
@@ -204,11 +226,17 @@ do not acknowledge a prefill chunk or decode step.
 ## Failure and rollback behavior
 
 Compatibility and configuration failures occur before formal KV cache
-allocation. Runtime state, block generation, full-layer completion, and the
-scheduler commit acknowledgement are validated before tail blocks are freed or
-compact decode begins. There is no CUDA, Triton, CPU, or ordinary-cache fallback
-after a request starts compacting; a partial or stale transaction raises an
-error instead of continuing with ambiguous cache contents.
+allocation. Runtime state, source generation, private destination ownership
+and capacity, full-layer completion, and the scheduler commit acknowledgement
+are validated before the request table is swapped or compact decode begins.
+Source and destination capacity is admitted atomically: insufficient space
+keeps a waiting request queued or uses the scheduler's normal safe preemption
+path, without retaining a destination for an unscheduled request. Abort,
+finish, preemption, reset, and forward-error cleanup release an uncommitted
+destination. There is no CUDA, Triton, CPU, or ordinary-cache fallback after a
+request starts compacting; a missing, overlapping, hashed, undersized, stale,
+or duplicate transaction raises an error instead of continuing with ambiguous
+cache contents.
 
 To disable the feature, remove `--kv-cache-compression-config` (or set
 `kv_cache_compression_config=None` in Python). The provider is then not

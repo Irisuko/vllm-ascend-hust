@@ -269,6 +269,7 @@ class NPUModelRunner(GPUModelRunner):
         self.kv_cache_compression_provider: Any = None
         self._kv_cache_compression_step_view: Any = None
         self._kv_cache_compression_plans: Any = None
+        self._kv_cache_compression_destination_block_ids: Any = None
         self._kv_cache_compression_full_layer_names: tuple[str, ...] = ()
         self._kv_cache_compression_full_layer_indices: dict[str, int] = {}
         self._kv_cache_compression_full_slot_staging: torch.Tensor | None = None
@@ -945,6 +946,21 @@ class NPUModelRunner(GPUModelRunner):
         provider = self.kv_cache_compression_provider
         if provider is not None:
             self._cleanup_kv_cache_compression_states(scheduler_output)
+            destinations = getattr(
+                scheduler_output,
+                "kv_cache_compression_destination_block_ids",
+                None,
+            )
+            self._kv_cache_compression_destination_block_ids = (
+                {
+                    request_id: tuple(
+                        tuple(group) for group in block_ids
+                    )
+                    for request_id, block_ids in destinations.items()
+                }
+                if destinations
+                else None
+            )
 
         # Temporary rewind guard for KV-load-failure recompute.
         # This can be removed after the upstream fix is merged.
@@ -1062,6 +1078,9 @@ class NPUModelRunner(GPUModelRunner):
             ),
             layer_names=tuple(group.layer_names),
             block_size=group.kv_cache_spec.block_size,
+            destination_block_ids=(
+                self._kv_cache_compression_destination_block_ids
+            ),
         )
         if not any(request.compress for request in view.requests):
             return view if include_uncompressed else None
@@ -1097,6 +1116,7 @@ class NPUModelRunner(GPUModelRunner):
             schema_version=config.schema_version,
         )
         self._kv_cache_compression_step_view = None
+        self._kv_cache_compression_destination_block_ids = None
 
     def _pad_query_start_loc_for_fia(
         self,
@@ -2325,6 +2345,7 @@ class NPUModelRunner(GPUModelRunner):
             if (
                 self._kv_cache_compression_step_view is not None
                 or self._kv_cache_compression_plans is not None
+                or self._kv_cache_compression_destination_block_ids is not None
             ):
                 raise RuntimeError(
                     "stale KV cache compression step state before model execution"
@@ -2709,6 +2730,7 @@ class NPUModelRunner(GPUModelRunner):
                 # exception can retry from the last committed chunk boundary.
                 self._kv_cache_compression_step_view = None
                 self._kv_cache_compression_plans = None
+                self._kv_cache_compression_destination_block_ids = None
                 raise
         if self.kv_cache_compression_provider is not None:
             self._finish_kv_cache_compression_forward(

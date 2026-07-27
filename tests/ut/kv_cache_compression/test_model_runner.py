@@ -50,6 +50,7 @@ def _runner(provider: FakeProvider) -> NPUModelRunner:
     runner.kv_cache_compression_provider = provider
     runner._kv_cache_compression_step_view = None
     runner._kv_cache_compression_plans = None
+    runner._kv_cache_compression_destination_block_ids = None
     runner.requests = {
         "request": SimpleNamespace(block_ids=([1, 2, 3],)),
     }
@@ -183,7 +184,22 @@ def test_runner_builds_view_from_semantic_state_and_physical_blocks() -> None:
         "block_ids": (((1, 2, 3),),),
         "layer_names": tuple(LAYER_NAMES),
         "block_size": 128,
+        "destination_block_ids": None,
     }
+
+
+def test_runner_forwards_private_destination_table_to_provider() -> None:
+    provider = FakeProvider()
+    runner = _runner(provider)
+    destinations = {"request": ((7, 8),)}
+    runner._kv_cache_compression_destination_block_ids = destinations
+
+    runner._build_kv_cache_compression_view(
+        num_reqs=1,
+        num_scheduled_tokens_np=np.array([20], dtype=np.int32),
+    )
+
+    assert provider.build_kwargs["destination_block_ids"] is destinations
 
 
 def test_below_threshold_batch_keeps_attention_view_none() -> None:
@@ -219,6 +235,7 @@ def test_successful_forward_finishes_plans_and_clears_step_view() -> None:
     runner = _runner(provider)
     view = SimpleNamespace(requests=())
     runner._kv_cache_compression_step_view = view
+    runner._kv_cache_compression_destination_block_ids = {"request": ((7, 8),)}
 
     runner._finish_kv_cache_compression_forward()
 
@@ -228,6 +245,7 @@ def test_successful_forward_finishes_plans_and_clears_step_view() -> None:
     )
     assert runner._kv_cache_compression_plans == ["plan"]
     assert runner._kv_cache_compression_step_view is None
+    assert runner._kv_cache_compression_destination_block_ids is None
 
 
 def test_full_decode_buffers_keep_addresses_across_updates() -> None:
