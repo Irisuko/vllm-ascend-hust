@@ -838,6 +838,26 @@ def test_supported_capability_has_no_reasons() -> None:
     assert report.runtime_spec.max_physical_num_tokens == 16
 
 
+def test_async_scheduling_is_supported_without_relaxing_other_guards() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    supported = provider.compatibility_report(
+        _core_config(),
+        _context(async_scheduling=True),
+        "registry:get",
+    )
+    rejected = provider.compatibility_report(
+        _core_config(),
+        _context(async_scheduling=True, balance_scheduling=True),
+        "registry:get",
+    )
+
+    assert supported.supported
+    assert supported.reasons == ()
+    assert not rejected.supported
+    assert rejected.reasons == ("balance scheduling is unsupported",)
+
+
 def test_prefix_caching_requires_matching_128_token_hash_blocks() -> None:
     provider = PyramidKVAscendProvider(_config())
 

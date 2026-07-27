@@ -1118,6 +1118,11 @@ class NPUModelRunner(GPUModelRunner):
         self._kv_cache_compression_step_view = None
         self._kv_cache_compression_destination_block_ids = None
 
+    def _take_kv_cache_compression_plans(self) -> Any:
+        plans = self._kv_cache_compression_plans
+        self._kv_cache_compression_plans = None
+        return list(plans) if plans is not None else None
+
     def _pad_query_start_loc_for_fia(
         self,
         query_start_loc: torch.Tensor,
@@ -2944,8 +2949,7 @@ class NPUModelRunner(GPUModelRunner):
 
         kv_cache_compression_plans = None
         if self.kv_cache_compression_provider is not None:
-            kv_cache_compression_plans = self._kv_cache_compression_plans
-            self._kv_cache_compression_plans = None
+            kv_cache_compression_plans = self._take_kv_cache_compression_plans()
         model_runner_output = ModelRunnerOutput(
             req_ids=req_ids_output_copy,
             req_id_to_index=req_id_to_index_output_copy,

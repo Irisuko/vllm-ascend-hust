@@ -23,9 +23,9 @@ allocation if a requirement is not met:
 - Ascend 910B2 with the required torch-npu cache-write and
   fused-infer-attention operators. Eager execution supports CANN 8.5.1 and
   CANN 9.0; graph execution requires CANN 9.0.
-- V1 model runner with async scheduling, balance scheduling, and dual-batch
-  overlap explicitly disabled. Execution must be eager (`NONE`), `PIECEWISE`, or
-  `FULL_DECODE_ONLY` as described below.
+- V1 model runner with async scheduling enabled or disabled. Balance scheduling
+  and dual-batch overlap must remain disabled. Execution must be eager (`NONE`),
+  `PIECEWISE`, or `FULL_DECODE_ONLY` as described below.
 - `LlamaForCausalLM` with 32 layers, 32 query heads, 8 KV heads, head dimension
   128, and BF16 model/KV cache data.
 - Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
@@ -61,7 +61,7 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
   --pipeline-parallel-size 1 \
   --enforce-eager \
   --block-size 128 \
-  --no-async-scheduling \
+  --async-scheduling \
   --enable-chunked-prefill \
   --max-num-batched-tokens 2048 \
   --enable-prefix-caching \
@@ -154,6 +154,15 @@ traces report the hit length. A successful transaction logs semantic and
 physical token lengths, source/destination block counts, released references,
 retained hashed source blocks, and the later commit acknowledgement.
 
+With async scheduling, an intermediate prefill chunk may overlap the following
+batch normally. After the final compressing prefill, the scheduler temporarily
+fences only that request until its compression plan is validated and committed.
+Other requests continue to fill the second in-flight batch. The fenced request
+becomes decode-eligible only when the complete replacement block table can be
+sent as its commit acknowledgement. Abort or forced reset cancels the matching
+transaction, and a late output from that transaction is ignored by its scheduler
+step ID rather than being applied to a restarted request.
+
 ## Capacity and memory semantics
 
 Token selection is independent per KV head. GQA query-head scores are averaged
@@ -245,12 +254,13 @@ dependency change is required for rollback.
 
 ## Validation guidance
 
-Compare three separately recorded runs: the original code, the new code with
-compression disabled, and the new code with compression enabled. Fix the model,
-backend, dtype, parallel settings, prompt/output lengths, seeds, concurrency,
-warm-up, and repetition count. Record KV/device memory, TTFT, TPOT, throughput,
-end-to-end latency, and a long-context quality metric. Report distributions,
-not only the best run. CUDA results are not evidence for this provider.
+Compare the original code, compression disabled, compression with synchronous
+scheduling, and compression with async scheduling. Fix the model, backend,
+dtype, parallel settings, prompt/output lengths, seeds, concurrency, warm-up,
+and repetition count. Record KV/device memory, TTFT, TPOT, throughput,
+end-to-end latency, and a long-context quality metric. Verify greedy token IDs
+between async-off and async-on runs and report distributions, not only the best
+run. CUDA results are not evidence for this provider.
 
 The selection semantics were independently implemented from the observable
 PyramidKV behavior in `KVCache-Factory` commit

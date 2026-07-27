@@ -248,6 +248,19 @@ def test_successful_forward_finishes_plans_and_clears_step_view() -> None:
     assert runner._kv_cache_compression_destination_block_ids is None
 
 
+def test_runner_takes_an_independent_plan_snapshot_for_async_output() -> None:
+    runner = _runner(FakeProvider())
+    mutable_plans = ["plan"]
+    runner._kv_cache_compression_plans = mutable_plans
+
+    snapshot = runner._take_kv_cache_compression_plans()
+    mutable_plans.append("later-plan")
+
+    assert snapshot == ["plan"]
+    assert snapshot is not mutable_plans
+    assert runner._kv_cache_compression_plans is None
+
+
 def test_full_decode_buffers_keep_addresses_across_updates() -> None:
     provider = FakeProvider()
     runner = _runner(provider)

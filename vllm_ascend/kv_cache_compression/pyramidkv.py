@@ -1554,7 +1554,6 @@ class PyramidKVAscendProvider:
             context.decode_context_parallel_size == 1,
             f"decode context parallel size must be 1, got {context.decode_context_parallel_size}",
         )
-        require(not context.async_scheduling, "async scheduling is unsupported")
         require(not context.balance_scheduling, "balance scheduling is unsupported")
         require(not context.dbo_enabled, "dual-batch overlap is unsupported")
         require(not context.knorm_enabled, "VLLM_KNORM_ENABLED must be 0")
