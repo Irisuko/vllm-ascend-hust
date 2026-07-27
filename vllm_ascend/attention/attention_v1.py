@@ -17,6 +17,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import torch
 import torch_npu
@@ -212,6 +213,9 @@ class AscendMetadata:
 
     kvcomp_metadata: KVCompMetaData | None = None
 
+    # Optional provider-owned cache-write adapter. None on the default path.
+    kv_cache_compression_view: Any = None
+
 
 class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
     """
@@ -367,6 +371,7 @@ class AscendAttentionMetadataBuilder(AttentionMetadataBuilder[AscendMetadata]):
             causal=common_attn_metadata.causal,
             model_runner_type=self.model_config.runner_type,
             kvcomp_metadata=common_attn_metadata.kvcomp_metadata,
+            kv_cache_compression_view=(common_attn_metadata.kv_cache_compression_view),
         )
         return attn_metadata
 
@@ -1560,9 +1565,22 @@ class AscendAttentionBackendImpl(AttentionImpl):
         output_padded = None
         if key is not None and value is not None:
             output_padded = output
-            query, key, value, output_padded = self.reshape_and_cache(
-                query, key, value, kv_cache, attn_metadata, output
-            )
+            compression_view = attn_metadata.kv_cache_compression_view
+            skip_default_cache_write = False
+            if compression_view is not None:
+                skip_default_cache_write = compression_view.before_cache_write(
+                    layer=layer,
+                    backend=self,
+                    query=query,
+                    key=key,
+                    value=value,
+                    kv_cache=kv_cache,
+                    attn_metadata=attn_metadata,
+                )
+            if not skip_default_cache_write:
+                query, key, value, output_padded = self.reshape_and_cache(
+                    query, key, value, kv_cache, attn_metadata, output
+                )
         # pooling model branch
         if attn_metadata.model_runner_type == "pooling" and not attn_metadata.causal:
             attn_output = self._forward_encoder_attention(query, key, value, attn_metadata, output)

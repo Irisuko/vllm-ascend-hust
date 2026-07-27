@@ -203,6 +203,10 @@ class NPUPlatform(Platform):
         "deepseek_v4_fp8",
     ]
 
+    @classmethod
+    def get_kv_cache_compression_provider_factory(cls) -> str | None:
+        return "vllm_ascend.kv_cache_compression.registry:get_kv_cache_compression_provider"
+
     def is_sleep_mode_available(self) -> bool:
         # Sleep mode is only usable when camem resolved an ACL memcpy entrypoint.
         from vllm_ascend.device_allocator import camem

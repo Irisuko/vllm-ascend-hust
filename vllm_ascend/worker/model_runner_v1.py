@@ -262,6 +262,14 @@ class ExecuteModelState(NamedTuple):
 
 class NPUModelRunner(GPUModelRunner):
     def __init__(self, vllm_config: VllmConfig, device: torch.device):
+        # The worker attaches a validated provider only after the formal KV
+        # cache is initialized. Keeping these as plain None values avoids
+        # provider imports and device probing on the disabled/default path and
+        # during memory profiling.
+        self.kv_cache_compression_provider: Any = None
+        self._kv_cache_compression_step_view: Any = None
+        self._kv_cache_compression_plans: Any = None
+
         # TODO(qcs): These manual pad and unpad for GPUModelRunner are
         # used to expand some buffers, which need to be reverted after
         # the following PR is merged:
@@ -766,6 +774,10 @@ class NPUModelRunner(GPUModelRunner):
         return self.model
 
     def _update_states(self, scheduler_output: "SchedulerOutput") -> Callable | None:
+        provider = self.kv_cache_compression_provider
+        if provider is not None:
+            self._cleanup_kv_cache_compression_states(scheduler_output)
+
         # Temporary rewind guard for KV-load-failure recompute.
         # This can be removed after the upstream fix is merged.
         req_data = scheduler_output.scheduled_cached_reqs
@@ -780,7 +792,131 @@ class NPUModelRunner(GPUModelRunner):
                 if num_computed_tokens < req_state.num_computed_tokens:
                     req_state.prev_num_draft_len = 0
 
-        return super()._update_states(scheduler_output)
+        deferred_corrections = super()._update_states(scheduler_output)
+        if provider is not None:
+            self._apply_kv_cache_compression_block_table_updates(
+                scheduler_output
+            )
+        return deferred_corrections
+
+    def _cleanup_kv_cache_compression_states(
+        self, scheduler_output: "SchedulerOutput"
+    ) -> None:
+        provider = self.kv_cache_compression_provider
+        if provider is None:
+            return
+        request_ids = set(scheduler_output.finished_req_ids)
+        request_ids.update(scheduler_output.preempted_req_ids or set())
+        request_ids.update(
+            scheduler_output.scheduled_cached_reqs.resumed_req_ids
+        )
+        for req_id in request_ids:
+            provider.cleanup_request(req_id)
+
+    def _apply_kv_cache_compression_block_table_updates(
+        self, scheduler_output: "SchedulerOutput"
+    ) -> None:
+        updates = scheduler_output.kv_cache_compression_block_table_updates
+        if not updates:
+            return
+        provider = self.kv_cache_compression_provider
+        if provider is None:
+            raise RuntimeError(
+                "received KV cache compression block-table updates without an "
+                "active provider"
+            )
+        for req_id, replacement in updates.items():
+            request = self.requests.get(req_id)
+            if request is None:
+                raise RuntimeError(
+                    f"received a KV cache compression commit ack for unknown "
+                    f"request {req_id!r}"
+                )
+            req_index = self.input_batch.req_id_to_index.get(req_id)
+            if req_index is None:
+                raise RuntimeError(
+                    f"request {req_id!r} is missing from the persistent batch "
+                    "while applying a KV cache compression commit ack"
+                )
+            replacement_lists = tuple(list(group) for group in replacement)
+            request.block_ids = replacement_lists
+            self.input_batch.block_table.add_row(
+                replacement_lists, req_index
+            )
+            provider.mark_committed(
+                req_id,
+                tuple(tuple(group) for group in replacement_lists),
+            )
+
+    def _build_kv_cache_compression_view(
+        self,
+        *,
+        num_reqs: int,
+        num_scheduled_tokens_np: np.ndarray,
+    ) -> Any:
+        provider = self.kv_cache_compression_provider
+        if provider is None:
+            return None
+        if len(self.kv_cache_config.kv_cache_groups) != 1:
+            raise RuntimeError(
+                "KV cache compression requires exactly one cache group"
+            )
+
+        request_ids = tuple(self.input_batch.req_ids[:num_reqs])
+        if any(req_id is None for req_id in request_ids):
+            raise RuntimeError(
+                "KV cache compression encountered an empty persistent-batch row"
+            )
+        request_ids = tuple(str(req_id) for req_id in request_ids)
+        request_states = tuple(self.requests[req_id] for req_id in request_ids)
+        group = self.kv_cache_config.kv_cache_groups[0]
+        view = provider.build_attention_batch_view(
+            request_ids=request_ids,
+            query_lengths=tuple(
+                int(value) for value in num_scheduled_tokens_np[:num_reqs]
+            ),
+            semantic_num_tokens=tuple(
+                int(value)
+                for value in self.optimistic_seq_lens_cpu[:num_reqs].tolist()
+            ),
+            num_computed_tokens=tuple(
+                int(value)
+                for value in self.input_batch.num_computed_tokens_cpu[:num_reqs]
+            ),
+            num_prompt_tokens=tuple(
+                int(value)
+                for value in self.input_batch.num_prompt_tokens[:num_reqs]
+            ),
+            block_ids=tuple(
+                tuple(tuple(group_ids) for group_ids in state.block_ids)
+                for state in request_states
+            ),
+            layer_names=tuple(group.layer_names),
+            block_size=group.kv_cache_spec.block_size,
+        )
+        if not any(request.compress for request in view.requests):
+            return None
+        self._kv_cache_compression_step_view = view
+        return view
+
+    def _finish_kv_cache_compression_forward(self) -> None:
+        provider = self.kv_cache_compression_provider
+        view = self._kv_cache_compression_step_view
+        if provider is None or view is None:
+            return
+        group = self.kv_cache_config.kv_cache_groups[0]
+        config = self.vllm_config.kv_cache_compression_config
+        if config is None:
+            raise RuntimeError(
+                "KV cache compression provider is active while core config is "
+                "disabled"
+            )
+        self._kv_cache_compression_plans = provider.finish_model_forward(
+            view,
+            layer_names=tuple(group.layer_names),
+            schema_version=config.schema_version,
+        )
+        self._kv_cache_compression_step_view = None
 
     def _pad_query_start_loc_for_fia(
         self,
@@ -2005,6 +2141,15 @@ class NPUModelRunner(GPUModelRunner):
         scheduler_output: "SchedulerOutput",
         intermediate_tensors: IntermediateTensors | None = None,
     ) -> ModelRunnerOutput | IntermediateTensors | None:
+        if self.kv_cache_compression_provider is not None:
+            if (
+                self._kv_cache_compression_step_view is not None
+                or self._kv_cache_compression_plans is not None
+            ):
+                raise RuntimeError(
+                    "stale KV cache compression step state before model execution"
+                )
+
         if self.vllm_config.model_config.enable_return_routed_experts:
             if self.routed_experts_initialized:
                 self.routed_experts_capturer.clear_buffer()
@@ -2371,6 +2516,8 @@ class NPUModelRunner(GPUModelRunner):
             hidden_states = self._model_forward(
                 num_tokens_padded, input_ids, positions, intermediate_tensors, inputs_embeds, **model_kwargs
             )
+        if self.kv_cache_compression_provider is not None:
+            self._finish_kv_cache_compression_forward()
         with record_function_or_nullcontext("post process"):
             aux_hidden_states = None
             if self.use_aux_hidden_state_outputs:
@@ -2577,6 +2724,10 @@ class NPUModelRunner(GPUModelRunner):
             if self.speculative_config is not None:
                 self.finalize_kv_connector()
 
+        kv_cache_compression_plans = None
+        if self.kv_cache_compression_provider is not None:
+            kv_cache_compression_plans = self._kv_cache_compression_plans
+            self._kv_cache_compression_plans = None
         model_runner_output = ModelRunnerOutput(
             req_ids=req_ids_output_copy,
             req_id_to_index=req_id_to_index_output_copy,
@@ -2588,6 +2739,7 @@ class NPUModelRunner(GPUModelRunner):
             ec_connector_output=ec_connector_output if self.supports_mm_inputs else None,
             cudagraph_stats=cudagraph_stats,
             routed_experts=None,
+            kv_cache_compression_plans=kv_cache_compression_plans,
         )
         if self.ascend_config.profiling_chunk_config.need_timing and hasattr(self, '_execution_start_time'):
             self._sync_device()
@@ -3208,6 +3360,19 @@ class NPUModelRunner(GPUModelRunner):
             num_computed_tokens_cpu = None
             seq_lens_cpu_metadata = self.optimistic_seq_lens_cpu[:num_reqs_padded]
 
+        kv_cache_compression_view = None
+        if (
+            self.kv_cache_compression_provider is not None
+            and not for_cudagraph_capture
+            and num_scheduled_tokens_np is not None
+        ):
+            kv_cache_compression_view = (
+                self._build_kv_cache_compression_view(
+                    num_reqs=num_reqs,
+                    num_scheduled_tokens_np=num_scheduled_tokens_np,
+                )
+            )
+
         cm_base = AscendCommonAttentionMetadata(
             query_start_loc=self.query_start_loc.gpu[: num_reqs_padded + 1],
             query_start_loc_cpu=self.query_start_loc.cpu[: num_reqs_padded + 1],
@@ -3235,6 +3400,7 @@ class NPUModelRunner(GPUModelRunner):
             attn_state=self.attn_state,
             decode_token_per_req=self.decode_token_per_req,
             prefill_context_parallel_metadata=self.long_seq_metadata,
+            kv_cache_compression_view=kv_cache_compression_view,
         )
 
         if logits_indices is not None and self.cache_config.kv_sharing_fast_prefill:
