@@ -7,11 +7,13 @@ cache blocks after a complete prefill. It is disabled unless
 
 The first release keeps token IDs, sequence positions, RoPE, sampling, the KV
 cache tensor shape, and the selected attention backend unchanged. During
-prefill, every layer computes attention from the original full Q/K/V and writes
-a compact K/V representation for later decode. The scheduler releases only the
-common tail blocks that no layer needs. During decode, each layer appends to
-its own compact physical length while the request continues to use its semantic
-sequence length.
+prefill, every layer computes attention from the original full Q/K/V. With an
+unchunked prefill it writes a compact K/V representation immediately. With
+chunked prefill, intermediate chunks keep full K/V and the final chunk compacts
+the complete prompt only after the whole model forward succeeds. The scheduler
+releases only the common tail blocks that no layer needs. During decode, each
+layer appends to its own compact physical length while the request continues to
+use its semantic sequence length.
 
 ## Supported configuration
 
@@ -29,14 +31,17 @@ allocation if a requirement is not met:
 - Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
   size 128.
 - TP, PP, PCP, and DCP all equal to 1.
-- Prefix caching, chunked prefill, sliding-window attention, speculative
-  decoding, KV transfer, KV offload, KNorm, and quantized KV cache disabled.
+- Chunked prefill is supported on CANN 9.0 with default FIA. It continues to
+  fail closed on CANN 8.5.1; unchunked eager execution remains supported there.
+- Prefix caching, sliding-window attention, speculative decoding, KV transfer,
+  KV offload, KNorm, and quantized KV cache disabled.
 - Graph execution uses the default fused-infer-attention (FIA) path and an
   empty `pa_shape_list`. Paged-attention graph shapes, `FULL`, and
   `FULL_AND_PIECEWISE` are not supported.
-- A complete, unchunked prefill and ordinary one-token decode. A batch may
-  contain multiple requests and may mix committed compact decodes with new
-  complete prefills.
+- Complete or chunked prefill and ordinary one-token decode. A batch may
+  contain committed compact decodes, intermediate/final prefill chunks, and
+  requests below the compression threshold. Dynamic chunk sizes and a final
+  chunk of one token are supported.
 
 Other models, devices, backends, layouts, dtypes, or feature combinations are
 not silently downgraded.
@@ -55,7 +60,8 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
   --enforce-eager \
   --block-size 128 \
   --no-async-scheduling \
-  --no-enable-chunked-prefill \
+  --enable-chunked-prefill \
+  --max-num-batched-tokens 2048 \
   --no-enable-prefix-caching \
   --kv-cache-compression-config '{
     "schema_version": 1,
@@ -73,7 +79,10 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
   }'
 ```
 
-The command above selects eager execution. On CANN 9.0, remove
+The command above selects eager chunked-prefill execution and therefore
+requires CANN 9.0. For unchunked execution, use
+`--no-enable-chunked-prefill`; that mode also supports eager CANN 8.5.1. On
+CANN 9.0, remove
 `--enforce-eager` and add one of the following compilation configurations to
 enable graph execution:
 
@@ -137,8 +146,9 @@ schema and scheduler/worker transaction are versioned together.
 
 At startup, logs include the provider, schema, actual platform/backend/model/
 dtype/cache layout/block size, compatibility result, and complete provider
-configuration. After a successful prefill, the scheduler logs the semantic and
-physical token lengths and released block IDs.
+configuration. They also include whether chunked prefill is enabled and its
+query-tail staging bound. After a successful final prefill chunk, the scheduler
+logs the semantic and physical token lengths and released block IDs.
 
 ## Capacity and memory semantics
 
@@ -160,6 +170,21 @@ the original attention and cache-write path and does not emit a compression
 plan. In `FULL_DECODE_ONLY`, the runner still computes an exact read-only slot
 view for those requests so replay cannot use stale CPU slot metadata.
 
+For a compressible chunked request, intermediate chunks write their full K/V
+to the semantic cache positions and emit no compression plan. The provider
+retains only the final `window_size` query vectors for each layer. With the
+default Llama-3 shape this committed query tail is about 2 MiB per request.
+Step-local transactional staging can coexist with the committed tail, giving a
+worst-case bound of about 4 MiB per active request or 128 MiB at
+`max_num_seqs=32`. The chunk end, block table, and query tail are committed only
+after all 32 attention layers and the model forward succeed.
+
+The final chunk reconstructs the complete key from paged cache plus the current
+chunk and computes the same per-head indices as the unchunked path. It first
+finishes attention with full history, then compacts the complete paged K/V in
+place and emits the existing schema-v1 plan. No partial-prefill plan is sent to
+the scheduler, and no request-long dense K/V copy is retained.
+
 For a mixed prefill/decode batch, compact decodes use their layer-specific
 physical slots and lengths. A new prefill remains complete in paged K/V while
 the existing `PrefillCacheHit` attention runs. Only after the whole model
@@ -169,9 +194,12 @@ required for its next physical token; shrinking, reordering, or adding excess
 blocks is an error before the cache write.
 
 For `FULL_DECODE_ONLY`, only all-decode scheduler steps enter the full graph.
-Mixed prefill/decode steps remain outside that graph. The request state advances
-only after the complete model forward succeeds; graph preparation or execution
-failures do not acknowledge a decode step.
+Any semantic prefill, including a one-token final chunk, disables `FULL` for
+that step and uses the dynamic/PIECEWISE path. Mixed prefill/decode steps remain
+outside that graph. Once the plan receives its core commit acknowledgement,
+ordinary decode may resume `FULL` replay. The request state advances only after
+the complete model forward succeeds; graph preparation or execution failures
+do not acknowledge a prefill chunk or decode step.
 
 ## Failure and rollback behavior
 

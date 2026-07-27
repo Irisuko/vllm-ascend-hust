@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import regex as re
 import torch
 import torch.nn.functional as F
+from vllm.logger import logger
 from vllm.v1.kv_cache_compression import (
     KVCacheCompressionCompatibility,
     KVCacheCompressionPlan,
@@ -169,6 +170,103 @@ class PyramidKVSelection:
     compressed: bool
 
 
+def select_pyramid_indices(
+    query_window: torch.Tensor,
+    key: torch.Tensor,
+    config: PyramidKVAscendConfig,
+    *,
+    layer_index: int,
+    num_hidden_layers: int,
+) -> tuple[torch.Tensor | None, int]:
+    """Select retained history positions from the final query window."""
+    if query_window.ndim != 4 or key.ndim != 4:
+        raise ValueError("query_window and key must have [batch, heads, tokens, dim]")
+    if query_window.shape[0] != key.shape[0] or query_window.shape[-1] != key.shape[-1]:
+        raise ValueError(f"query/key batch and head dimensions must match, got {query_window.shape} and {key.shape}")
+    num_query_heads = query_window.shape[1]
+    num_kv_heads = key.shape[1]
+    if num_query_heads % num_kv_heads != 0:
+        raise ValueError(f"query heads {num_query_heads} must be divisible by KV heads {num_kv_heads}")
+
+    prompt_tokens = key.shape[2]
+    retained_tokens = config.retained_tokens(prompt_tokens, layer_index, num_hidden_layers)
+    if retained_tokens >= prompt_tokens:
+        return None, prompt_tokens
+    if query_window.shape[2] != config.window_size:
+        raise ValueError(
+            "compressed PyramidKV selection requires exactly window_size query "
+            f"tokens, got {query_window.shape[2]} and {config.window_size}"
+        )
+
+    groups = num_query_heads // num_kv_heads
+    grouped_query = query_window.reshape(
+        query_window.shape[0],
+        num_kv_heads,
+        groups,
+        config.window_size,
+        query_window.shape[-1],
+    )
+    scores = torch.matmul(
+        grouped_query,
+        key.unsqueeze(2).transpose(-2, -1),
+    ) / math.sqrt(query_window.shape[-1])
+    causal_mask = torch.triu(
+        torch.full(
+            (config.window_size, config.window_size),
+            torch.finfo(scores.dtype).min,
+            dtype=scores.dtype,
+            device=scores.device,
+        ),
+        diagonal=1,
+    )
+    scores[..., -config.window_size :] += causal_mask
+    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(query_window.dtype)
+    history_scores = probabilities[..., : -config.window_size].sum(dim=-2)
+    history_scores = history_scores.mean(dim=2)
+    pooled_scores = F.max_pool1d(
+        history_scores,
+        kernel_size=config.kernel_size,
+        stride=1,
+        padding=config.kernel_size // 2,
+    )
+
+    retained_past = retained_tokens - config.window_size
+    selected = pooled_scores.topk(retained_past, dim=-1).indices
+    return selected, retained_tokens
+
+
+def materialize_pyramid_kv(
+    key: torch.Tensor,
+    value: torch.Tensor,
+    selected_past_indices: torch.Tensor,
+    retained_tokens: int,
+    window_size: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Materialize compact K/V from provider-selected history positions."""
+    if key.shape != value.shape or key.ndim != 4:
+        raise ValueError("key and value must be matching [batch, heads, tokens, dim] tensors")
+    retained_past = retained_tokens - window_size
+    expected_shape = (key.shape[0], key.shape[1], retained_past)
+    if tuple(selected_past_indices.shape) != expected_shape:
+        raise ValueError(f"selected indices must have shape {expected_shape}, got {tuple(selected_past_indices.shape)}")
+    gather_index = selected_past_indices.unsqueeze(-1).expand(-1, -1, -1, key.shape[-1])
+    compact_key = torch.cat(
+        (
+            key[:, :, :-window_size, :].gather(2, gather_index),
+            key[:, :, -window_size:, :],
+        ),
+        dim=2,
+    )
+    compact_value = torch.cat(
+        (
+            value[:, :, :-window_size, :].gather(2, gather_index),
+            value[:, :, -window_size:, :],
+        ),
+        dim=2,
+    )
+    return compact_key, compact_value
+
+
 def select_pyramid_kv(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -185,14 +283,15 @@ def select_pyramid_kv(
         raise ValueError(f"key and value shapes must match, got {key.shape} and {value.shape}")
     if query.shape[0] != key.shape[0] or query.shape[2:] != key.shape[2:]:
         raise ValueError(f"query/key batch, token, and head dimensions must match, got {query.shape} and {key.shape}")
-    num_query_heads = query.shape[1]
-    num_kv_heads = key.shape[1]
-    if num_query_heads % num_kv_heads != 0:
-        raise ValueError(f"query heads {num_query_heads} must be divisible by KV heads {num_kv_heads}")
-
     prompt_tokens = query.shape[2]
-    retained_tokens = config.retained_tokens(prompt_tokens, layer_index, num_hidden_layers)
-    if retained_tokens >= prompt_tokens:
+    selected, retained_tokens = select_pyramid_indices(
+        query[:, :, -config.window_size :, :],
+        key,
+        config,
+        layer_index=layer_index,
+        num_hidden_layers=num_hidden_layers,
+    )
+    if selected is None:
         return PyramidKVSelection(
             key=key,
             value=value,
@@ -202,55 +301,12 @@ def select_pyramid_kv(
         )
     if prompt_tokens <= config.window_size:
         raise ValueError(f"prompt length {prompt_tokens} must exceed window_size {config.window_size}")
-
-    groups = num_query_heads // num_kv_heads
-    query_window = query[:, :, -config.window_size :, :].reshape(
-        query.shape[0],
-        num_kv_heads,
-        groups,
+    compact_key, compact_value = materialize_pyramid_kv(
+        key,
+        value,
+        selected,
+        retained_tokens,
         config.window_size,
-        query.shape[-1],
-    )
-    scores = torch.matmul(
-        query_window,
-        key.unsqueeze(2).transpose(-2, -1),
-    ) / math.sqrt(query.shape[-1])
-    causal_mask = torch.triu(
-        torch.full(
-            (config.window_size, config.window_size),
-            torch.finfo(scores.dtype).min,
-            dtype=scores.dtype,
-            device=scores.device,
-        ),
-        diagonal=1,
-    )
-    scores[..., -config.window_size :] += causal_mask
-    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
-    history_scores = probabilities[..., : -config.window_size].sum(dim=-2)
-    history_scores = history_scores.mean(dim=2)
-    pooled_scores = F.max_pool1d(
-        history_scores,
-        kernel_size=config.kernel_size,
-        stride=1,
-        padding=config.kernel_size // 2,
-    )
-
-    retained_past = retained_tokens - config.window_size
-    selected = pooled_scores.topk(retained_past, dim=-1).indices
-    gather_index = selected.unsqueeze(-1).expand(-1, -1, -1, key.shape[-1])
-    compact_key = torch.cat(
-        (
-            key[:, :, : -config.window_size, :].gather(2, gather_index),
-            key[:, :, -config.window_size :, :],
-        ),
-        dim=2,
-    )
-    compact_value = torch.cat(
-        (
-            value[:, :, : -config.window_size, :].gather(2, gather_index),
-            value[:, :, -config.window_size :, :],
-        ),
-        dim=2,
     )
     return PyramidKVSelection(
         key=compact_key,
@@ -304,6 +360,29 @@ def _slot_for_position(
     return block_ids[block_index] * block_size + block_offset
 
 
+def _gather_paged_prefix(
+    cache: torch.Tensor,
+    block_ids: tuple[int, ...],
+    num_tokens: int,
+    block_size: int,
+) -> torch.Tensor:
+    """Gather one request prefix from standard paged KV storage."""
+    if cache.ndim != 4 or cache.shape[1] != block_size:
+        raise RuntimeError(
+            "PyramidKV chunked prefill requires [blocks, block, heads, dim] "
+            f"cache with block_size {block_size}, got {tuple(cache.shape)}"
+        )
+    if num_tokens <= 0:
+        return cache.new_empty((0, cache.shape[2], cache.shape[3]))
+    required_blocks = (num_tokens + block_size - 1) // block_size
+    if required_blocks > len(block_ids):
+        raise RuntimeError(
+            f"PyramidKV needs {required_blocks} blocks for {num_tokens} cached tokens, got {len(block_ids)}"
+        )
+    block_index = torch.tensor(block_ids[:required_blocks], dtype=torch.long, device=cache.device)
+    return cache.index_select(0, block_index).reshape(-1, cache.shape[2], cache.shape[3])[:num_tokens]
+
+
 @dataclass
 class PyramidKVLayerState:
     physical_num_tokens: int
@@ -314,6 +393,9 @@ class PyramidKVRequestState:
     request_id: str
     semantic_num_tokens: int
     expected_block_ids: tuple[tuple[int, ...], ...]
+    prefill_num_computed_tokens: int = 0
+    prefill_query_tail: torch.Tensor | None = None
+    prefill_query_tail_length: int = 0
     layers: dict[str, PyramidKVLayerState] = field(default_factory=dict)
     plan_emitted: bool = False
     committed: bool = False
@@ -327,9 +409,23 @@ class PyramidKVAttentionRequest:
     query_start: int
     query_end: int
     semantic_num_tokens: int
+    num_computed_tokens: int
+    num_prompt_tokens: int
     block_ids: tuple[int, ...]
     is_prefill: bool
     compress: bool = True
+
+    @property
+    def query_length(self) -> int:
+        return self.query_end - self.query_start
+
+    @property
+    def is_complete_prefill(self) -> bool:
+        return self.is_prefill and self.num_computed_tokens == 0 and self.query_length == self.num_prompt_tokens
+
+    @property
+    def is_final_prefill_chunk(self) -> bool:
+        return self.is_prefill and self.semantic_num_tokens == self.num_prompt_tokens
 
 
 @dataclass(frozen=True)
@@ -357,6 +453,10 @@ class PyramidKVAttentionBatchView:
     block_size: int = SUPPORTED_BLOCK_SIZE
     completed_decode_layers: set[str] = field(default_factory=set)
     deferred_prefills: list[PyramidKVDeferredPrefill] = field(default_factory=list)
+    completed_prefill_lengths: dict[str, dict[str, int]] = field(default_factory=dict)
+    pending_query_tails: dict[str, torch.Tensor] = field(default_factory=dict)
+    pending_query_tail_lengths: dict[str, int] = field(default_factory=dict)
+    completed_prefill_query_layers: dict[str, set[str]] = field(default_factory=dict)
     decode_slot_values_by_layer: dict[str, tuple[int, ...]] = field(default_factory=dict)
     decode_lengths_by_layer: dict[str, list[int]] = field(default_factory=dict)
     decode_slot_tensors_by_layer: dict[str, torch.Tensor] = field(default_factory=dict)
@@ -493,6 +593,115 @@ class PyramidKVAttentionBatchView:
             )
         return slots, lengths
 
+    def _record_prefill_length(self, request_id: str, layer_name: str, retained_tokens: int) -> None:
+        layer_lengths = self.completed_prefill_lengths.setdefault(request_id, {})
+        if layer_name in layer_lengths:
+            raise RuntimeError(f"request {request_id!r} layer {layer_name!r} completed twice")
+        layer_lengths[layer_name] = retained_tokens
+
+    def _stage_query_tail(
+        self,
+        request: PyramidKVAttentionRequest,
+        layer_name: str,
+        request_query: torch.Tensor,
+    ) -> torch.Tensor:
+        """Stage one layer's next query tail without advancing provider state."""
+        layer_index = self.layer_indices[layer_name]
+        completed_layers = self.completed_prefill_query_layers.setdefault(request.request_id, set())
+        if layer_name in completed_layers:
+            raise RuntimeError(f"request {request.request_id!r} layer {layer_name!r} staged its query tail twice")
+        state = self.provider.get_request_state(request.request_id)
+        previous_tail = state.prefill_query_tail
+        previous_length = state.prefill_query_tail_length
+        if request.num_computed_tokens != state.prefill_num_computed_tokens:
+            raise RuntimeError(
+                f"request {request.request_id!r} chunk starts at "
+                f"{request.num_computed_tokens}, expected "
+                f"{state.prefill_num_computed_tokens}"
+            )
+        if request.num_computed_tokens == 0:
+            if previous_tail is not None or previous_length != 0:
+                raise RuntimeError(f"request {request.request_id!r} has stale prefill query state")
+            combined = request_query
+        else:
+            if previous_tail is None or not 0 < previous_length <= self.provider.config.window_size:
+                raise RuntimeError(f"request {request.request_id!r} is missing its committed query tail")
+            if (
+                previous_tail.device != request_query.device
+                or previous_tail.dtype != request_query.dtype
+                or previous_tail.shape[0] != self.num_hidden_layers
+                or previous_tail.shape[1] != self.provider.config.window_size
+                or tuple(previous_tail.shape[2:]) != tuple(request_query.shape[1:])
+            ):
+                raise RuntimeError(
+                    f"request {request.request_id!r} query tail metadata does not match the current chunk"
+                )
+            combined = torch.cat(
+                (previous_tail[layer_index, :previous_length], request_query),
+                dim=0,
+            )
+
+        tail = combined[-self.provider.config.window_size :]
+        tail_length = tail.shape[0]
+        staged = self.pending_query_tails.get(request.request_id)
+        if staged is None:
+            staged = torch.empty(
+                (
+                    self.num_hidden_layers,
+                    self.provider.config.window_size,
+                    request_query.shape[1],
+                    request_query.shape[2],
+                ),
+                dtype=request_query.dtype,
+                device=request_query.device,
+            )
+            self.pending_query_tails[request.request_id] = staged
+            self.pending_query_tail_lengths[request.request_id] = tail_length
+        elif self.pending_query_tail_lengths[request.request_id] != tail_length:
+            raise RuntimeError(f"request {request.request_id!r} produced inconsistent query tail lengths across layers")
+        staged[layer_index, :tail_length].copy_(tail)
+        completed_layers.add(layer_name)
+        return tail
+
+    def _select_final_chunk(
+        self,
+        request: PyramidKVAttentionRequest,
+        layer_name: str,
+        request_query: torch.Tensor,
+        request_key: torch.Tensor,
+        key_cache: torch.Tensor,
+    ) -> tuple[torch.Tensor, int]:
+        query_tail = self._stage_query_tail(request, layer_name, request_query)
+        if query_tail.shape[0] != self.provider.config.window_size:
+            raise RuntimeError(
+                f"request {request.request_id!r} final query tail has "
+                f"{query_tail.shape[0]} tokens, expected "
+                f"{self.provider.config.window_size}"
+            )
+        prefix_key = _gather_paged_prefix(
+            key_cache,
+            request.block_ids,
+            request.num_computed_tokens,
+            self.block_size,
+        )
+        full_key = torch.cat((prefix_key, request_key), dim=0)
+        if full_key.shape[0] != request.num_prompt_tokens:
+            raise RuntimeError(
+                f"request {request.request_id!r} reconstructed "
+                f"{full_key.shape[0]} key tokens, expected "
+                f"{request.num_prompt_tokens}"
+            )
+        selected, retained_tokens = select_pyramid_indices(
+            query_tail.permute(1, 0, 2).unsqueeze(0),
+            full_key.permute(1, 0, 2).unsqueeze(0),
+            self.provider.config,
+            layer_index=self.layer_indices[layer_name],
+            num_hidden_layers=self.num_hidden_layers,
+        )
+        if selected is None:
+            raise RuntimeError(f"request {request.request_id!r} did not cross the PyramidKV compression threshold")
+        return selected, retained_tokens
+
     def before_cache_write(
         self,
         *,
@@ -537,20 +746,25 @@ class PyramidKVAttentionBatchView:
             )
 
         phases = {request.is_prefill for request in self.requests}
-        is_mixed = len(phases) > 1
         is_decode_only = phases == {False}
         state_name = getattr(attn_metadata.attn_state, "name", "")
-        if is_mixed and state_name != "PrefillCacheHit":
+        if is_decode_only:
+            if state_name != "DecodeOnly":
+                raise RuntimeError(
+                    f"PyramidKV decode requires DecodeOnly attention state, got {attn_metadata.attn_state}"
+                )
+        elif state_name == "PrefillNoCache":
+            if False in phases or any(request.num_computed_tokens != 0 for request in self.requests):
+                raise RuntimeError("PyramidKV PrefillNoCache metadata cannot contain cached prefill or decode requests")
+        elif state_name == "DecodeOnly":
+            if any(request.query_length != 1 for request in self.requests):
+                raise RuntimeError("PyramidKV DecodeOnly mixed metadata requires one token for every request")
+        elif state_name not in {"ChunkedPrefill", "PrefillCacheHit"}:
             raise RuntimeError(
-                "PyramidKV mixed prefill/decode requires PrefillCacheHit "
-                f"attention state, got {attn_metadata.attn_state}"
+                "PyramidKV prefill requires PrefillNoCache, ChunkedPrefill, "
+                "PrefillCacheHit, or one-token DecodeOnly metadata; got "
+                f"{attn_metadata.attn_state}"
             )
-        if phases == {True} and state_name != "PrefillNoCache":
-            raise RuntimeError(
-                f"PyramidKV full prefill requires PrefillNoCache attention state, got {attn_metadata.attn_state}"
-            )
-        if phases == {False} and state_name != "DecodeOnly":
-            raise RuntimeError(f"PyramidKV decode requires DecodeOnly attention state, got {attn_metadata.attn_state}")
 
         if is_decode_only:
             actual_tokens = attn_metadata.num_actual_tokens
@@ -575,8 +789,10 @@ class PyramidKVAttentionBatchView:
         compact_keys: list[torch.Tensor] = []
         compact_values: list[torch.Tensor] = []
         slot_tensors: list[torch.Tensor] = []
-        completed_prefills: list[tuple[str, PyramidKVSelection]] = []
         decode_lengths = list(attn_metadata.seq_lens_list)
+        compact_before_attention = state_name == "PrefillNoCache" and all(
+            request.is_complete_prefill for request in self.requests
+        )
 
         for request_index, request in enumerate(self.requests):
             if not 0 <= request.query_start < request.query_end <= key.shape[0]:
@@ -588,59 +804,90 @@ class PyramidKVAttentionBatchView:
             request_value = value[request.query_start : request.query_end]
             if request.is_prefill and request.compress:
                 request_state = self.provider.get_request_state(request.request_id)
-                if (
-                    request.semantic_num_tokens != request_state.semantic_num_tokens
-                    or request.query_end - request.query_start != request.semantic_num_tokens
-                ):
-                    raise RuntimeError(f"request {request.request_id!r} is not a complete full prefill")
-                if request.block_ids != request_state.expected_block_ids[0]:
+                if request.num_prompt_tokens != request_state.semantic_num_tokens:
                     raise RuntimeError(
-                        f"request {request.request_id!r} prefill block table does not match provider state"
+                        f"request {request.request_id!r} prompt length changed "
+                        f"from {request_state.semantic_num_tokens} to "
+                        f"{request.num_prompt_tokens}"
                     )
                 request_query = query[request.query_start : request.query_end]
-                selection = select_pyramid_kv(
-                    request_query.permute(1, 0, 2).unsqueeze(0),
-                    request_key.permute(1, 0, 2).unsqueeze(0),
-                    request_value.permute(1, 0, 2).unsqueeze(0),
-                    self.provider.config,
-                    layer_index=self.layer_indices[layer_name],
-                    num_hidden_layers=self.num_hidden_layers,
-                )
-                if not selection.compressed:
-                    raise RuntimeError(
-                        f"request {request.request_id!r} did not cross the PyramidKV compression threshold"
+                if request.is_complete_prefill:
+                    selection = select_pyramid_kv(
+                        request_query.permute(1, 0, 2).unsqueeze(0),
+                        request_key.permute(1, 0, 2).unsqueeze(0),
+                        request_value.permute(1, 0, 2).unsqueeze(0),
+                        self.provider.config,
+                        layer_index=self.layer_indices[layer_name],
+                        num_hidden_layers=self.num_hidden_layers,
                     )
-                if is_mixed:
+                    if not selection.compressed:
+                        raise RuntimeError(
+                            f"request {request.request_id!r} did not cross the PyramidKV compression threshold"
+                        )
+                    selected = selection.selected_past_indices
+                    retained_tokens = selection.retained_tokens
+                    if selected is None:
+                        raise RuntimeError(f"request {request.request_id!r} has no selected history indices")
+                elif request.is_final_prefill_chunk:
+                    if len(kv_cache) < 2:
+                        raise RuntimeError("PyramidKV final chunk requires K/V cache tensors")
+                    selected, retained_tokens = self._select_final_chunk(
+                        request,
+                        layer_name,
+                        request_query,
+                        request_key,
+                        kv_cache[0],
+                    )
+                else:
+                    self._stage_query_tail(request, layer_name, request_query)
+                    selected = None
+                    retained_tokens = 0
+
+                if compact_before_attention:
+                    if not request.is_complete_prefill or selected is None:
+                        raise RuntimeError("PyramidKV can only compact complete uncached prefills before attention")
+                    compact_key, compact_value = materialize_pyramid_kv(
+                        request_key.permute(1, 0, 2).unsqueeze(0),
+                        request_value.permute(1, 0, 2).unsqueeze(0),
+                        selected,
+                        retained_tokens,
+                        self.provider.config.window_size,
+                    )
+                    compact_keys.append(compact_key.squeeze(0).permute(1, 0, 2))
+                    compact_values.append(compact_value.squeeze(0).permute(1, 0, 2))
+                    slot_tensors.append(
+                        _slots_for_positions(
+                            request.block_ids,
+                            0,
+                            retained_tokens,
+                            self.block_size,
+                            key.device,
+                        )
+                    )
+                    self._record_prefill_length(request.request_id, layer_name, retained_tokens)
+                else:
                     compact_keys.append(request_key)
                     compact_values.append(request_value)
                     slot_tensors.append(
                         attn_metadata.slot_mapping[request.query_start : request.query_end].to(dtype=torch.int32)
                     )
-                    self.deferred_prefills.append(
-                        PyramidKVDeferredPrefill(
-                            request_id=request.request_id,
-                            layer=layer,
-                            backend=backend,
-                            kv_cache=kv_cache,
-                            block_ids=request.block_ids,
-                            semantic_num_tokens=request.semantic_num_tokens,
-                            retained_tokens=selection.retained_tokens,
-                            selected_past_indices=selection.selected_past_indices,
+                    if request.is_final_prefill_chunk:
+                        if selected is None:
+                            raise RuntimeError(
+                                f"request {request.request_id!r} final prefill has no selected history indices"
+                            )
+                        self.deferred_prefills.append(
+                            PyramidKVDeferredPrefill(
+                                request_id=request.request_id,
+                                layer=layer,
+                                backend=backend,
+                                kv_cache=kv_cache,
+                                block_ids=request.block_ids,
+                                semantic_num_tokens=request.num_prompt_tokens,
+                                retained_tokens=retained_tokens,
+                                selected_past_indices=selected,
+                            )
                         )
-                    )
-                else:
-                    compact_keys.append(selection.key.squeeze(0).permute(1, 0, 2))
-                    compact_values.append(selection.value.squeeze(0).permute(1, 0, 2))
-                    slot_tensors.append(
-                        _slots_for_positions(
-                            request.block_ids,
-                            0,
-                            selection.retained_tokens,
-                            self.block_size,
-                            key.device,
-                        )
-                    )
-                    completed_prefills.append((request.request_id, selection))
             elif not request.is_prefill and request.compress:
                 if request.query_end - request.query_start != 1:
                     raise RuntimeError("PyramidKV supports exactly one decode token per request")
@@ -691,8 +938,6 @@ class PyramidKVAttentionBatchView:
         write_value = torch.cat(compact_values, dim=0)
         write_slots = torch.cat(slot_tensors, dim=0)
         backend.do_kv_cache_update(layer, write_key, write_value, kv_cache, write_slots)
-        for request_id, selection in completed_prefills:
-            self.provider.record_prefill_layer(request_id, layer_name, selection)
         if False in phases:
             if any(request.compress and not request.is_prefill for request in self.requests):
                 self.completed_decode_layers.add(layer_name)
@@ -773,16 +1018,58 @@ class PyramidKVAscendProvider:
             is_prefill = phases[index]
             compress = False
             if is_prefill:
-                if computed != 0 or query_length != prompt or semantic_length != prompt:
+                if semantic_length != computed + query_length or semantic_length > prompt:
                     raise RuntimeError(
-                        f"request {request_id!r} must execute one complete full prefill before PyramidKV compression"
+                        f"request {request_id!r} prefill must cover the exact "
+                        f"range [{computed}, {computed + query_length}) within "
+                        f"prompt length {prompt}, got semantic length "
+                        f"{semantic_length}"
                     )
                 compress = any(
                     self.config.retained_tokens(prompt, layer_index, len(layer_names)) < prompt
                     for layer_index in range(len(layer_names))
                 )
                 if compress:
-                    self.begin_request(request_id, semantic_length, request_blocks)
+                    request_state = self._requests.get(request_id)
+                    if request_state is None:
+                        if computed != 0:
+                            raise RuntimeError(
+                                f"request {request_id!r} starts PyramidKV "
+                                f"chunked prefill at {computed} without state"
+                            )
+                        request_state = self.begin_request(request_id, prompt, request_blocks)
+                    if request_state.plan_emitted or request_state.committed:
+                        raise RuntimeError(f"request {request_id!r} prefill state is sealed")
+                    if request_state.semantic_num_tokens != prompt:
+                        raise RuntimeError(
+                            f"request {request_id!r} prompt length changed "
+                            f"from {request_state.semantic_num_tokens} to "
+                            f"{prompt}"
+                        )
+                    if request_state.prefill_num_computed_tokens != computed:
+                        raise RuntimeError(
+                            f"request {request_id!r} chunk starts at "
+                            f"{computed}, expected "
+                            f"{request_state.prefill_num_computed_tokens}"
+                        )
+                    expected_blocks = request_state.expected_block_ids[0]
+                    actual_blocks = request_blocks[0]
+                    if (
+                        len(actual_blocks) < len(expected_blocks)
+                        or actual_blocks[: len(expected_blocks)] != expected_blocks
+                    ):
+                        raise RuntimeError(
+                            f"request {request_id!r} prefill block table is not "
+                            "a monotonic extension: expected prefix "
+                            f"{expected_blocks}, got {actual_blocks}"
+                        )
+                    required_blocks = (semantic_length + block_size - 1) // block_size
+                    if len(actual_blocks) < required_blocks:
+                        raise RuntimeError(
+                            f"request {request_id!r} needs {required_blocks} "
+                            f"blocks through token {semantic_length}, got "
+                            f"{len(actual_blocks)}"
+                        )
             else:
                 if query_length != 1 or semantic_length != computed + 1:
                     raise RuntimeError(f"request {request_id!r} must execute ordinary one-token decode")
@@ -800,12 +1087,31 @@ class PyramidKVAscendProvider:
                     query_start=query_start,
                     query_end=query_end,
                     semantic_num_tokens=semantic_length,
+                    num_computed_tokens=computed,
+                    num_prompt_tokens=prompt,
                     block_ids=request_blocks[0],
                     is_prefill=is_prefill,
                     compress=compress,
                 )
             )
             query_start = query_end
+
+        compressing_prefills = [request for request in requests if request.is_prefill and request.compress]
+        if compressing_prefills:
+            logger.info(
+                "Prepared PyramidKV prefill step: chunks=%s mixed_decode=%s",
+                tuple(
+                    (
+                        request.request_id,
+                        request.num_computed_tokens,
+                        request.semantic_num_tokens,
+                        request.num_prompt_tokens,
+                        "final" if request.is_final_prefill_chunk else "intermediate",
+                    )
+                    for request in compressing_prefills
+                ),
+                any(not request.is_prefill for request in requests),
+            )
 
         return PyramidKVAttentionBatchView(
             provider=self,
@@ -822,15 +1128,52 @@ class PyramidKVAscendProvider:
         layer_names: tuple[str, ...],
         schema_version: int,
     ) -> list[KVCacheCompressionPlan] | None:
-        """Seal full-prefill plans or atomically advance successful decodes."""
-        self._compact_deferred_prefills(view)
-        plans: list[KVCacheCompressionPlan] = []
+        """Commit successful prefill chunks or atomically advance decodes."""
         expected_layers = set(layer_names)
+        deferred_layers: dict[str, set[str]] = {}
+        for deferred_prefill in view.deferred_prefills:
+            layers = deferred_layers.setdefault(deferred_prefill.request_id, set())
+            layer_name = deferred_prefill.layer.layer_name
+            if layer_name in layers:
+                raise RuntimeError(
+                    f"request {deferred_prefill.request_id!r} deferred layer {layer_name!r} was recorded twice"
+                )
+            layers.add(layer_name)
+
+        # Validate the whole step before mutating persistent provider state or
+        # compacting paged cache. The runner calls this only after model forward
+        # succeeds, so a failed/partial forward leaves the prior chunk committed.
         for request in view.requests:
             if not request.compress:
                 continue
             if request.is_prefill:
-                plans.append(self.finalize_plan(request.request_id, layer_names, schema_version))
+                query_layers = view.completed_prefill_query_layers.get(request.request_id, set())
+                if request.is_complete_prefill:
+                    completed = set(view.completed_prefill_lengths.get(request.request_id, {}))
+                    recorded_deferred_layers = deferred_layers.get(request.request_id, set())
+                    if completed != expected_layers and recorded_deferred_layers != expected_layers:
+                        raise RuntimeError(
+                            f"request {request.request_id!r} full prefill "
+                            "completed/deferred layers "
+                            f"{tuple(sorted(completed))}/"
+                            f"{tuple(sorted(recorded_deferred_layers))}, "
+                            "expected all 32 layers"
+                        )
+                else:
+                    if query_layers != expected_layers:
+                        raise RuntimeError(
+                            f"request {request.request_id!r} chunk staged query "
+                            f"layers {tuple(sorted(query_layers))}, expected all "
+                            "32 layers"
+                        )
+                    if request.is_final_prefill_chunk:
+                        completed = deferred_layers.get(request.request_id, set())
+                        if completed != expected_layers:
+                            raise RuntimeError(
+                                f"request {request.request_id!r} final chunk "
+                                f"deferred layers {tuple(sorted(completed))}, "
+                                "expected all 32 layers"
+                            )
             else:
                 completed = view.completed_decode_layers
                 if completed != expected_layers:
@@ -838,7 +1181,44 @@ class PyramidKVAscendProvider:
                         f"request {request.request_id!r} decode completed layers "
                         f"{tuple(sorted(completed))}, expected all 32 layers"
                     )
-                self.advance_decode(request.request_id, completed)
+        self._compact_deferred_prefills(view)
+
+        plans: list[KVCacheCompressionPlan] = []
+        for request in view.requests:
+            if not request.compress:
+                continue
+            if request.is_prefill:
+                state = self.get_request_state(request.request_id)
+                state.prefill_num_computed_tokens = request.semantic_num_tokens
+                state.expected_block_ids = (request.block_ids,)
+                if request.is_final_prefill_chunk:
+                    completed_lengths = view.completed_prefill_lengths[request.request_id]
+                    state.layers = {
+                        layer_name: PyramidKVLayerState(physical_num_tokens=completed_lengths[layer_name])
+                        for layer_name in layer_names
+                    }
+                    state.prefill_query_tail = None
+                    state.prefill_query_tail_length = 0
+                    plans.append(self.finalize_plan(request.request_id, layer_names, schema_version))
+                    logger.info(
+                        "Finalized PyramidKV prefill compression: request_id=%s semantic_tokens=%d physical_tokens=%d",
+                        request.request_id,
+                        request.semantic_num_tokens,
+                        plans[-1].physical_num_tokens,
+                    )
+                else:
+                    state.prefill_query_tail = view.pending_query_tails[request.request_id]
+                    state.prefill_query_tail_length = view.pending_query_tail_lengths[request.request_id]
+                    logger.info(
+                        "Committed PyramidKV intermediate prefill chunk: "
+                        "request_id=%s chunk_end=%d prompt_tokens=%d "
+                        "plan_emitted=false",
+                        request.request_id,
+                        request.semantic_num_tokens,
+                        request.num_prompt_tokens,
+                    )
+            else:
+                self.advance_decode(request.request_id, view.completed_decode_layers)
         return plans or None
 
     def _compact_deferred_prefills(self, view: PyramidKVAttentionBatchView) -> None:
@@ -851,41 +1231,28 @@ class PyramidKVAscendProvider:
                 raise RuntimeError(
                     "PyramidKV deferred compact requires matching [blocks, block, heads, dim] K/V caches"
                 )
-            required_blocks = (deferred.semantic_num_tokens + view.block_size - 1) // view.block_size
-            if required_blocks > len(deferred.block_ids):
-                raise RuntimeError(
-                    f"request {deferred.request_id!r} deferred compact needs "
-                    f"{required_blocks} blocks, got {len(deferred.block_ids)}"
-                )
-            block_index = torch.tensor(
-                deferred.block_ids[:required_blocks],
-                dtype=torch.long,
-                device=key_cache.device,
-            )
-            full_key = key_cache.index_select(0, block_index).reshape(-1, key_cache.shape[2], key_cache.shape[3])[
-                : deferred.semantic_num_tokens
-            ]
-            full_value = value_cache.index_select(0, block_index).reshape(
-                -1, value_cache.shape[2], value_cache.shape[3]
-            )[: deferred.semantic_num_tokens]
-            selected = deferred.selected_past_indices.squeeze(0).to(device=key_cache.device, dtype=torch.long)
-            retained_past = deferred.retained_tokens - self.config.window_size
-            if selected.shape != (key_cache.shape[2], retained_past):
-                raise RuntimeError(
-                    f"request {deferred.request_id!r} selected index shape "
-                    f"{tuple(selected.shape)} does not match "
-                    f"({key_cache.shape[2]}, {retained_past})"
-                )
-            recent = torch.arange(
-                deferred.semantic_num_tokens - self.config.window_size,
+            full_key = _gather_paged_prefix(
+                key_cache,
+                deferred.block_ids,
                 deferred.semantic_num_tokens,
-                dtype=torch.long,
-                device=key_cache.device,
-            ).expand(key_cache.shape[2], -1)
-            positions = torch.cat((selected, recent), dim=1)
-            gather_index = positions.unsqueeze(-1).expand(-1, -1, key_cache.shape[3])
-            compact_key = full_key.permute(1, 0, 2).gather(1, gather_index).permute(1, 0, 2)
-            compact_value = full_value.permute(1, 0, 2).gather(1, gather_index).permute(1, 0, 2)
+                view.block_size,
+            )
+            full_value = _gather_paged_prefix(
+                value_cache,
+                deferred.block_ids,
+                deferred.semantic_num_tokens,
+                view.block_size,
+            )
+            selected = deferred.selected_past_indices.to(device=key_cache.device, dtype=torch.long)
+            compact_key, compact_value = materialize_pyramid_kv(
+                full_key.permute(1, 0, 2).unsqueeze(0),
+                full_value.permute(1, 0, 2).unsqueeze(0),
+                selected,
+                deferred.retained_tokens,
+                self.config.window_size,
+            )
+            compact_key = compact_key.squeeze(0).permute(1, 0, 2)
+            compact_value = compact_value.squeeze(0).permute(1, 0, 2)
             deferred.backend.do_kv_cache_update(
                 deferred.layer,
                 compact_key,
@@ -899,16 +1266,10 @@ class PyramidKVAscendProvider:
                     key_cache.device,
                 ),
             )
-            self.record_prefill_layer(
+            view._record_prefill_length(
                 deferred.request_id,
                 deferred.layer.layer_name,
-                PyramidKVSelection(
-                    key=compact_key,
-                    value=compact_value,
-                    selected_past_indices=selected.unsqueeze(0),
-                    retained_tokens=deferred.retained_tokens,
-                    compressed=True,
-                ),
+                deferred.retained_tokens,
             )
         view.deferred_prefills.clear()
 
@@ -1036,7 +1397,16 @@ class PyramidKVAscendProvider:
             "all KV cache layers must use full attention",
         )
         require(not context.prefix_caching, "prefix caching is unsupported")
-        require(not context.chunked_prefill, "chunked prefill is unsupported")
+        if context.chunked_prefill:
+            require(
+                context.cann_version.startswith("9.0"),
+                f"chunked prefill requires CANN 9.0, got {context.cann_version!r}",
+            )
+            require(
+                not context.pa_shape_list,
+                "chunked prefill currently requires default FIA with an "
+                f"empty pa_shape_list, got {context.pa_shape_list}",
+            )
         require(
             not context.sliding_window,
             "sliding window/chunked attention is unsupported",

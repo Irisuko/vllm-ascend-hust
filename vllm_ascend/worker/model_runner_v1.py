@@ -275,6 +275,7 @@ class NPUModelRunner(GPUModelRunner):
         self._kv_cache_compression_full_length_staging: torch.Tensor | None = None
         self._kv_cache_compression_full_slots: torch.Tensor | None = None
         self._kv_cache_compression_full_lengths: torch.Tensor | None = None
+        self._kv_cache_compression_logged_full_sizes: set[int] = set()
 
         # TODO(qcs): These manual pad and unpad for GPUModelRunner are
         # used to expand some buffers, which need to be reverted after
@@ -782,6 +783,41 @@ class NPUModelRunner(GPUModelRunner):
     def activate_kv_cache_compression_provider(self, provider: Any) -> None:
         """Attach a validated provider and allocate FULL graph metadata once."""
         self.kv_cache_compression_provider = provider
+        self._kv_cache_compression_logged_full_sizes = set()
+        model_config = getattr(self, "model_config", None)
+        hf_config = getattr(model_config, "hf_text_config", None)
+        num_layers = int(getattr(hf_config, "num_hidden_layers", 0))
+        num_query_heads = int(getattr(hf_config, "num_attention_heads", 0))
+        head_dim = int(
+            getattr(hf_config, "head_dim", 0)
+            or (
+                getattr(hf_config, "hidden_size", 0) // num_query_heads
+                if num_query_heads
+                else 0
+            )
+        )
+        tail_bytes = (
+            num_layers
+            * int(getattr(getattr(provider, "config", None), "window_size", 0))
+            * num_query_heads
+            * head_dim
+            * 2
+        )
+        logger.info(
+            "Activated PyramidKV runner state: chunked_prefill=%s "
+            "cudagraph_mode=%s query_tail_bytes_per_request=%d "
+            "transaction_peak_bytes_per_request=%d "
+            "transaction_peak_bytes_at_max_num_seqs=%d",
+            getattr(
+                getattr(self, "scheduler_config", None),
+                "enable_chunked_prefill",
+                False,
+            ),
+            self.compilation_config.cudagraph_mode,
+            tail_bytes,
+            tail_bytes * 2,
+            tail_bytes * 2 * self.max_num_reqs,
+        )
         if (
             self.compilation_config.cudagraph_mode
             != CUDAGraphMode.FULL_DECODE_ONLY
@@ -2658,9 +2694,22 @@ class NPUModelRunner(GPUModelRunner):
         ):
             if self.cache_config.mamba_cache_mode == "align":
                 mamba_utils.do_mamba_copy_block(preprocess_bufs)
-            hidden_states = self._model_forward(
-                num_tokens_padded, input_ids, positions, intermediate_tensors, inputs_embeds, **model_kwargs
-            )
+            try:
+                hidden_states = self._model_forward(
+                    num_tokens_padded,
+                    input_ids,
+                    positions,
+                    intermediate_tensors,
+                    inputs_embeds,
+                    **model_kwargs,
+                )
+            except Exception:
+                # The attention hooks only stage prefill progress. Discard the
+                # step-local view so a caller that recovers from the forward
+                # exception can retry from the last committed chunk boundary.
+                self._kv_cache_compression_step_view = None
+                self._kv_cache_compression_plans = None
+                raise
         if self.kv_cache_compression_provider is not None:
             self._finish_kv_cache_compression_forward(
                 full_graph_decode=cudagraph_mode == CUDAGraphMode.FULL
@@ -3304,8 +3353,16 @@ class NPUModelRunner(GPUModelRunner):
             else force_uniform_decode
         )
         # Encoder-decoder models only support CG for decoder_step > 0 (no enc_output
-        # is present). Also, chunked-prefill is disabled, so batch are uniform.
+        # is present). Those batches are uniform because encoder-decoder chunked
+        # prefill remains unsupported.
         has_encoder_output = self.model_config.is_encoder_decoder and num_encoder_reqs > 0
+        compression_has_prefill = (
+            self.kv_cache_compression_provider is not None
+            and np.any(
+                self.input_batch.num_computed_tokens_cpu[:num_reqs]
+                < self.input_batch.num_prompt_tokens[:num_reqs]
+            )
+        )
         num_active_loras = (
             force_num_active_loras
             if force_num_active_loras is not None
@@ -3327,7 +3384,14 @@ class NPUModelRunner(GPUModelRunner):
                 num_active_loras=num_active_loras,
             )
 
-        cudagraph_mode, batch_descriptor = dispatch_cudagraph(num_tokens_padded, use_cascade_attn or has_encoder_output)
+        disable_full = (
+            use_cascade_attn
+            or has_encoder_output
+            or compression_has_prefill
+        )
+        cudagraph_mode, batch_descriptor = dispatch_cudagraph(
+            num_tokens_padded, disable_full
+        )
         num_tokens_padded = batch_descriptor.num_tokens
         if enable_sp(self.vllm_config):
             assert batch_descriptor.num_tokens % self.vllm_config.parallel_config.tensor_parallel_size == 0, (
@@ -3353,6 +3417,7 @@ class NPUModelRunner(GPUModelRunner):
                 # Re-dispatch with DP padding
                 cudagraph_mode, batch_descriptor = dispatch_cudagraph(
                     num_tokens_padded,
+                    disable_full=disable_full,
                     valid_modes={synced_cudagraph_mode},
                 )
                 # Assert to make sure the agreed upon token count is correct otherwise
@@ -3544,13 +3609,16 @@ class NPUModelRunner(GPUModelRunner):
                     if kv_cache_compression_view is not None
                     else 0
                 )
-                logger.info_once(
-                    "Prepared PyramidKV FULL decode replay metadata: "
-                    "actual_reqs=%d graph_size=%d compressed_reqs=%d",
-                    num_reqs,
-                    num_reqs_padded,
-                    compressed_reqs,
-                )
+                logged_sizes = self._kv_cache_compression_logged_full_sizes
+                if num_reqs_padded not in logged_sizes:
+                    logger.info(
+                        "Prepared PyramidKV FULL decode replay metadata: "
+                        "actual_reqs=%d graph_size=%d compressed_reqs=%d",
+                        num_reqs,
+                        num_reqs_padded,
+                        compressed_reqs,
+                    )
+                    logged_sizes.add(num_reqs_padded)
 
         cm_base = AscendCommonAttentionMetadata(
             query_start_loc=self.query_start_loc.gpu[: num_reqs_padded + 1],

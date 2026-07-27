@@ -204,6 +204,172 @@ def test_below_threshold_returns_original_tensors_without_selection() -> None:
     assert not result.compressed
 
 
+def _run_chunked_prefill(
+    chunk_lengths: tuple[int, ...],
+) -> tuple[
+    dict[str, torch.Tensor],
+    dict[str, PyramidKVSelection],
+    list,
+    PyramidKVAscendProvider,
+]:
+    prompt_tokens = sum(chunk_lengths)
+    layer_names = tuple(f"model.layers.{index}.self_attn.attn" for index in range(2))
+    provider = PyramidKVAscendProvider(
+        _config(
+            max_capacity_prompt=128,
+            window_size=8,
+            kernel_size=7,
+            beta=20,
+        )
+    )
+    first_end = chunk_lengths[0]
+    first_blocks = tuple(range((first_end + 127) // 128))
+    provider.begin_request("request", prompt_tokens, (first_blocks,))
+    generator = torch.Generator().manual_seed(20260725)
+    layer_inputs = {
+        layer_name: (
+            torch.randn(prompt_tokens, 4, 8, generator=generator, dtype=torch.bfloat16),
+            torch.randn(prompt_tokens, 2, 8, generator=generator, dtype=torch.bfloat16),
+            torch.randn(prompt_tokens, 2, 8, generator=generator, dtype=torch.bfloat16),
+        )
+        for layer_name in layer_names
+    }
+    expected = {
+        layer_name: select_pyramid_kv(
+            query.permute(1, 0, 2).unsqueeze(0),
+            key.permute(1, 0, 2).unsqueeze(0),
+            value.permute(1, 0, 2).unsqueeze(0),
+            provider.config,
+            layer_index=layer_index,
+            num_hidden_layers=len(layer_names),
+        )
+        for layer_index, (layer_name, (query, key, value)) in enumerate(layer_inputs.items())
+    }
+    num_blocks = (prompt_tokens + 127) // 128
+    layer_caches = {
+        layer_name: (
+            torch.zeros(num_blocks, 128, 2, 8, dtype=torch.bfloat16),
+            torch.zeros(num_blocks, 128, 2, 8, dtype=torch.bfloat16),
+        )
+        for layer_name in layer_names
+    }
+
+    def write_cache(layer, write_key, write_value, kv_cache, slots):
+        kv_cache[0].view(-1, 2, 8)[slots.long()] = write_key
+        kv_cache[1].view(-1, 2, 8)[slots.long()] = write_value
+
+    backend = SimpleNamespace(do_kv_cache_update=write_cache)
+    computed = 0
+    selected_by_layer: dict[str, torch.Tensor] = {}
+    final_plans = None
+    for chunk_index, chunk_length in enumerate(chunk_lengths):
+        end = computed + chunk_length
+        block_ids = tuple(range((end + 127) // 128))
+        request = PyramidKVAttentionRequest(
+            request_id="request",
+            query_start=0,
+            query_end=chunk_length,
+            semantic_num_tokens=end,
+            num_computed_tokens=computed,
+            num_prompt_tokens=prompt_tokens,
+            block_ids=block_ids,
+            is_prefill=True,
+        )
+        view = PyramidKVAttentionBatchView(
+            provider=provider,
+            requests=(request,),
+            layer_indices={layer_name: index for index, layer_name in enumerate(layer_names)},
+            num_hidden_layers=len(layer_names),
+        )
+        if len(chunk_lengths) == 1:
+            attention_state = AscendAttentionState.PrefillNoCache
+        elif chunk_length == 1:
+            attention_state = AscendAttentionState.DecodeOnly
+        else:
+            attention_state = AscendAttentionState.ChunkedPrefill
+        metadata = AscendMetadata(
+            attn_state=attention_state,
+            num_actual_tokens=chunk_length,
+            slot_mapping=torch.arange(computed, end, dtype=torch.int32),
+            seq_lens=torch.tensor([end], dtype=torch.int32),
+            seq_lens_cpu=torch.tensor([end], dtype=torch.int32),
+            seq_lens_list=[end],
+        )
+        for layer_name in layer_names:
+            query, key, value = layer_inputs[layer_name]
+            view.before_cache_write(
+                layer=SimpleNamespace(layer_name=layer_name),
+                backend=backend,
+                query=query[computed:end],
+                key=key[computed:end],
+                value=value[computed:end],
+                kv_cache=layer_caches[layer_name],
+                attn_metadata=metadata,
+            )
+        if end < prompt_tokens:
+            assert provider.finish_model_forward(view, layer_names=layer_names, schema_version=1) is None
+            state = provider.get_request_state("request")
+            assert state.prefill_num_computed_tokens == end
+            assert state.expected_block_ids == (block_ids,)
+            assert not state.layers
+            assert not state.plan_emitted
+        else:
+            selected_by_layer = {
+                deferred.layer.layer_name: deferred.selected_past_indices for deferred in view.deferred_prefills
+            }
+            final_plans = provider.finish_model_forward(view, layer_names=layer_names, schema_version=1)
+        computed = end
+
+    assert final_plans is not None and len(final_plans) == 1
+    for layer_name, selection in expected.items():
+        key_cache, value_cache = layer_caches[layer_name]
+        actual_key = key_cache.view(-1, 2, 8)[: selection.retained_tokens]
+        actual_value = value_cache.view(-1, 2, 8)[: selection.retained_tokens]
+        torch.testing.assert_close(
+            actual_key,
+            selection.key.squeeze(0).permute(1, 0, 2),
+            rtol=1e-2,
+            atol=1e-2,
+        )
+        torch.testing.assert_close(
+            actual_value,
+            selection.value.squeeze(0).permute(1, 0, 2),
+            rtol=1e-2,
+            atol=1e-2,
+        )
+    return selected_by_layer, expected, final_plans, provider
+
+
+@pytest.mark.parametrize(
+    "chunk_lengths",
+    [
+        (256, 256, 256),
+        (512, 255, 1),
+        (128, 320, 200, 120),
+        (768,),
+    ],
+    ids=["equal", "one-token-final", "dynamic-budget", "single-prefill"],
+)
+def test_chunked_prefill_matches_single_prefill_selection_and_compact_kv(
+    chunk_lengths: tuple[int, ...],
+) -> None:
+    selected, expected, plans, provider = _run_chunked_prefill(chunk_lengths)
+
+    if len(chunk_lengths) > 1:
+        assert set(selected) == set(expected)
+        for layer_name, indices in selected.items():
+            assert torch.equal(
+                indices,
+                expected[layer_name].selected_past_indices,
+            )
+    plan = plans[0]
+    assert plan.semantic_num_tokens == 768
+    assert plan.physical_num_tokens < plan.semantic_num_tokens
+    state = provider.get_request_state("request")
+    assert state.plan_emitted
+    assert state.prefill_query_tail is None
+
+
 @pytest.mark.parametrize("prompt_tokens", [256, 4096, 7168])
 def test_planned_prompt_lengths_produce_valid_compact_shapes(
     prompt_tokens: int,
@@ -277,6 +443,44 @@ def test_cann_9_capability_is_supported() -> None:
 
     assert report.supported
     assert report.reasons == ()
+
+
+@pytest.mark.parametrize(
+    ("cann_version", "supported"),
+    [("8.5.1", False), ("9.0.0", True)],
+)
+def test_chunked_prefill_requires_cann_9(cann_version: str, supported: bool) -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(
+        _core_config(),
+        _context(
+            cann_version=cann_version,
+            chunked_prefill=True,
+        ),
+        "registry:get",
+    )
+
+    assert report.supported is supported
+    if not supported:
+        assert report.reasons == ("chunked prefill requires CANN 9.0, got '8.5.1'",)
+
+
+def test_chunked_prefill_rejects_page_attention_shapes() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(
+        _core_config(),
+        _context(
+            cann_version="9.0.0",
+            chunked_prefill=True,
+            pa_shape_list=(16,),
+        ),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert report.reasons == ("chunked prefill currently requires default FIA with an empty pa_shape_list, got (16,)",)
 
 
 @pytest.mark.parametrize("cudagraph_mode", ["PIECEWISE", "FULL_DECODE_ONLY"])
@@ -524,6 +728,8 @@ def test_attention_view_writes_compact_prefill_and_physical_decode_slot() -> Non
                 query_start=0,
                 query_end=20,
                 semantic_num_tokens=20,
+                num_computed_tokens=0,
+                num_prompt_tokens=20,
                 block_ids=(1, 2),
                 is_prefill=True,
             ),
@@ -537,8 +743,8 @@ def test_attention_view_writes_compact_prefill_and_physical_decode_slot() -> Non
     value = torch.randn(20, 2, 8, generator=generator)
     writes = []
     backend = SimpleNamespace(
-        do_kv_cache_update=lambda layer, write_key, write_value, cache, slots: (
-            writes.append((write_key, write_value, slots))
+        do_kv_cache_update=lambda layer, write_key, write_value, cache, slots: writes.append(
+            (write_key, write_value, slots)
         )
     )
     layer = SimpleNamespace(layer_name=layer_name)
@@ -563,7 +769,9 @@ def test_attention_view_writes_compact_prefill_and_physical_decode_slot() -> Non
     assert writes[0][1].shape == (8, 2, 8)
     assert torch.equal(writes[0][2], torch.arange(128, 136, dtype=torch.int32))
 
-    plan = provider.finalize_plan("request", (layer_name,), 1)
+    plans = provider.finish_model_forward(prefill_view, layer_names=(layer_name,), schema_version=1)
+    assert plans is not None
+    plan = plans[0]
     assert plan.physical_num_tokens == 8
     provider.mark_committed("request", ((1,),))
     decode_view = PyramidKVAttentionBatchView(
@@ -574,6 +782,8 @@ def test_attention_view_writes_compact_prefill_and_physical_decode_slot() -> Non
                 query_start=0,
                 query_end=1,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(1,),
                 is_prefill=False,
             ),
@@ -633,6 +843,8 @@ def test_decode_slot_matrix_batches_requests_and_materializes_once() -> None:
                 query_start=0,
                 query_end=1,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(1,),
                 is_prefill=False,
             ),
@@ -641,6 +853,8 @@ def test_decode_slot_matrix_batches_requests_and_materializes_once() -> None:
                 query_start=1,
                 query_end=2,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(2,),
                 is_prefill=False,
             ),
@@ -653,8 +867,8 @@ def test_decode_slot_matrix_batches_requests_and_materializes_once() -> None:
     value = torch.randn(2, 2, 8)
     writes = []
     backend = SimpleNamespace(
-        do_kv_cache_update=lambda layer, write_key, write_value, cache, slots: (
-            writes.append((write_key, write_value, slots))
+        do_kv_cache_update=lambda layer, write_key, write_value, cache, slots: writes.append(
+            (write_key, write_value, slots)
         )
     )
     metadata = AscendMetadata(
@@ -720,6 +934,8 @@ def test_full_decode_staging_is_layer_specific_and_padding_is_safe() -> None:
                 query_start=0,
                 query_end=1,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(1,),
                 is_prefill=False,
             ),
@@ -728,6 +944,8 @@ def test_full_decode_staging_is_layer_specific_and_padding_is_safe() -> None:
                 query_start=1,
                 query_end=2,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(3,),
                 is_prefill=False,
                 compress=False,
@@ -780,6 +998,8 @@ def test_mixed_attention_defers_prefill_compact_until_model_finishes() -> None:
                 query_start=0,
                 query_end=1,
                 semantic_num_tokens=21,
+                num_computed_tokens=20,
+                num_prompt_tokens=20,
                 block_ids=(1,),
                 is_prefill=False,
             ),
@@ -788,6 +1008,8 @@ def test_mixed_attention_defers_prefill_compact_until_model_finishes() -> None:
                 query_start=1,
                 query_end=21,
                 semantic_num_tokens=20,
+                num_computed_tokens=0,
+                num_prompt_tokens=20,
                 block_ids=(2, 3),
                 is_prefill=True,
             ),
@@ -873,9 +1095,9 @@ def test_runner_batch_view_prefill_plan_commit_and_decode_lifecycle() -> None:
     assert view.requests[0].query_start == 0
     assert view.requests[0].query_end == 20
 
-    for index, layer_name in enumerate(LAYER_NAMES):
-        retained = 8 if index else 12
-        provider.record_prefill_layer("request", layer_name, _selection(retained, index + 1))
+    view.completed_prefill_lengths["request"] = {
+        layer_name: 8 if index else 12 for index, layer_name in enumerate(LAYER_NAMES)
+    }
     plans = provider.finish_model_forward(view, layer_names=LAYER_NAMES, schema_version=1)
     assert plans is not None
     assert len(plans) == 1
@@ -898,6 +1120,143 @@ def test_runner_batch_view_prefill_plan_commit_and_decode_lifecycle() -> None:
     assert state.semantic_num_tokens == 21
     assert state.layers[LAYER_NAMES[0]].physical_num_tokens == 13
     assert state.layers[LAYER_NAMES[1]].physical_num_tokens == 9
+
+
+def test_chunked_prefill_rejects_duplicate_gap_and_nonmonotonic_blocks() -> None:
+    provider = PyramidKVAscendProvider(_config())
+    first = provider.build_attention_batch_view(
+        request_ids=("request",),
+        query_lengths=(256,),
+        semantic_num_tokens=(256,),
+        num_computed_tokens=(0,),
+        num_prompt_tokens=(768,),
+        block_ids=(((0, 1),),),
+        layer_names=LAYER_NAMES,
+        block_size=128,
+    )
+    assert first.requests[0].is_prefill
+    state = provider.get_request_state("request")
+    state.prefill_num_computed_tokens = 256
+    state.prefill_query_tail = torch.zeros(32, 4, 4, 8)
+    state.prefill_query_tail_length = 4
+
+    common = {
+        "request_ids": ("request",),
+        "num_prompt_tokens": (768,),
+        "layer_names": LAYER_NAMES,
+        "block_size": 128,
+    }
+    with pytest.raises(RuntimeError, match="chunk starts at 0, expected 256"):
+        provider.build_attention_batch_view(
+            query_lengths=(256,),
+            semantic_num_tokens=(256,),
+            num_computed_tokens=(0,),
+            block_ids=(((0, 1),),),
+            **common,
+        )
+    with pytest.raises(RuntimeError, match="chunk starts at 384, expected 256"):
+        provider.build_attention_batch_view(
+            query_lengths=(128,),
+            semantic_num_tokens=(512,),
+            num_computed_tokens=(384,),
+            block_ids=(((0, 1, 2, 3),),),
+            **common,
+        )
+    with pytest.raises(RuntimeError, match="not a monotonic extension"):
+        provider.build_attention_batch_view(
+            query_lengths=(256,),
+            semantic_num_tokens=(512,),
+            num_computed_tokens=(256,),
+            block_ids=(((9, 1, 2, 3),),),
+            **common,
+        )
+
+    second = provider.build_attention_batch_view(
+        query_lengths=(256,),
+        semantic_num_tokens=(512,),
+        num_computed_tokens=(256,),
+        block_ids=(((0, 1, 2, 3),),),
+        **common,
+    )
+    assert second.requests[0].num_computed_tokens == 256
+    assert state.prefill_num_computed_tokens == 256
+
+
+def test_missing_layer_or_failed_forward_does_not_commit_chunk_state() -> None:
+    provider = PyramidKVAscendProvider(_config())
+    layer_names = (
+        "model.layers.0.self_attn.attn",
+        "model.layers.1.self_attn.attn",
+    )
+    provider.begin_request("request", 20, ((0,),))
+    request = PyramidKVAttentionRequest(
+        request_id="request",
+        query_start=0,
+        query_end=10,
+        semantic_num_tokens=10,
+        num_computed_tokens=0,
+        num_prompt_tokens=20,
+        block_ids=(0,),
+        is_prefill=True,
+    )
+    query = torch.randn(10, 4, 8)
+    key = torch.randn(10, 2, 8)
+    value = torch.randn(10, 2, 8)
+    cache = (torch.zeros(1, 128, 2, 8), torch.zeros(1, 128, 2, 8))
+
+    def write_cache(layer, write_key, write_value, kv_cache, slots):
+        kv_cache[0].view(-1, 2, 8)[slots.long()] = write_key
+        kv_cache[1].view(-1, 2, 8)[slots.long()] = write_value
+
+    backend = SimpleNamespace(do_kv_cache_update=write_cache)
+
+    def new_view() -> PyramidKVAttentionBatchView:
+        return PyramidKVAttentionBatchView(
+            provider=provider,
+            requests=(request,),
+            layer_indices={name: index for index, name in enumerate(layer_names)},
+            num_hidden_layers=2,
+        )
+
+    metadata = AscendMetadata(
+        attn_state=AscendAttentionState.ChunkedPrefill,
+        num_actual_tokens=10,
+        slot_mapping=torch.arange(10, dtype=torch.int32),
+        seq_lens=torch.tensor([10], dtype=torch.int32),
+        seq_lens_list=[10],
+    )
+    incomplete = new_view()
+    incomplete.before_cache_write(
+        layer=SimpleNamespace(layer_name=layer_names[0]),
+        backend=backend,
+        query=query,
+        key=key,
+        value=value,
+        kv_cache=cache,
+        attn_metadata=metadata,
+    )
+    with pytest.raises(RuntimeError, match="expected all 32 layers"):
+        provider.finish_model_forward(incomplete, layer_names=layer_names, schema_version=1)
+    state = provider.get_request_state("request")
+    assert state.prefill_num_computed_tokens == 0
+    assert state.prefill_query_tail is None
+
+    # A forward exception means finish_model_forward is not invoked at all.
+    # The same scheduler range can therefore be retried from committed state.
+    retry = new_view()
+    for layer_name in layer_names:
+        retry.before_cache_write(
+            layer=SimpleNamespace(layer_name=layer_name),
+            backend=backend,
+            query=query,
+            key=key,
+            value=value,
+            kv_cache=cache,
+            attn_metadata=metadata,
+        )
+    assert provider.finish_model_forward(retry, layer_names=layer_names, schema_version=1) is None
+    assert state.prefill_num_computed_tokens == 10
+    assert state.prefill_query_tail is not None
 
 
 def test_decode_view_accepts_only_required_monotonic_block_extension() -> None:

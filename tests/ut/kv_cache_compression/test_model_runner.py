@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import torch
 from vllm.config import CUDAGraphMode
+from vllm.forward_context import BatchDescriptor
 
 from vllm_ascend.worker.model_runner_v1 import NPUModelRunner
 
@@ -305,3 +306,55 @@ def test_full_graph_completion_rejects_prefill_without_finishing() -> None:
 
     assert provider.finished is None
     assert view.completed_decode_layers == set()
+
+
+def test_one_token_final_prefill_disables_full_graph_but_decode_allows_it() -> None:
+    runner = NPUModelRunner.__new__(NPUModelRunner)
+    runner.kv_cache_compression_provider = object()
+    runner.input_batch = SimpleNamespace(
+        num_computed_tokens_cpu=np.array([511], dtype=np.int32),
+        num_prompt_tokens=np.array([512], dtype=np.int32),
+        lora_id_to_lora_request={},
+    )
+    runner.speculative_config = None
+    runner.uniform_decode_query_len = 1
+    runner.model_config = SimpleNamespace(is_encoder_decoder=False)
+    runner.parallel_config = SimpleNamespace(
+        data_parallel_size=1,
+        tensor_parallel_size=1,
+    )
+    runner.vllm_config = SimpleNamespace(
+        additional_config={"enable_flashcomm1": False, "refresh": True},
+        parallel_config=runner.parallel_config,
+        observability_config=SimpleNamespace(cudagraph_metrics=False),
+    )
+    runner._pad_for_sequence_parallelism = lambda value: value
+
+    class FakeDispatcher:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def dispatch(self, **kwargs):
+            self.calls.append(kwargs)
+            invalid = kwargs.get("invalid_modes") or set()
+            mode = CUDAGraphMode.PIECEWISE if CUDAGraphMode.FULL in invalid else CUDAGraphMode.FULL
+            return mode, BatchDescriptor(kwargs["num_tokens"])
+
+    runner.cudagraph_dispatcher = FakeDispatcher()
+    common = {
+        "num_tokens": 1,
+        "num_reqs": 1,
+        "num_scheduled_tokens_np": np.array([1], dtype=np.int32),
+        "max_num_scheduled_tokens": 1,
+        "use_cascade_attn": False,
+        "force_uniform_decode": True,
+    }
+
+    prefill_mode, *_ = runner._determine_batch_execution_and_padding(**common)
+    assert prefill_mode == CUDAGraphMode.PIECEWISE
+    assert runner.cudagraph_dispatcher.calls[-1]["invalid_modes"] == {CUDAGraphMode.FULL}
+
+    runner.input_batch.num_computed_tokens_cpu[0] = 512
+    decode_mode, *_ = runner._determine_batch_execution_and_padding(**common)
+    assert decode_mode == CUDAGraphMode.FULL
+    assert runner.cudagraph_dispatcher.calls[-1]["invalid_modes"] is None
