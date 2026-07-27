@@ -16,18 +16,16 @@ from vllm_ascend.attention.attention_v1 import (
     AscendMetadata,
 )
 from vllm_ascend.kv_cache_compression.pyramidkv import (
-    PyramidKVAttentionBatchView,
-    PyramidKVAttentionRequest,
     PyramidKVAscendConfig,
     PyramidKVAscendProvider,
+    PyramidKVAttentionBatchView,
+    PyramidKVAttentionRequest,
     PyramidKVCapabilityContext,
     PyramidKVSelection,
     select_pyramid_kv,
 )
 
-LAYER_NAMES = tuple(
-    f"model.layers.{index}.self_attn.attn" for index in range(32)
-)
+LAYER_NAMES = tuple(f"model.layers.{index}.self_attn.attn" for index in range(32))
 
 
 def _config(**updates) -> PyramidKVAscendConfig:
@@ -52,6 +50,8 @@ def _context(**updates) -> PyramidKVCapabilityContext:
         "cann_version": "8.5.1",
         "use_v2_model_runner": False,
         "enforce_eager": True,
+        "cudagraph_mode": "NONE",
+        "pa_shape_list": (),
         "backend": "AscendAttentionBackend",
         "model_architecture": "LlamaForCausalLM",
         "dtype": "torch.bfloat16",
@@ -138,9 +138,7 @@ def _independent_selection(
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     groups = query.shape[1] // key.shape[1]
     repeated_key = key.repeat_interleave(groups, dim=1)
-    scores = torch.matmul(
-        query[:, :, -window_size:, :], repeated_key.transpose(2, 3)
-    ) / math.sqrt(query.shape[-1])
+    scores = torch.matmul(query[:, :, -window_size:, :], repeated_key.transpose(2, 3)) / math.sqrt(query.shape[-1])
     scores[..., -window_size:] += torch.triu(
         torch.full(
             (window_size, window_size),
@@ -149,13 +147,9 @@ def _independent_selection(
         ),
         diagonal=1,
     )
-    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(
-        query.dtype
-    )
+    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
     history = probabilities[..., :-window_size].sum(dim=-2)
-    history = history.reshape(
-        query.shape[0], key.shape[1], groups, history.shape[-1]
-    ).mean(dim=2)
+    history = history.reshape(query.shape[0], key.shape[1], groups, history.shape[-1]).mean(dim=2)
     pooled = F.max_pool1d(history, 1, stride=1)
     selected = pooled.topk(retained_tokens - window_size, dim=-1).indices
     gather_index = selected.unsqueeze(-1).expand(-1, -1, -1, key.shape[-1])
@@ -183,9 +177,7 @@ def test_gqa_mean_topk_and_gather_match_cpu_oracle() -> None:
     value = torch.randn(1, 2, 20, 8, generator=generator)
     config = _config()
 
-    result = select_pyramid_kv(
-        query, key, value, config, layer_index=1, num_hidden_layers=2
-    )
+    result = select_pyramid_kv(query, key, value, config, layer_index=1, num_hidden_layers=2)
     expected_key, expected_value, expected_indices = _independent_selection(
         query, key, value, retained_tokens=8, window_size=4
     )
@@ -204,9 +196,7 @@ def test_below_threshold_returns_original_tensors_without_selection() -> None:
     key = torch.randn(1, 2, 11, 8)
     value = torch.randn(1, 2, 11, 8)
 
-    result = select_pyramid_kv(
-        query, key, value, _config(), layer_index=0, num_hidden_layers=2
-    )
+    result = select_pyramid_kv(query, key, value, _config(), layer_index=0, num_hidden_layers=2)
 
     assert result.key is key
     assert result.value is value
@@ -255,9 +245,7 @@ def test_capability_report_aggregates_all_reasons() -> None:
         missing_ops=("reshape_and_cache", "fused_infer_attention"),
     )
 
-    report = provider.compatibility_report(
-        _core_config(), invalid, "registry:get"
-    )
+    report = provider.compatibility_report(_core_config(), invalid, "registry:get")
 
     assert not report.supported
     message = "\n".join(report.reasons)
@@ -276,12 +264,98 @@ def test_capability_report_aggregates_all_reasons() -> None:
 def test_supported_capability_has_no_reasons() -> None:
     provider = PyramidKVAscendProvider(_config())
 
+    report = provider.compatibility_report(_core_config(), _context(), "registry:get")
+
+    assert report.supported
+    assert report.reasons == ()
+
+
+def test_cann_9_capability_is_supported() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(_core_config(), _context(cann_version="9.0.0"), "registry:get")
+
+    assert report.supported
+    assert report.reasons == ()
+
+
+@pytest.mark.parametrize("cudagraph_mode", ["PIECEWISE", "FULL_DECODE_ONLY"])
+def test_cann_9_graph_capability_is_supported(cudagraph_mode: str) -> None:
+    provider = PyramidKVAscendProvider(_config())
+
     report = provider.compatibility_report(
-        _core_config(), _context(), "registry:get"
+        _core_config(),
+        _context(
+            cann_version="9.0.0",
+            enforce_eager=False,
+            cudagraph_mode=cudagraph_mode,
+        ),
+        "registry:get",
     )
 
     assert report.supported
     assert report.reasons == ()
+
+
+def test_cann_8_graph_capability_is_rejected() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(
+        _core_config(),
+        _context(enforce_eager=False, cudagraph_mode="PIECEWISE"),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert report.reasons == ("graph execution requires CANN 9.0, got '8.5.1'",)
+
+
+@pytest.mark.parametrize(
+    ("enforce_eager", "cudagraph_mode"),
+    [(False, "NONE"), (True, "PIECEWISE"), (False, "FULL_AND_PIECEWISE")],
+)
+def test_conflicting_or_unsupported_graph_mode_is_rejected(enforce_eager: bool, cudagraph_mode: str) -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(
+        _core_config(),
+        _context(
+            cann_version="9.0.0",
+            enforce_eager=enforce_eager,
+            cudagraph_mode=cudagraph_mode,
+        ),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert "execution must be eager/NONE" in report.reasons[0]
+
+
+def test_graph_page_attention_is_rejected() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(
+        _core_config(),
+        _context(
+            cann_version="9.0.0",
+            enforce_eager=False,
+            cudagraph_mode="FULL_DECODE_ONLY",
+            pa_shape_list=(16,),
+        ),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert report.reasons == ("graph execution currently requires default FIA with an empty pa_shape_list, got (16,)",)
+
+
+def test_unsupported_cann_version_is_rejected() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    report = provider.compatibility_report(_core_config(), _context(cann_version="9.1.0"), "registry:get")
+
+    assert not report.supported
+    assert report.reasons == ("CANN version must start with one of ('8.5.1', '9.0'), got '9.1.0'",)
 
 
 def _selection(retained_tokens: int, index: int) -> PyramidKVSelection:
@@ -339,19 +413,12 @@ def test_partial_layer_or_partial_decode_cannot_advance_state() -> None:
     provider.record_prefill_layer("request", "layer1", _selection(8, 2))
     provider.finalize_plan("request", ("layer0", "layer1"), 1)
     provider.mark_committed("request", ((1,),))
-    before = provider.get_request_state("request").layers[
-        "layer0"
-    ].physical_num_tokens
+    before = provider.get_request_state("request").layers["layer0"].physical_num_tokens
 
     with pytest.raises(RuntimeError, match="every layer"):
         provider.advance_decode("request", {"layer0"})
 
-    assert (
-        provider.get_request_state("request").layers[
-            "layer0"
-        ].physical_num_tokens
-        == before
-    )
+    assert provider.get_request_state("request").layers["layer0"].physical_num_tokens == before
 
 
 def _fake_attention_backend():
@@ -610,48 +677,90 @@ def test_decode_slot_matrix_batches_requests_and_materializes_once() -> None:
             kv_cache=(torch.empty(1), torch.empty(1)),
             attn_metadata=metadata,
         )
-        decode_lengths.append(
-            (tuple(metadata.seq_lens_list), metadata.seq_lens)
-        )
+        decode_lengths.append((tuple(metadata.seq_lens_list), metadata.seq_lens))
 
     assert writes[0][0] is key
     assert writes[0][1] is value
     assert torch.equal(writes[0][2], torch.tensor([138, 268], dtype=torch.int32))
     assert torch.equal(writes[1][2], torch.tensor([136, 265], dtype=torch.int32))
-    assert (
-        writes[0][2].untyped_storage().data_ptr()
-        == writes[1][2].untyped_storage().data_ptr()
-    )
+    assert writes[0][2].untyped_storage().data_ptr() == writes[1][2].untyped_storage().data_ptr()
     assert decode_lengths[0][0] == (11, 13)
     assert decode_lengths[1][0] == (9, 10)
-    assert torch.equal(
-        decode_lengths[0][1], torch.tensor([11, 13], dtype=torch.int32)
-    )
-    assert torch.equal(
-        decode_lengths[1][1], torch.tensor([9, 10], dtype=torch.int32)
-    )
-    assert (
-        decode_lengths[0][1].untyped_storage().data_ptr()
-        == decode_lengths[1][1].untyped_storage().data_ptr()
-    )
-    assert (
-        writes[0][2].untyped_storage().data_ptr()
-        != decode_lengths[0][1].untyped_storage().data_ptr()
-    )
+    assert torch.equal(decode_lengths[0][1], torch.tensor([11, 13], dtype=torch.int32))
+    assert torch.equal(decode_lengths[1][1], torch.tensor([9, 10], dtype=torch.int32))
+    assert decode_lengths[0][1].untyped_storage().data_ptr() == decode_lengths[1][1].untyped_storage().data_ptr()
+    assert writes[0][2].untyped_storage().data_ptr() != decode_lengths[0][1].untyped_storage().data_ptr()
     assert decode_lengths[0][1].device.type == "cpu"
     assert metadata.seq_lens_cpu is metadata.seq_lens
     assert len(view.decode_slot_tensors_by_layer) == 2
     assert len(view.decode_length_tensors_by_layer) == 2
     assert view.completed_decode_layers == set(layer_names)
 
-    assert (
-        provider.finish_model_forward(
-            view, layer_names=layer_names, schema_version=1
-        )
-        is None
-    )
+    assert provider.finish_model_forward(view, layer_names=layer_names, schema_version=1) is None
     assert provider.get_request_state("a").semantic_num_tokens == 21
     assert provider.get_request_state("b").semantic_num_tokens == 21
+
+
+def test_full_decode_staging_is_layer_specific_and_padding_is_safe() -> None:
+    provider = PyramidKVAscendProvider(_config())
+    layer_names = (
+        "model.layers.0.self_attn.attn",
+        "model.layers.1.self_attn.attn",
+    )
+    provider.begin_request("compressed", 20, ((1,),))
+    provider.record_prefill_layer("compressed", layer_names[0], _selection(10, 1))
+    provider.record_prefill_layer("compressed", layer_names[1], _selection(8, 2))
+    provider.finalize_plan("compressed", layer_names, 1)
+    provider.mark_committed("compressed", ((1,),))
+    view = PyramidKVAttentionBatchView(
+        provider=provider,
+        requests=(
+            PyramidKVAttentionRequest(
+                request_id="compressed",
+                query_start=0,
+                query_end=1,
+                semantic_num_tokens=21,
+                block_ids=(1,),
+                is_prefill=False,
+            ),
+            PyramidKVAttentionRequest(
+                request_id="ordinary",
+                query_start=1,
+                query_end=2,
+                semantic_num_tokens=21,
+                block_ids=(3,),
+                is_prefill=False,
+                compress=False,
+            ),
+        ),
+        layer_indices={name: index for index, name in enumerate(layer_names)},
+        num_hidden_layers=2,
+    )
+    slots = torch.empty((2, 4), dtype=torch.int32)
+    lengths = torch.empty((2, 4), dtype=torch.int32)
+
+    view.fill_full_decode_metadata(
+        layer_names=layer_names,
+        slot_staging=slots,
+        length_staging=lengths,
+        num_reqs_padded=4,
+    )
+
+    assert torch.equal(
+        slots,
+        torch.tensor(
+            [[138, 404, -1, -1], [136, 404, -1, -1]],
+            dtype=torch.int32,
+        ),
+    )
+    assert torch.equal(
+        lengths,
+        torch.tensor([[11, 21, 1, 1], [9, 21, 1, 1]], dtype=torch.int32),
+    )
+    assert view.completed_decode_layers == set()
+    with pytest.raises(RuntimeError, match="expected all 32 layers"):
+        provider.finish_model_forward(view, layer_names=layer_names, schema_version=1)
+    assert provider.get_request_state("compressed").semantic_num_tokens == 20
 
 
 def test_mixed_attention_defers_prefill_compact_until_model_finishes() -> None:
@@ -737,19 +846,13 @@ def test_mixed_attention_defers_prefill_compact_until_model_finishes() -> None:
     assert torch.equal(cache[0][2, :20], key[1:])
     assert torch.equal(cache[1][2, :20], value[1:])
 
-    plans = provider.finish_model_forward(
-        view, layer_names=(layer_name,), schema_version=1
-    )
+    plans = provider.finish_model_forward(view, layer_names=(layer_name,), schema_version=1)
 
     assert plans is not None and plans[0].request_id == "prefill"
     assert plans[0].physical_num_tokens == 8
     assert not view.deferred_prefills
-    assert torch.equal(
-        cache[0][2, :8], expected.key.squeeze(0).permute(1, 0, 2)
-    )
-    assert torch.equal(
-        cache[1][2, :8], expected.value.squeeze(0).permute(1, 0, 2)
-    )
+    assert torch.equal(cache[0][2, :8], expected.key.squeeze(0).permute(1, 0, 2))
+    assert torch.equal(cache[1][2, :8], expected.value.squeeze(0).permute(1, 0, 2))
     assert torch.equal(cache[0][1, 8], key[0])
     assert provider.get_request_state("decode").semantic_num_tokens == 21
 
@@ -772,12 +875,8 @@ def test_runner_batch_view_prefill_plan_commit_and_decode_lifecycle() -> None:
 
     for index, layer_name in enumerate(LAYER_NAMES):
         retained = 8 if index else 12
-        provider.record_prefill_layer(
-            "request", layer_name, _selection(retained, index + 1)
-        )
-    plans = provider.finish_model_forward(
-        view, layer_names=LAYER_NAMES, schema_version=1
-    )
+        provider.record_prefill_layer("request", layer_name, _selection(retained, index + 1))
+    plans = provider.finish_model_forward(view, layer_names=LAYER_NAMES, schema_version=1)
     assert plans is not None
     assert len(plans) == 1
     assert plans[0].physical_num_tokens == 12
@@ -794,12 +893,7 @@ def test_runner_batch_view_prefill_plan_commit_and_decode_lifecycle() -> None:
         block_size=128,
     )
     decode_view.completed_decode_layers.update(LAYER_NAMES)
-    assert (
-        provider.finish_model_forward(
-            decode_view, layer_names=LAYER_NAMES, schema_version=1
-        )
-        is None
-    )
+    assert provider.finish_model_forward(decode_view, layer_names=LAYER_NAMES, schema_version=1) is None
     state = provider.get_request_state("request")
     assert state.semantic_num_tokens == 21
     assert state.layers[LAYER_NAMES[0]].physical_num_tokens == 13
@@ -810,9 +904,7 @@ def test_decode_view_accepts_only_required_monotonic_block_extension() -> None:
     provider = PyramidKVAscendProvider(_config())
     provider.begin_request("request", 128, ((1, 2),))
     for index, layer_name in enumerate(LAYER_NAMES):
-        provider.record_prefill_layer(
-            "request", layer_name, _selection(128, index + 1)
-        )
+        provider.record_prefill_layer("request", layer_name, _selection(128, index + 1))
     provider.finalize_plan("request", LAYER_NAMES, 1)
     provider.mark_committed("request", ((1,),))
 
@@ -828,9 +920,7 @@ def test_decode_view_accepts_only_required_monotonic_block_extension() -> None:
     )
 
     assert view.requests[0].block_ids == (1, 7)
-    assert provider.get_request_state("request").expected_block_ids == (
-        (1, 7),
-    )
+    assert provider.get_request_state("request").expected_block_ids == ((1, 7),)
 
     provider.get_request_state("request").expected_block_ids = ((1,),)
     with pytest.raises(RuntimeError, match="required monotonic extension"):
@@ -867,9 +957,7 @@ def test_runner_batch_view_supports_committed_decode_and_new_prefill() -> None:
     provider = PyramidKVAscendProvider(_config())
     provider.begin_request("decode", 8, ((3,),))
     for index, layer_name in enumerate(LAYER_NAMES):
-        provider.record_prefill_layer(
-            "decode", layer_name, _selection(8, index + 1)
-        )
+        provider.record_prefill_layer("decode", layer_name, _selection(8, index + 1))
     provider.finalize_plan("decode", LAYER_NAMES, 1)
     provider.mark_committed("decode", ((3,),))
 

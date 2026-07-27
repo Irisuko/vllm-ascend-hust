@@ -1,11 +1,34 @@
+from types import SimpleNamespace
+
 import torch
 
+import vllm_ascend.attention.utils as attention_utils
 from vllm_ascend.attention.attention_v1 import AscendAttentionState
 from vllm_ascend.attention.utils import (
     AscendCommonAttentionMetadata,
     AscendPrefillContextParallelMetadata,
+    needs_layer_aware_fia_graph_replay,
     split_decodes_and_prefills,
 )
+
+
+def test_pyramidkv_full_decode_enables_layer_aware_fia_replay(
+    monkeypatch,
+):
+    config = SimpleNamespace(
+        model_config=SimpleNamespace(
+            hf_config=SimpleNamespace(model_type="llama"),
+            hf_text_config=SimpleNamespace(model_type="llama"),
+        ),
+        kv_cache_compression_config=SimpleNamespace(provider="pyramidkv_ascend"),
+        compilation_config=SimpleNamespace(cudagraph_mode=SimpleNamespace(name="FULL_DECODE_ONLY")),
+    )
+    monkeypatch.setattr(attention_utils, "get_current_vllm_config", lambda: config)
+    needs_layer_aware_fia_graph_replay.cache_clear()
+    try:
+        assert needs_layer_aware_fia_graph_replay()
+    finally:
+        needs_layer_aware_fia_graph_replay.cache_clear()
 
 
 def build_common_attention_metadata(

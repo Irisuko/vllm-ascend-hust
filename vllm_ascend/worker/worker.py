@@ -53,8 +53,8 @@ from vllm.utils.mem_constants import GiB_bytes
 from vllm.utils.mem_utils import MemorySnapshot, format_gib, memory_profiling
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE
 from vllm.v1.core.sched.output import GrammarOutput, SchedulerOutput
-from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheSpec
 from vllm.v1.kv_cache_compression import KVCacheCompressionCompatibility
+from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheSpec
 from vllm.v1.outputs import EMPTY_MODEL_RUNNER_OUTPUT, AsyncModelRunnerOutput, DraftTokenIds, ModelRunnerOutput
 from vllm.v1.utils import report_usage_stats
 from vllm.v1.worker.gpu_worker import AsyncIntermediateTensors
@@ -1165,10 +1165,7 @@ class NPUWorker(WorkerBase):
                 schema_version=config.schema_version,
                 provider=config.provider,
                 supported=False,
-                reasons=(
-                    "Ascend platform did not declare a KV cache compression "
-                    "provider factory",
-                ),
+                reasons=("Ascend platform did not declare a KV cache compression provider factory",),
                 platform=self.current_platform.device_type,
             )
 
@@ -1181,10 +1178,7 @@ class NPUWorker(WorkerBase):
                 schema_version=config.schema_version,
                 provider=config.provider,
                 supported=False,
-                reasons=(
-                    "provider initialization failed: "
-                    f"{type(error).__name__}: {error}",
-                ),
+                reasons=(f"provider initialization failed: {type(error).__name__}: {error}",),
                 platform=self.current_platform.device_type,
                 provider_factory=factory,
             )
@@ -1196,10 +1190,7 @@ class NPUWorker(WorkerBase):
                 schema_version=config.schema_version,
                 provider=config.provider,
                 supported=False,
-                reasons=(
-                    "provider capability inspection failed: "
-                    f"{type(error).__name__}: {error}",
-                ),
+                reasons=(f"provider capability inspection failed: {type(error).__name__}: {error}",),
                 platform=self.current_platform.device_type,
                 provider_factory=factory,
             )
@@ -1235,7 +1226,7 @@ class NPUWorker(WorkerBase):
             self.model_runner.initialize_kv_cache(kv_cache_config)
             provider = self.kv_cache_compression_provider
             if provider is not None:
-                self.model_runner.kv_cache_compression_provider = provider
+                self.model_runner.activate_kv_cache_compression_provider(provider)
                 config = self.vllm_config.kv_cache_compression_config
                 logger.info(
                     "Activated KV cache compression provider after formal KV "

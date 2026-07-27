@@ -269,6 +269,12 @@ class NPUModelRunner(GPUModelRunner):
         self.kv_cache_compression_provider: Any = None
         self._kv_cache_compression_step_view: Any = None
         self._kv_cache_compression_plans: Any = None
+        self._kv_cache_compression_full_layer_names: tuple[str, ...] = ()
+        self._kv_cache_compression_full_layer_indices: dict[str, int] = {}
+        self._kv_cache_compression_full_slot_staging: torch.Tensor | None = None
+        self._kv_cache_compression_full_length_staging: torch.Tensor | None = None
+        self._kv_cache_compression_full_slots: torch.Tensor | None = None
+        self._kv_cache_compression_full_lengths: torch.Tensor | None = None
 
         # TODO(qcs): These manual pad and unpad for GPUModelRunner are
         # used to expand some buffers, which need to be reverted after
@@ -773,6 +779,132 @@ class NPUModelRunner(GPUModelRunner):
             return self.model.unwrap()
         return self.model
 
+    def activate_kv_cache_compression_provider(self, provider: Any) -> None:
+        """Attach a validated provider and allocate FULL graph metadata once."""
+        self.kv_cache_compression_provider = provider
+        if (
+            self.compilation_config.cudagraph_mode
+            != CUDAGraphMode.FULL_DECODE_ONLY
+        ):
+            return
+        if len(self.kv_cache_config.kv_cache_groups) != 1:
+            raise RuntimeError(
+                "PyramidKV FULL decode requires exactly one KV cache group"
+            )
+        layer_names = tuple(self.kv_cache_config.kv_cache_groups[0].layer_names)
+        if len(layer_names) != 32:
+            raise RuntimeError(
+                "PyramidKV FULL decode requires exactly 32 attention layers, "
+                f"got {len(layer_names)}"
+            )
+
+        shape = (len(layer_names), self.max_num_reqs)
+        pin_memory = bool(self.pin_memory)
+        self._kv_cache_compression_full_layer_names = layer_names
+        self._kv_cache_compression_full_layer_indices = {
+            name: index for index, name in enumerate(layer_names)
+        }
+        self._kv_cache_compression_full_slot_staging = torch.full(
+            shape,
+            -1,
+            dtype=torch.int32,
+            device="cpu",
+            pin_memory=pin_memory,
+        )
+        self._kv_cache_compression_full_length_staging = torch.ones(
+            shape,
+            dtype=torch.int32,
+            device="cpu",
+            pin_memory=pin_memory,
+        )
+        self._kv_cache_compression_full_slots = torch.full(
+            shape, -1, dtype=torch.int32, device=self.device
+        )
+        self._kv_cache_compression_full_lengths = torch.ones(
+            shape, dtype=torch.int32, device=self.device
+        )
+        logger.info(
+            "Initialized PyramidKV FULL_DECODE_ONLY graph metadata: "
+            "layers=%d max_num_seqs=%d slot_shape=%s length_shape=%s",
+            len(layer_names),
+            self.max_num_reqs,
+            shape,
+            shape,
+        )
+
+    def _uses_full_kv_cache_compression_metadata(
+        self, cudagraph_runtime_mode: CUDAGraphMode | None
+    ) -> bool:
+        return (
+            self.kv_cache_compression_provider is not None
+            and self.compilation_config.cudagraph_mode
+            == CUDAGraphMode.FULL_DECODE_ONLY
+            and cudagraph_runtime_mode == CUDAGraphMode.FULL
+        )
+
+    def _prepare_full_kv_cache_compression_metadata(
+        self,
+        *,
+        view: Any,
+        num_reqs: int,
+        num_reqs_padded: int,
+    ) -> None:
+        slot_staging = self._kv_cache_compression_full_slot_staging
+        length_staging = self._kv_cache_compression_full_length_staging
+        slots = self._kv_cache_compression_full_slots
+        lengths = self._kv_cache_compression_full_lengths
+        layer_names = self._kv_cache_compression_full_layer_names
+        if any(
+            value is None
+            for value in (slot_staging, length_staging, slots, lengths)
+        ) or not layer_names:
+            raise RuntimeError(
+                "PyramidKV FULL decode metadata was not initialized after KV "
+                "cache allocation"
+            )
+        assert slot_staging is not None
+        assert length_staging is not None
+        assert slots is not None
+        assert lengths is not None
+        if not num_reqs <= num_reqs_padded <= self.max_num_reqs:
+            raise RuntimeError(
+                "PyramidKV FULL decode request count exceeds stable metadata "
+                f"capacity: actual={num_reqs}, padded={num_reqs_padded}, "
+                f"capacity={self.max_num_reqs}"
+            )
+
+        if view is not None:
+            view.fill_full_decode_metadata(
+                layer_names=layer_names,
+                slot_staging=slot_staging,
+                length_staging=length_staging,
+                num_reqs_padded=num_reqs_padded,
+            )
+        else:
+            # No active compressed request: mirror the ordinary decode metadata
+            # into every layer while preserving the same stable graph addresses.
+            slot_staging.fill_(-1)
+            length_staging.fill_(1)
+            if self.cpu_slot_mapping is None:
+                raise RuntimeError(
+                    "PyramidKV FULL decode requires the CPU slot mapping"
+                )
+            ordinary_slots = self.cpu_slot_mapping[:num_reqs].to(
+                dtype=torch.int32
+            )
+            ordinary_lengths = self.optimistic_seq_lens_cpu[:num_reqs].to(
+                dtype=torch.int32
+            )
+            slot_staging[:, :num_reqs].copy_(
+                ordinary_slots.unsqueeze(0).expand(len(layer_names), -1)
+            )
+            length_staging[:, :num_reqs].copy_(
+                ordinary_lengths.unsqueeze(0).expand(len(layer_names), -1)
+            )
+
+        slots.copy_(slot_staging, non_blocking=True)
+        lengths.copy_(length_staging, non_blocking=True)
+
     def _update_states(self, scheduler_output: "SchedulerOutput") -> Callable | None:
         provider = self.kv_cache_compression_provider
         if provider is not None:
@@ -853,6 +985,7 @@ class NPUModelRunner(GPUModelRunner):
         *,
         num_reqs: int,
         num_scheduled_tokens_np: np.ndarray,
+        include_uncompressed: bool = False,
     ) -> Any:
         provider = self.kv_cache_compression_provider
         if provider is None:
@@ -895,11 +1028,13 @@ class NPUModelRunner(GPUModelRunner):
             block_size=group.kv_cache_spec.block_size,
         )
         if not any(request.compress for request in view.requests):
-            return None
+            return view if include_uncompressed else None
         self._kv_cache_compression_step_view = view
         return view
 
-    def _finish_kv_cache_compression_forward(self) -> None:
+    def _finish_kv_cache_compression_forward(
+        self, *, full_graph_decode: bool = False
+    ) -> None:
         provider = self.kv_cache_compression_provider
         view = self._kv_cache_compression_step_view
         if provider is None or view is None:
@@ -911,6 +1046,15 @@ class NPUModelRunner(GPUModelRunner):
                 "KV cache compression provider is active while core config is "
                 "disabled"
             )
+        if full_graph_decode:
+            if any(request.is_prefill for request in view.requests):
+                raise RuntimeError(
+                    "PyramidKV FULL graph completion cannot contain prefill "
+                    "requests"
+                )
+            # FULL replay bypasses the Python per-layer attention hook. Marking
+            # is intentionally delayed until after _model_forward succeeds.
+            view.completed_decode_layers.update(group.layer_names)
         self._kv_cache_compression_plans = provider.finish_model_forward(
             view,
             layer_names=tuple(group.layer_names),
@@ -2438,6 +2582,7 @@ class NPUModelRunner(GPUModelRunner):
                     num_scheduled_tokens=scheduler_output.num_scheduled_tokens,
                     num_scheduled_tokens_np=num_scheduled_tokens_np,
                     cascade_attn_prefix_lens=cascade_attn_prefix_lens,
+                    cudagraph_runtime_mode=cudagraph_mode,
                 )
 
                 self._sanitize_placeholder_input_ids_for_forward(
@@ -2517,7 +2662,9 @@ class NPUModelRunner(GPUModelRunner):
                 num_tokens_padded, input_ids, positions, intermediate_tensors, inputs_embeds, **model_kwargs
             )
         if self.kv_cache_compression_provider is not None:
-            self._finish_kv_cache_compression_forward()
+            self._finish_kv_cache_compression_forward(
+                full_graph_decode=cudagraph_mode == CUDAGraphMode.FULL
+            )
         with record_function_or_nullcontext("post process"):
             aux_hidden_states = None
             if self.use_aux_hidden_state_outputs:
@@ -3242,6 +3389,8 @@ class NPUModelRunner(GPUModelRunner):
         num_scheduled_tokens: dict[str, int] | None = None,
         num_scheduled_tokens_np: np.ndarray | None = None,
         cascade_attn_prefix_lens: list[list[int]] | None = None,
+        cudagraph_runtime_mode: CUDAGraphMode | None = None,
+        is_dummy_run: bool = False,
     ) -> tuple[PerLayerAttnMetadata, CommonAttentionMetadata | None]:
         """
         :return: tuple[attn_metadata, spec_decode_common_attn_metadata]
@@ -3360,18 +3509,48 @@ class NPUModelRunner(GPUModelRunner):
             num_computed_tokens_cpu = None
             seq_lens_cpu_metadata = self.optimistic_seq_lens_cpu[:num_reqs_padded]
 
+        use_full_compression_metadata = (
+            self._uses_full_kv_cache_compression_metadata(
+                cudagraph_runtime_mode
+            )
+        )
         kv_cache_compression_view = None
         if (
             self.kv_cache_compression_provider is not None
             and not for_cudagraph_capture
+            and not is_dummy_run
             and num_scheduled_tokens_np is not None
         ):
             kv_cache_compression_view = (
                 self._build_kv_cache_compression_view(
                     num_reqs=num_reqs,
                     num_scheduled_tokens_np=num_scheduled_tokens_np,
+                    include_uncompressed=use_full_compression_metadata,
                 )
             )
+
+        if use_full_compression_metadata:
+            self._prepare_full_kv_cache_compression_metadata(
+                view=kv_cache_compression_view,
+                num_reqs=num_reqs,
+                num_reqs_padded=num_reqs_padded,
+            )
+            if not is_dummy_run:
+                compressed_reqs = (
+                    sum(
+                        request.compress
+                        for request in kv_cache_compression_view.requests
+                    )
+                    if kv_cache_compression_view is not None
+                    else 0
+                )
+                logger.info_once(
+                    "Prepared PyramidKV FULL decode replay metadata: "
+                    "actual_reqs=%d graph_size=%d compressed_reqs=%d",
+                    num_reqs,
+                    num_reqs_padded,
+                    compressed_reqs,
+                )
 
         cm_base = AscendCommonAttentionMetadata(
             query_start_loc=self.query_start_loc.gpu[: num_reqs_padded + 1],
@@ -3400,7 +3579,11 @@ class NPUModelRunner(GPUModelRunner):
             attn_state=self.attn_state,
             decode_token_per_req=self.decode_token_per_req,
             prefill_context_parallel_metadata=self.long_seq_metadata,
-            kv_cache_compression_view=kv_cache_compression_view,
+            kv_cache_compression_view=(
+                None
+                if use_full_compression_metadata
+                else kv_cache_compression_view
+            ),
         )
 
         if logits_indices is not None and self.cache_config.kv_sharing_fast_prefill:
@@ -3472,7 +3655,37 @@ class NPUModelRunner(GPUModelRunner):
                 attn_metadata_dict = attn_metadata[ubid]
 
             for layer_name in attn_group.layer_names:
-                attn_metadata_dict[layer_name] = attn_metadata_i
+                if use_full_compression_metadata:
+                    layer_index = (
+                        self._kv_cache_compression_full_layer_indices[
+                            layer_name
+                        ]
+                    )
+                    slots = self._kv_cache_compression_full_slots
+                    lengths = self._kv_cache_compression_full_lengths
+                    length_staging = (
+                        self._kv_cache_compression_full_length_staging
+                    )
+                    assert slots is not None
+                    assert lengths is not None
+                    assert length_staging is not None
+                    layer_metadata = copy(attn_metadata_i)
+                    layer_metadata.slot_mapping = slots[
+                        layer_index, :num_tokens_padded
+                    ]
+                    layer_metadata.seq_lens = lengths[
+                        layer_index, :num_reqs_padded
+                    ]
+                    layer_metadata.seq_lens_cpu = length_staging[
+                        layer_index, :num_reqs_padded
+                    ]
+                    layer_metadata.seq_lens_list = (
+                        layer_metadata.seq_lens_cpu.tolist()
+                    )
+                    layer_metadata.kv_cache_compression_view = None
+                    attn_metadata_dict[layer_name] = layer_metadata
+                else:
+                    attn_metadata_dict[layer_name] = attn_metadata_i
 
         # Prepare the attention metadata for each KV cache group and make layers
         # in the same group share the same metadata.
@@ -3753,6 +3966,8 @@ class NPUModelRunner(GPUModelRunner):
                 ubatch_slices=ubatch_slices_padded if pad_attn else ubatch_slices,
                 for_cudagraph_capture=is_graph_capturing,
                 num_scheduled_tokens_np=num_scheduled_tokens,
+                cudagraph_runtime_mode=cudagraph_runtime_mode,
+                is_dummy_run=True,
             )
 
         with self.maybe_dummy_run_with_lora(

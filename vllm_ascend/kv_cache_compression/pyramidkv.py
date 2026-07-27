@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 import regex as re
 import torch
 import torch.nn.functional as F
-
 from vllm.v1.kv_cache_compression import (
     KVCacheCompressionCompatibility,
     KVCacheCompressionPlan,
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
 
 PYRAMIDKV_ASCEND_PROVIDER = "pyramidkv_ascend"
 SUPPORTED_DEVICE_NAME = "Ascend910B2"
-SUPPORTED_CANN_VERSION_PREFIX = "8.5.1"
+SUPPORTED_CANN_VERSION_PREFIXES = ("8.5.1", "9.0")
 SUPPORTED_BACKEND = "AscendAttentionBackend"
 SUPPORTED_MODEL_ARCHITECTURE = "LlamaForCausalLM"
 SUPPORTED_CACHE_LAYOUT = "standard_bf16_paged"
@@ -49,13 +48,11 @@ class PyramidKVAscendConfig:
     merge: None = None
 
     @classmethod
-    def from_dict(cls, values: dict[str, Any]) -> "PyramidKVAscendConfig":
+    def from_dict(cls, values: dict[str, Any]) -> PyramidKVAscendConfig:
         expected = set(cls.__dataclass_fields__)
         unknown = sorted(set(values) - expected)
         if unknown:
-            raise ValueError(
-                "unknown PyramidKV provider_config fields: " + ", ".join(unknown)
-            )
+            raise ValueError("unknown PyramidKV provider_config fields: " + ", ".join(unknown))
         config = cls(**values)
         config._validate()
         return config
@@ -76,27 +73,19 @@ class PyramidKVAscendConfig:
                 f"{self.max_capacity_prompt} and {self.window_size}"
             )
         if self.kernel_size % 2 == 0:
-            raise ValueError(
-                f"kernel_size must be odd to preserve score length, got {self.kernel_size}"
-            )
+            raise ValueError(f"kernel_size must be odd to preserve score length, got {self.kernel_size}")
         if self.pooling != "maxpool":
-            raise ValueError(
-                f"pooling must be 'maxpool' in the first release, got {self.pooling!r}"
-            )
+            raise ValueError(f"pooling must be 'maxpool' in the first release, got {self.pooling!r}")
         if self.kv_cache_granularity != "kv_head":
             raise ValueError(
-                "kv_cache_granularity must be 'kv_head' in the first release, "
-                f"got {self.kv_cache_granularity!r}"
+                f"kv_cache_granularity must be 'kv_head' in the first release, got {self.kv_cache_granularity!r}"
             )
         if self.gqa_score_aggregation != "mean":
             raise ValueError(
-                "gqa_score_aggregation must be 'mean' in the first release, "
-                f"got {self.gqa_score_aggregation!r}"
+                f"gqa_score_aggregation must be 'mean' in the first release, got {self.gqa_score_aggregation!r}"
             )
         if self.merge is not None:
-            raise ValueError(
-                f"merge must be null in the first release, got {self.merge!r}"
-            )
+            raise ValueError(f"merge must be null in the first release, got {self.merge!r}")
 
     def retained_tokens(
         self,
@@ -108,13 +97,9 @@ class PyramidKVAscendConfig:
         if prompt_tokens <= 0:
             raise ValueError(f"prompt_tokens must be positive, got {prompt_tokens}")
         if num_hidden_layers <= 1:
-            raise ValueError(
-                f"num_hidden_layers must be greater than one, got {num_hidden_layers}"
-            )
+            raise ValueError(f"num_hidden_layers must be greater than one, got {num_hidden_layers}")
         if not 0 <= layer_index < num_hidden_layers:
-            raise ValueError(
-                f"layer_index {layer_index} is outside [0, {num_hidden_layers})"
-            )
+            raise ValueError(f"layer_index {layer_index} is outside [0, {num_hidden_layers})")
         if prompt_tokens < self.max_capacity_prompt:
             return prompt_tokens
 
@@ -142,6 +127,8 @@ class PyramidKVCapabilityContext:
     cann_version: str
     use_v2_model_runner: bool
     enforce_eager: bool
+    cudagraph_mode: str
+    pa_shape_list: tuple[int, ...]
     backend: str
     model_architecture: str
     dtype: str
@@ -195,26 +182,16 @@ def select_pyramid_kv(
     if query.ndim != 4 or key.ndim != 4 or value.ndim != 4:
         raise ValueError("query, key, and value must have [batch, heads, tokens, dim]")
     if key.shape != value.shape:
-        raise ValueError(
-            f"key and value shapes must match, got {key.shape} and {value.shape}"
-        )
+        raise ValueError(f"key and value shapes must match, got {key.shape} and {value.shape}")
     if query.shape[0] != key.shape[0] or query.shape[2:] != key.shape[2:]:
-        raise ValueError(
-            "query/key batch, token, and head dimensions must match, got "
-            f"{query.shape} and {key.shape}"
-        )
+        raise ValueError(f"query/key batch, token, and head dimensions must match, got {query.shape} and {key.shape}")
     num_query_heads = query.shape[1]
     num_kv_heads = key.shape[1]
     if num_query_heads % num_kv_heads != 0:
-        raise ValueError(
-            f"query heads {num_query_heads} must be divisible by KV heads "
-            f"{num_kv_heads}"
-        )
+        raise ValueError(f"query heads {num_query_heads} must be divisible by KV heads {num_kv_heads}")
 
     prompt_tokens = query.shape[2]
-    retained_tokens = config.retained_tokens(
-        prompt_tokens, layer_index, num_hidden_layers
-    )
+    retained_tokens = config.retained_tokens(prompt_tokens, layer_index, num_hidden_layers)
     if retained_tokens >= prompt_tokens:
         return PyramidKVSelection(
             key=key,
@@ -224,10 +201,7 @@ def select_pyramid_kv(
             compressed=False,
         )
     if prompt_tokens <= config.window_size:
-        raise ValueError(
-            f"prompt length {prompt_tokens} must exceed window_size "
-            f"{config.window_size}"
-        )
+        raise ValueError(f"prompt length {prompt_tokens} must exceed window_size {config.window_size}")
 
     groups = num_query_heads // num_kv_heads
     query_window = query[:, :, -config.window_size :, :].reshape(
@@ -251,9 +225,7 @@ def select_pyramid_kv(
         diagonal=1,
     )
     scores[..., -config.window_size :] += causal_mask
-    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(
-        query.dtype
-    )
+    probabilities = torch.softmax(scores, dim=-1, dtype=torch.float32).to(query.dtype)
     history_scores = probabilities[..., : -config.window_size].sum(dim=-2)
     history_scores = history_scores.mean(dim=2)
     pooled_scores = F.max_pool1d(
@@ -298,8 +270,7 @@ def _slots_for_positions(
 ) -> torch.Tensor:
     if start_position < 0 or num_positions <= 0:
         raise ValueError(
-            "start_position must be non-negative and num_positions positive, "
-            f"got {start_position} and {num_positions}"
+            f"start_position must be non-negative and num_positions positive, got {start_position} and {num_positions}"
         )
     end_position = start_position + num_positions
     required_blocks = (end_position + block_size - 1) // block_size
@@ -309,14 +280,10 @@ def _slots_for_positions(
             f"{end_position}, "
             f"but the request block table has {len(block_ids)}"
         )
-    positions = torch.arange(
-        start_position, end_position, dtype=torch.int32, device=device
-    )
+    positions = torch.arange(start_position, end_position, dtype=torch.int32, device=device)
     block_table = torch.tensor(block_ids, dtype=torch.int32, device=device)
-    return (
-        block_table[torch.div(positions, block_size, rounding_mode="floor")]
-        * block_size
-        + positions.remainder(block_size)
+    return block_table[torch.div(positions, block_size, rounding_mode="floor")] * block_size + positions.remainder(
+        block_size
     )
 
 
@@ -383,102 +350,124 @@ class PyramidKVDeferredPrefill:
 class PyramidKVAttentionBatchView:
     """Layer-aware cache-write data attached to Ascend attention metadata."""
 
-    provider: "PyramidKVAscendProvider"
+    provider: PyramidKVAscendProvider
     requests: tuple[PyramidKVAttentionRequest, ...]
     layer_indices: dict[str, int]
     num_hidden_layers: int
     block_size: int = SUPPORTED_BLOCK_SIZE
     completed_decode_layers: set[str] = field(default_factory=set)
-    deferred_prefills: list[PyramidKVDeferredPrefill] = field(
-        default_factory=list
-    )
-    decode_slot_values_by_layer: dict[str, tuple[int, ...]] = field(
-        default_factory=dict
-    )
-    decode_lengths_by_layer: dict[str, list[int]] = field(
-        default_factory=dict
-    )
-    decode_slot_tensors_by_layer: dict[str, torch.Tensor] = field(
-        default_factory=dict
-    )
-    decode_length_tensors_by_layer: dict[str, torch.Tensor] = field(
-        default_factory=dict
-    )
+    deferred_prefills: list[PyramidKVDeferredPrefill] = field(default_factory=list)
+    decode_slot_values_by_layer: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    decode_lengths_by_layer: dict[str, list[int]] = field(default_factory=dict)
+    decode_slot_tensors_by_layer: dict[str, torch.Tensor] = field(default_factory=dict)
+    decode_length_tensors_by_layer: dict[str, torch.Tensor] = field(default_factory=dict)
 
-    def _decode_tensors(
-        self, layer_name: str, device: torch.device
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Materialize all decode slots in one device transfer; keep lengths CPU."""
-        if not self.decode_slot_values_by_layer:
-            ordered_layers = tuple(
-                name
-                for name, _ in sorted(
-                    self.layer_indices.items(), key=lambda item: item[1]
-                )
-            )
-            for current_layer in ordered_layers:
-                slots: list[int] = []
-                lengths: list[int] = []
-                for request in self.requests:
-                    if request.is_prefill:
+    def _prepare_decode_values(self) -> tuple[str, ...]:
+        """Validate decode state and compute per-layer CPU slot/length values."""
+        ordered_layers = tuple(name for name, _ in sorted(self.layer_indices.items(), key=lambda item: item[1]))
+        if self.decode_slot_values_by_layer:
+            return ordered_layers
+
+        for current_layer in ordered_layers:
+            slots: list[int] = []
+            lengths: list[int] = []
+            for request in self.requests:
+                if request.is_prefill:
+                    raise RuntimeError("decode slot matrix cannot contain a prefill request")
+                if request.query_end - request.query_start != 1:
+                    raise RuntimeError("PyramidKV supports exactly one decode token per request")
+                if request.compress:
+                    request_state = self.provider.get_request_state(request.request_id)
+                    if not request_state.committed:
+                        raise RuntimeError(f"request {request.request_id!r} has no core commit ack")
+                    if request.block_ids != request_state.expected_block_ids[0]:
                         raise RuntimeError(
-                            "decode slot matrix cannot contain a prefill request"
+                            f"request {request.request_id!r} decode block "
+                            "table does not match the core commit ack: "
+                            f"runner={request.block_ids}, provider="
+                            f"{request_state.expected_block_ids[0]}"
                         )
-                    if request.query_end - request.query_start != 1:
+                    if request.semantic_num_tokens != request_state.semantic_num_tokens + 1:
                         raise RuntimeError(
-                            "PyramidKV supports exactly one decode token per request"
+                            f"request {request.request_id!r} decode semantic "
+                            "length must be "
+                            f"{request_state.semantic_num_tokens + 1}, got "
+                            f"{request.semantic_num_tokens}"
                         )
-                    if request.compress:
-                        request_state = self.provider.get_request_state(
-                            request.request_id
-                        )
-                        if not request_state.committed:
-                            raise RuntimeError(
-                                f"request {request.request_id!r} has no core "
-                                "commit ack"
-                            )
-                        if (
-                            request.block_ids
-                            != request_state.expected_block_ids[0]
-                        ):
-                            raise RuntimeError(
-                                f"request {request.request_id!r} decode block "
-                                "table does not match the core commit ack: "
-                                f"runner={request.block_ids}, provider="
-                                f"{request_state.expected_block_ids[0]}"
-                            )
-                        if (
-                            request.semantic_num_tokens
-                            != request_state.semantic_num_tokens + 1
-                        ):
-                            raise RuntimeError(
-                                f"request {request.request_id!r} decode semantic "
-                                f"length must be "
-                                f"{request_state.semantic_num_tokens + 1}, got "
-                                f"{request.semantic_num_tokens}"
-                            )
-                        try:
-                            position = request_state.layers[
-                                current_layer
-                            ].physical_num_tokens
-                        except KeyError as error:
-                            raise RuntimeError(
-                                f"request {request.request_id!r} has no state for "
-                                f"layer {current_layer!r}"
-                            ) from error
-                        lengths.append(position + 1)
-                    else:
-                        position = request.semantic_num_tokens - 1
-                        lengths.append(request.semantic_num_tokens)
-                    slots.append(
-                        _slot_for_position(
-                            request.block_ids,
-                            position,
-                            self.block_size,
-                        )
+                    try:
+                        position = request_state.layers[current_layer].physical_num_tokens
+                    except KeyError as error:
+                        raise RuntimeError(
+                            f"request {request.request_id!r} has no state for layer {current_layer!r}"
+                        ) from error
+                    lengths.append(position + 1)
+                else:
+                    position = request.semantic_num_tokens - 1
+                    lengths.append(request.semantic_num_tokens)
+                slots.append(
+                    _slot_for_position(
+                        request.block_ids,
+                        position,
+                        self.block_size,
                     )
-                self.decode_slot_values_by_layer[current_layer] = tuple(slots)
-                self.decode_lengths_by_layer[current_layer] = lengths
+                )
+            self.decode_slot_values_by_layer[current_layer] = tuple(slots)
+            self.decode_lengths_by_layer[current_layer] = lengths
+        return ordered_layers
+
+    def fill_full_decode_metadata(
+        self,
+        *,
+        layer_names: tuple[str, ...],
+        slot_staging: torch.Tensor,
+        length_staging: torch.Tensor,
+        num_reqs_padded: int,
+    ) -> None:
+        """Fill address-stable FULL graph staging matrices without advancing state."""
+        ordered_layers = self._prepare_decode_values()
+        if ordered_layers != layer_names:
+            raise RuntimeError(
+                "PyramidKV FULL decode layer order does not match the KV cache "
+                f"group: view={ordered_layers}, group={layer_names}"
+            )
+        expected_shape = (len(layer_names), slot_staging.shape[1])
+        if (
+            slot_staging.device.type != "cpu"
+            or length_staging.device.type != "cpu"
+            or slot_staging.dtype != torch.int32
+            or length_staging.dtype != torch.int32
+            or slot_staging.shape != length_staging.shape
+            or tuple(slot_staging.shape) != expected_shape
+        ):
+            raise RuntimeError(
+                f"PyramidKV FULL decode staging buffers must be matching CPU int32 matrices shaped {expected_shape}"
+            )
+        num_reqs = len(self.requests)
+        if not num_reqs <= num_reqs_padded <= slot_staging.shape[1]:
+            raise RuntimeError(
+                "PyramidKV FULL decode padded request count is invalid: "
+                f"actual={num_reqs}, padded={num_reqs_padded}, "
+                f"capacity={slot_staging.shape[1]}"
+            )
+
+        # Padding must never write a real KV slot. FIA nevertheless requires a
+        # positive length for every padded request row.
+        slot_staging.fill_(-1)
+        length_staging.fill_(1)
+        for layer_index, layer_name in enumerate(layer_names):
+            slot_staging[layer_index, :num_reqs] = torch.tensor(
+                self.decode_slot_values_by_layer[layer_name],
+                dtype=torch.int32,
+            )
+            length_staging[layer_index, :num_reqs] = torch.tensor(
+                self.decode_lengths_by_layer[layer_name],
+                dtype=torch.int32,
+            )
+
+    def _decode_tensors(self, layer_name: str, device: torch.device) -> tuple[torch.Tensor, torch.Tensor]:
+        """Materialize all decode slots in one device transfer; keep lengths CPU."""
+        if not self.decode_slot_tensors_by_layer:
+            ordered_layers = self._prepare_decode_values()
             slot_matrix = torch.tensor(
                 [self.decode_slot_values_by_layer[name] for name in ordered_layers],
                 dtype=torch.int32,
@@ -489,16 +478,10 @@ class PyramidKVAttentionBatchView:
                 dtype=torch.int32,
             )
             self.decode_slot_tensors_by_layer.update(
-                {
-                    name: slot_matrix[index]
-                    for index, name in enumerate(ordered_layers)
-                }
+                {name: slot_matrix[index] for index, name in enumerate(ordered_layers)}
             )
             self.decode_length_tensors_by_layer.update(
-                {
-                    name: length_matrix[index]
-                    for index, name in enumerate(ordered_layers)
-                }
+                {name: length_matrix[index] for index, name in enumerate(ordered_layers)}
             )
         slots = self.decode_slot_tensors_by_layer[layer_name]
         lengths = self.decode_length_tensors_by_layer[layer_name]
@@ -524,13 +507,9 @@ class PyramidKVAttentionBatchView:
         """Write compact prefill/decode K/V and suppress the default writer."""
         layer_name = layer.layer_name
         if layer_name not in self.layer_indices:
-            raise RuntimeError(
-                f"PyramidKV batch view has no layer index for {layer_name!r}"
-            )
+            raise RuntimeError(f"PyramidKV batch view has no layer index for {layer_name!r}")
         if self.block_size != SUPPORTED_BLOCK_SIZE:
-            raise RuntimeError(
-                f"PyramidKV attention view requires block_size 128, got {self.block_size}"
-            )
+            raise RuntimeError(f"PyramidKV attention view requires block_size 128, got {self.block_size}")
         if not self.requests:
             raise RuntimeError("PyramidKV attention view has no requests")
         if key is None or value is None:
@@ -568,24 +547,16 @@ class PyramidKVAttentionBatchView:
             )
         if phases == {True} and state_name != "PrefillNoCache":
             raise RuntimeError(
-                "PyramidKV full prefill requires PrefillNoCache attention state, "
-                f"got {attn_metadata.attn_state}"
+                f"PyramidKV full prefill requires PrefillNoCache attention state, got {attn_metadata.attn_state}"
             )
         if phases == {False} and state_name != "DecodeOnly":
-            raise RuntimeError(
-                "PyramidKV decode requires DecodeOnly attention state, got "
-                f"{attn_metadata.attn_state}"
-            )
+            raise RuntimeError(f"PyramidKV decode requires DecodeOnly attention state, got {attn_metadata.attn_state}")
 
         if is_decode_only:
             actual_tokens = attn_metadata.num_actual_tokens
             write_key = key if actual_tokens == key.shape[0] else key[:actual_tokens]
-            write_value = (
-                value if actual_tokens == value.shape[0] else value[:actual_tokens]
-            )
-            write_slots, decode_length_tensor = self._decode_tensors(
-                layer_name, key.device
-            )
+            write_value = value if actual_tokens == value.shape[0] else value[:actual_tokens]
+            write_slots, decode_length_tensor = self._decode_tensors(layer_name, key.device)
             backend.do_kv_cache_update(
                 layer,
                 write_key,
@@ -619,17 +590,12 @@ class PyramidKVAttentionBatchView:
                 request_state = self.provider.get_request_state(request.request_id)
                 if (
                     request.semantic_num_tokens != request_state.semantic_num_tokens
-                    or request.query_end - request.query_start
-                    != request.semantic_num_tokens
+                    or request.query_end - request.query_start != request.semantic_num_tokens
                 ):
-                    raise RuntimeError(
-                        f"request {request.request_id!r} is not a complete full "
-                        "prefill"
-                    )
+                    raise RuntimeError(f"request {request.request_id!r} is not a complete full prefill")
                 if request.block_ids != request_state.expected_block_ids[0]:
                     raise RuntimeError(
-                        f"request {request.request_id!r} prefill block table does "
-                        "not match provider state"
+                        f"request {request.request_id!r} prefill block table does not match provider state"
                     )
                 request_query = query[request.query_start : request.query_end]
                 selection = select_pyramid_kv(
@@ -642,16 +608,13 @@ class PyramidKVAttentionBatchView:
                 )
                 if not selection.compressed:
                     raise RuntimeError(
-                        f"request {request.request_id!r} did not cross the "
-                        "PyramidKV compression threshold"
+                        f"request {request.request_id!r} did not cross the PyramidKV compression threshold"
                     )
                 if is_mixed:
                     compact_keys.append(request_key)
                     compact_values.append(request_value)
                     slot_tensors.append(
-                        attn_metadata.slot_mapping[
-                            request.query_start : request.query_end
-                        ].to(dtype=torch.int32)
+                        attn_metadata.slot_mapping[request.query_start : request.query_end].to(dtype=torch.int32)
                     )
                     self.deferred_prefills.append(
                         PyramidKVDeferredPrefill(
@@ -666,12 +629,8 @@ class PyramidKVAttentionBatchView:
                         )
                     )
                 else:
-                    compact_keys.append(
-                        selection.key.squeeze(0).permute(1, 0, 2)
-                    )
-                    compact_values.append(
-                        selection.value.squeeze(0).permute(1, 0, 2)
-                    )
+                    compact_keys.append(selection.key.squeeze(0).permute(1, 0, 2))
+                    compact_values.append(selection.value.squeeze(0).permute(1, 0, 2))
                     slot_tensors.append(
                         _slots_for_positions(
                             request.block_ids,
@@ -684,14 +643,10 @@ class PyramidKVAttentionBatchView:
                     completed_prefills.append((request.request_id, selection))
             elif not request.is_prefill and request.compress:
                 if request.query_end - request.query_start != 1:
-                    raise RuntimeError(
-                        "PyramidKV supports exactly one decode token per request"
-                    )
+                    raise RuntimeError("PyramidKV supports exactly one decode token per request")
                 request_state = self.provider.get_request_state(request.request_id)
                 if not request_state.committed:
-                    raise RuntimeError(
-                        f"request {request.request_id!r} has no core commit ack"
-                    )
+                    raise RuntimeError(f"request {request.request_id!r} has no core commit ack")
                 if request.block_ids != request_state.expected_block_ids[0]:
                     raise RuntimeError(
                         f"request {request.request_id!r} decode block table does "
@@ -706,13 +661,10 @@ class PyramidKVAttentionBatchView:
                         f"{request.semantic_num_tokens}"
                     )
                 try:
-                    physical_tokens = request_state.layers[
-                        layer_name
-                    ].physical_num_tokens
+                    physical_tokens = request_state.layers[layer_name].physical_num_tokens
                 except KeyError as error:
                     raise RuntimeError(
-                        f"request {request.request_id!r} has no state for layer "
-                        f"{layer_name!r}"
+                        f"request {request.request_id!r} has no state for layer {layer_name!r}"
                     ) from error
                 if not is_decode_only:
                     compact_keys.append(request_key)
@@ -732,31 +684,20 @@ class PyramidKVAttentionBatchView:
                     compact_keys.append(request_key)
                     compact_values.append(request_value)
                     slot_tensors.append(
-                        attn_metadata.slot_mapping[
-                            request.query_start : request.query_end
-                        ].to(dtype=torch.int32)
+                        attn_metadata.slot_mapping[request.query_start : request.query_end].to(dtype=torch.int32)
                     )
 
         write_key = torch.cat(compact_keys, dim=0)
         write_value = torch.cat(compact_values, dim=0)
         write_slots = torch.cat(slot_tensors, dim=0)
-        backend.do_kv_cache_update(
-            layer, write_key, write_value, kv_cache, write_slots
-        )
+        backend.do_kv_cache_update(layer, write_key, write_value, kv_cache, write_slots)
         for request_id, selection in completed_prefills:
-            self.provider.record_prefill_layer(
-                request_id, layer_name, selection
-            )
+            self.provider.record_prefill_layer(request_id, layer_name, selection)
         if False in phases:
-            if any(
-                request.compress and not request.is_prefill
-                for request in self.requests
-            ):
+            if any(request.compress and not request.is_prefill for request in self.requests):
                 self.completed_decode_layers.add(layer_name)
             attn_metadata.seq_lens_list = decode_lengths
-            attn_metadata.seq_lens = attn_metadata.seq_lens.new_tensor(
-                decode_lengths
-            )
+            attn_metadata.seq_lens = attn_metadata.seq_lens.new_tensor(decode_lengths)
             attn_metadata.seq_lens_cpu = attn_metadata.seq_lens
         return True
 
@@ -772,25 +713,17 @@ class PyramidKVAscendProvider:
     def _layer_indices(layer_names: tuple[str, ...]) -> dict[str, int]:
         indices: dict[str, int] = {}
         for layer_name in layer_names:
-            match = re.fullmatch(
-                r"model\.layers\.(\d+)\.self_attn\.attn", layer_name
-            )
+            match = re.fullmatch(r"model\.layers\.(\d+)\.self_attn\.attn", layer_name)
             if match is None:
-                raise RuntimeError(
-                    "PyramidKV requires canonical Llama attention layer names, "
-                    f"got {layer_name!r}"
-                )
+                raise RuntimeError(f"PyramidKV requires canonical Llama attention layer names, got {layer_name!r}")
             index = int(match.group(1))
             if index in indices.values():
-                raise RuntimeError(
-                    f"duplicate PyramidKV layer index {index} in {layer_names}"
-                )
+                raise RuntimeError(f"duplicate PyramidKV layer index {index} in {layer_names}")
             indices[layer_name] = index
         expected = set(range(len(layer_names)))
         if set(indices.values()) != expected:
             raise RuntimeError(
-                "PyramidKV layer indices must be contiguous from zero, got "
-                f"{tuple(sorted(indices.values()))}"
+                f"PyramidKV layer indices must be contiguous from zero, got {tuple(sorted(indices.values()))}"
             )
         return indices
 
@@ -816,26 +749,14 @@ class PyramidKVAscendProvider:
             len(block_ids),
         }
         if counts != {len(request_ids)} or not request_ids:
-            raise RuntimeError(
-                "PyramidKV runner batch fields must have the same non-zero "
-                "request count"
-            )
+            raise RuntimeError("PyramidKV runner batch fields must have the same non-zero request count")
         if block_size != SUPPORTED_BLOCK_SIZE:
-            raise RuntimeError(
-                f"PyramidKV requires block_size 128, got {block_size}"
-            )
+            raise RuntimeError(f"PyramidKV requires block_size 128, got {block_size}")
         if len(layer_names) != 32:
-            raise RuntimeError(
-                f"PyramidKV requires 32 attention layers, got {len(layer_names)}"
-            )
+            raise RuntimeError(f"PyramidKV requires 32 attention layers, got {len(layer_names)}")
         layer_indices = self._layer_indices(layer_names)
 
-        phases = tuple(
-            computed < prompt
-            for computed, prompt in zip(
-                num_computed_tokens, num_prompt_tokens
-            )
-        )
+        phases = tuple(computed < prompt for computed, prompt in zip(num_computed_tokens, num_prompt_tokens))
         requests: list[PyramidKVAttentionRequest] = []
         query_start = 0
         for index, request_id in enumerate(request_ids):
@@ -845,49 +766,31 @@ class PyramidKVAscendProvider:
             prompt = num_prompt_tokens[index]
             request_blocks = block_ids[index]
             if query_length <= 0:
-                raise RuntimeError(
-                    f"request {request_id!r} has no scheduled tokens"
-                )
+                raise RuntimeError(f"request {request_id!r} has no scheduled tokens")
             if len(request_blocks) != 1 or not request_blocks[0]:
-                raise RuntimeError(
-                    f"request {request_id!r} requires one non-empty block table"
-                )
+                raise RuntimeError(f"request {request_id!r} requires one non-empty block table")
 
             is_prefill = phases[index]
             compress = False
             if is_prefill:
                 if computed != 0 or query_length != prompt or semantic_length != prompt:
                     raise RuntimeError(
-                        f"request {request_id!r} must execute one complete full "
-                        "prefill before PyramidKV compression"
+                        f"request {request_id!r} must execute one complete full prefill before PyramidKV compression"
                     )
                 compress = any(
-                    self.config.retained_tokens(
-                        prompt, layer_index, len(layer_names)
-                    )
-                    < prompt
+                    self.config.retained_tokens(prompt, layer_index, len(layer_names)) < prompt
                     for layer_index in range(len(layer_names))
                 )
                 if compress:
-                    self.begin_request(
-                        request_id, semantic_length, request_blocks
-                    )
+                    self.begin_request(request_id, semantic_length, request_blocks)
             else:
                 if query_length != 1 or semantic_length != computed + 1:
-                    raise RuntimeError(
-                        f"request {request_id!r} must execute ordinary one-token "
-                        "decode"
-                    )
+                    raise RuntimeError(f"request {request_id!r} must execute ordinary one-token decode")
                 request_state = self._requests.get(request_id)
                 if request_state is not None:
                     if not request_state.committed:
-                        raise RuntimeError(
-                            f"request {request_id!r} is waiting for the core "
-                            "compression commit ack"
-                        )
-                    self.accept_decode_block_table(
-                        request_id, request_blocks
-                    )
+                        raise RuntimeError(f"request {request_id!r} is waiting for the core compression commit ack")
+                    self.accept_decode_block_table(request_id, request_blocks)
                     compress = True
 
             query_end = query_start + query_length
@@ -927,11 +830,7 @@ class PyramidKVAscendProvider:
             if not request.compress:
                 continue
             if request.is_prefill:
-                plans.append(
-                    self.finalize_plan(
-                        request.request_id, layer_names, schema_version
-                    )
-                )
+                plans.append(self.finalize_plan(request.request_id, layer_names, schema_version))
             else:
                 completed = view.completed_decode_layers
                 if completed != expected_layers:
@@ -942,9 +841,7 @@ class PyramidKVAscendProvider:
                 self.advance_decode(request.request_id, completed)
         return plans or None
 
-    def _compact_deferred_prefills(
-        self, view: PyramidKVAttentionBatchView
-    ) -> None:
+    def _compact_deferred_prefills(self, view: PyramidKVAttentionBatchView) -> None:
         """Compact mixed-batch prefills after every attention layer succeeds."""
         for deferred in view.deferred_prefills:
             if len(deferred.kv_cache) < 2:
@@ -952,12 +849,9 @@ class PyramidKVAscendProvider:
             key_cache, value_cache = deferred.kv_cache[:2]
             if key_cache.shape != value_cache.shape or key_cache.ndim != 4:
                 raise RuntimeError(
-                    "PyramidKV deferred compact requires matching "
-                    "[blocks, block, heads, dim] K/V caches"
+                    "PyramidKV deferred compact requires matching [blocks, block, heads, dim] K/V caches"
                 )
-            required_blocks = (
-                deferred.semantic_num_tokens + view.block_size - 1
-            ) // view.block_size
+            required_blocks = (deferred.semantic_num_tokens + view.block_size - 1) // view.block_size
             if required_blocks > len(deferred.block_ids):
                 raise RuntimeError(
                     f"request {deferred.request_id!r} deferred compact needs "
@@ -968,15 +862,13 @@ class PyramidKVAscendProvider:
                 dtype=torch.long,
                 device=key_cache.device,
             )
-            full_key = key_cache.index_select(0, block_index).reshape(
-                -1, key_cache.shape[2], key_cache.shape[3]
-            )[: deferred.semantic_num_tokens]
+            full_key = key_cache.index_select(0, block_index).reshape(-1, key_cache.shape[2], key_cache.shape[3])[
+                : deferred.semantic_num_tokens
+            ]
             full_value = value_cache.index_select(0, block_index).reshape(
                 -1, value_cache.shape[2], value_cache.shape[3]
             )[: deferred.semantic_num_tokens]
-            selected = deferred.selected_past_indices.squeeze(0).to(
-                device=key_cache.device, dtype=torch.long
-            )
+            selected = deferred.selected_past_indices.squeeze(0).to(device=key_cache.device, dtype=torch.long)
             retained_past = deferred.retained_tokens - self.config.window_size
             if selected.shape != (key_cache.shape[2], retained_past):
                 raise RuntimeError(
@@ -991,15 +883,9 @@ class PyramidKVAscendProvider:
                 device=key_cache.device,
             ).expand(key_cache.shape[2], -1)
             positions = torch.cat((selected, recent), dim=1)
-            gather_index = positions.unsqueeze(-1).expand(
-                -1, -1, key_cache.shape[3]
-            )
-            compact_key = full_key.permute(1, 0, 2).gather(
-                1, gather_index
-            ).permute(1, 0, 2)
-            compact_value = full_value.permute(1, 0, 2).gather(
-                1, gather_index
-            ).permute(1, 0, 2)
+            gather_index = positions.unsqueeze(-1).expand(-1, -1, key_cache.shape[3])
+            compact_key = full_key.permute(1, 0, 2).gather(1, gather_index).permute(1, 0, 2)
+            compact_value = full_value.permute(1, 0, 2).gather(1, gather_index).permute(1, 0, 2)
             deferred.backend.do_kv_cache_update(
                 deferred.layer,
                 compact_key,
@@ -1027,14 +913,12 @@ class PyramidKVAscendProvider:
         view.deferred_prefills.clear()
 
     @classmethod
-    def from_core_config(
-        cls, config: "KVCacheCompressionConfig"
-    ) -> "PyramidKVAscendProvider":
+    def from_core_config(cls, config: KVCacheCompressionConfig) -> PyramidKVAscendProvider:
         return cls(PyramidKVAscendConfig.from_dict(config.provider_config))
 
     def compatibility_report(
         self,
-        core_config: "KVCacheCompressionConfig",
+        core_config: KVCacheCompressionConfig,
         context: PyramidKVCapabilityContext,
         provider_factory: str,
     ) -> KVCacheCompressionCompatibility:
@@ -1055,7 +939,7 @@ class PyramidKVAscendProvider:
 
     def validate_worker(
         self,
-        core_config: "KVCacheCompressionConfig",
+        core_config: KVCacheCompressionConfig,
         worker: Any,
         provider_factory: str,
     ) -> KVCacheCompressionCompatibility:
@@ -1078,21 +962,38 @@ class PyramidKVAscendProvider:
             context.device_name == SUPPORTED_DEVICE_NAME,
             f"device must be {SUPPORTED_DEVICE_NAME}, got {context.device_name!r}",
         )
+        eager_mode = context.enforce_eager and context.cudagraph_mode == "NONE"
+        graph_mode = not context.enforce_eager and context.cudagraph_mode in {"PIECEWISE", "FULL_DECODE_ONLY"}
         require(
-            context.cann_version.startswith(SUPPORTED_CANN_VERSION_PREFIX),
-            "CANN version must start with "
-            f"{SUPPORTED_CANN_VERSION_PREFIX}, got {context.cann_version!r}",
+            eager_mode or graph_mode,
+            "execution must be eager/NONE, PIECEWISE, or FULL_DECODE_ONLY "
+            "without an eager/graph configuration conflict; got "
+            f"enforce_eager={context.enforce_eager}, "
+            f"cudagraph_mode={context.cudagraph_mode!r}",
         )
+        if graph_mode:
+            require(
+                context.cann_version.startswith("9.0"),
+                f"graph execution requires CANN 9.0, got {context.cann_version!r}",
+            )
+            require(
+                not context.pa_shape_list,
+                "graph execution currently requires default FIA with an empty "
+                f"pa_shape_list, got {context.pa_shape_list}",
+            )
+        else:
+            require(
+                context.cann_version.startswith(SUPPORTED_CANN_VERSION_PREFIXES),
+                f"CANN version must start with one of {SUPPORTED_CANN_VERSION_PREFIXES}, got {context.cann_version!r}",
+            )
         require(not context.use_v2_model_runner, "V2 model runner is unsupported")
-        require(context.enforce_eager, "eager execution is required")
         require(
             context.backend == SUPPORTED_BACKEND,
             f"attention backend must be {SUPPORTED_BACKEND}, got {context.backend!r}",
         )
         require(
             context.model_architecture == SUPPORTED_MODEL_ARCHITECTURE,
-            "model architecture must be "
-            f"{SUPPORTED_MODEL_ARCHITECTURE}, got {context.model_architecture!r}",
+            f"model architecture must be {SUPPORTED_MODEL_ARCHITECTURE}, got {context.model_architecture!r}",
         )
         require(
             context.dtype in {"bfloat16", "torch.bfloat16"},
@@ -1128,8 +1029,7 @@ class PyramidKVAscendProvider:
         )
         require(
             context.num_kv_cache_groups == 1,
-            "exactly one KV cache group is required, got "
-            f"{context.num_kv_cache_groups}",
+            f"exactly one KV cache group is required, got {context.num_kv_cache_groups}",
         )
         require(
             context.full_attention_only,
@@ -1154,26 +1054,20 @@ class PyramidKVAscendProvider:
         )
         require(
             context.pipeline_parallel_size == 1,
-            "pipeline parallel size must be 1, got "
-            f"{context.pipeline_parallel_size}",
+            f"pipeline parallel size must be 1, got {context.pipeline_parallel_size}",
         )
         require(
             context.prefill_context_parallel_size == 1,
-            "prefill context parallel size must be 1, got "
-            f"{context.prefill_context_parallel_size}",
+            f"prefill context parallel size must be 1, got {context.prefill_context_parallel_size}",
         )
         require(
             context.decode_context_parallel_size == 1,
-            "decode context parallel size must be 1, got "
-            f"{context.decode_context_parallel_size}",
+            f"decode context parallel size must be 1, got {context.decode_context_parallel_size}",
         )
         require(not context.async_scheduling, "async scheduling is unsupported")
         require(not context.dbo_enabled, "dual-batch overlap is unsupported")
         require(not context.knorm_enabled, "VLLM_KNORM_ENABLED must be 0")
-        reasons.extend(
-            f"required NPU op is unavailable: {op}"
-            for op in context.missing_ops
-        )
+        reasons.extend(f"required NPU op is unavailable: {op}" for op in context.missing_ops)
         return tuple(reasons)
 
     def begin_request(
@@ -1206,9 +1100,7 @@ class PyramidKVAscendProvider:
         if state.plan_emitted or state.committed:
             raise RuntimeError(f"request {request_id!r} prefill state is sealed")
         if layer_name in state.layers:
-            raise RuntimeError(
-                f"request {request_id!r} layer {layer_name!r} was recorded twice"
-            )
+            raise RuntimeError(f"request {request_id!r} layer {layer_name!r} was recorded twice")
         if not selection.compressed or selection.selected_past_indices is None:
             raise ValueError("only compressed layer selections can produce a plan")
         state.layers[layer_name] = PyramidKVLayerState(
@@ -1229,10 +1121,7 @@ class PyramidKVAscendProvider:
                 f"request {request_id!r} layers are incomplete: expected "
                 f"{expected_layer_names}, got {tuple(state.layers)}"
             )
-        per_layer = tuple(
-            (name, state.layers[name].physical_num_tokens)
-            for name in expected_layer_names
-        )
+        per_layer = tuple((name, state.layers[name].physical_num_tokens) for name in expected_layer_names)
         plan = KVCacheCompressionPlan(
             schema_version=schema_version,
             provider=PYRAMIDKV_ASCEND_PROVIDER,
@@ -1252,9 +1141,7 @@ class PyramidKVAscendProvider:
     ) -> None:
         state = self._requests[request_id]
         if not state.plan_emitted or state.committed:
-            raise RuntimeError(
-                f"request {request_id!r} has no pending PyramidKV commit"
-            )
+            raise RuntimeError(f"request {request_id!r} has no pending PyramidKV commit")
         if len(block_ids) != 1 or not block_ids[0]:
             raise ValueError("PyramidKV commit requires one non-empty block table")
         state.expected_block_ids = block_ids
@@ -1273,17 +1160,9 @@ class PyramidKVAscendProvider:
             raise ValueError("PyramidKV decode requires one non-empty block table")
         expected = state.expected_block_ids[0]
         actual = block_ids[0]
-        next_physical_tokens = max(
-            layer.physical_num_tokens for layer in state.layers.values()
-        ) + 1
-        required_blocks = (
-            next_physical_tokens + SUPPORTED_BLOCK_SIZE - 1
-        ) // SUPPORTED_BLOCK_SIZE
-        if (
-            len(actual) != required_blocks
-            or len(actual) < len(expected)
-            or actual[: len(expected)] != expected
-        ):
+        next_physical_tokens = max(layer.physical_num_tokens for layer in state.layers.values()) + 1
+        required_blocks = (next_physical_tokens + SUPPORTED_BLOCK_SIZE - 1) // SUPPORTED_BLOCK_SIZE
+        if len(actual) != required_blocks or len(actual) < len(expected) or actual[: len(expected)] != expected:
             raise RuntimeError(
                 f"request {request_id!r} decode block table is not the "
                 "required monotonic extension: expected prefix "
@@ -1296,9 +1175,7 @@ class PyramidKVAscendProvider:
         if not state.committed:
             raise RuntimeError(f"request {request_id!r} is not committed")
         if completed_layers != set(state.layers):
-            raise RuntimeError(
-                f"request {request_id!r} decode did not complete every layer"
-            )
+            raise RuntimeError(f"request {request_id!r} decode did not complete every layer")
         for layer in state.layers.values():
             layer.physical_num_tokens += 1
         state.semantic_num_tokens += 1
@@ -1323,9 +1200,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
     parallel_config = worker.vllm_config.parallel_config
     specs = worker.get_kv_cache_spec()
     spec_values = list(specs.values())
-    full_attention_only = bool(spec_values) and all(
-        isinstance(spec, FullAttentionSpec) for spec in spec_values
-    )
+    full_attention_only = bool(spec_values) and all(isinstance(spec, FullAttentionSpec) for spec in spec_values)
 
     signatures = {
         (
@@ -1347,8 +1222,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         and all(str(spec.dtype) == "torch.bfloat16" for spec in spec_values)
     )
     sliding_window = any(
-        getattr(spec, "sliding_window", None) is not None
-        or getattr(spec, "attention_chunk_size", None) is not None
+        getattr(spec, "sliding_window", None) is not None or getattr(spec, "attention_chunk_size", None) is not None
         for spec in spec_values
     )
 
@@ -1357,11 +1231,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
     num_attention_heads = int(getattr(hf_config, "num_attention_heads", 0))
     head_dim = int(
         getattr(hf_config, "head_dim", 0)
-        or (
-            getattr(hf_config, "hidden_size", 0) // num_attention_heads
-            if num_attention_heads
-            else 0
-        )
+        or (getattr(hf_config, "hidden_size", 0) // num_attention_heads if num_attention_heads else 0)
     )
     backend_type = type(worker.model_runner.attn_backend)
     backend = (
@@ -1378,15 +1248,17 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         if not hasattr(torch_npu, name)
     )
     compilation_config = worker.vllm_config.compilation_config
-    cudagraph_mode = str(getattr(compilation_config, "cudagraph_mode", ""))
+    configured_cudagraph_mode = getattr(compilation_config, "cudagraph_mode", "")
+    cudagraph_mode = str(getattr(configured_cudagraph_mode, "name", configured_cudagraph_mode))
 
     return PyramidKVCapabilityContext(
         platform=worker.current_platform.device_type,
         device_name=torch.npu.get_device_name(worker.local_rank),
         cann_version=str(torch.version.cann or ""),
         use_v2_model_runner=bool(worker.use_v2_model_runner),
-        enforce_eager=bool(model_config.enforce_eager)
-        and cudagraph_mode.endswith("NONE"),
+        enforce_eager=bool(model_config.enforce_eager),
+        cudagraph_mode=cudagraph_mode,
+        pa_shape_list=tuple(worker.model_runner.ascend_config.pa_shape_list),
         backend=backend,
         model_architecture=architecture,
         dtype=str(model_config.dtype),
@@ -1395,9 +1267,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         num_kv_heads=int(getattr(hf_config, "num_key_value_heads", 0)),
         head_dim=head_dim,
         num_hidden_layers=int(getattr(hf_config, "num_hidden_layers", 0)),
-        cache_layout=(
-            SUPPORTED_CACHE_LAYOUT if standard_layout else "unsupported"
-        ),
+        cache_layout=(SUPPORTED_CACHE_LAYOUT if standard_layout else "unsupported"),
         block_size=block_size,
         num_kv_cache_groups=len(signatures),
         full_attention_only=full_attention_only,
@@ -1410,9 +1280,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         cache_dtype=str(worker.cache_dtype),
         tensor_parallel_size=parallel_config.tensor_parallel_size,
         pipeline_parallel_size=parallel_config.pipeline_parallel_size,
-        prefill_context_parallel_size=(
-            parallel_config.prefill_context_parallel_size
-        ),
+        prefill_context_parallel_size=(parallel_config.prefill_context_parallel_size),
         decode_context_parallel_size=parallel_config.decode_context_parallel_size,
         async_scheduling=bool(scheduler_config.async_scheduling),
         dbo_enabled=bool(parallel_config.enable_dbo),

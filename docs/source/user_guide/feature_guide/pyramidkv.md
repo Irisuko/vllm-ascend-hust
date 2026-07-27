@@ -18,18 +18,22 @@ sequence length.
 All of the following are required. Startup fails before formal KV cache
 allocation if a requirement is not met:
 
-- Ascend 910B2 with CANN 8.5.1 and the required torch-npu cache-write and
-  fused-infer-attention operators.
-- V1 model runner in eager mode with async scheduling and dual-batch overlap
-  explicitly disabled.
+- Ascend 910B2 with the required torch-npu cache-write and
+  fused-infer-attention operators. Eager execution supports CANN 8.5.1 and
+  CANN 9.0; graph execution requires CANN 9.0.
+- V1 model runner with async scheduling and dual-batch overlap explicitly
+  disabled. Execution must be eager (`NONE`), `PIECEWISE`, or
+  `FULL_DECODE_ONLY` as described below.
 - `LlamaForCausalLM` with 32 layers, 32 query heads, 8 KV heads, head dimension
   128, and BF16 model/KV cache data.
 - Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
   size 128.
 - TP, PP, PCP, and DCP all equal to 1.
 - Prefix caching, chunked prefill, sliding-window attention, speculative
-  decoding, KV transfer, KV offload, KNorm, quantized KV cache, and graph mode
-  disabled.
+  decoding, KV transfer, KV offload, KNorm, and quantized KV cache disabled.
+- Graph execution uses the default fused-infer-attention (FIA) path and an
+  empty `pa_shape_list`. Paged-attention graph shapes, `FULL`, and
+  `FULL_AND_PIECEWISE` are not supported.
 - A complete, unchunked prefill and ordinary one-token decode. A batch may
   contain multiple requests and may mix committed compact decodes with new
   complete prefills.
@@ -68,6 +72,33 @@ vllm serve /path/to/Meta-Llama-3-8B-Instruct \
     }
   }'
 ```
+
+The command above selects eager execution. On CANN 9.0, remove
+`--enforce-eager` and add one of the following compilation configurations to
+enable graph execution:
+
+```bash
+# Piecewise capture around graph breaks; the existing per-layer Python hook is
+# still used to prepare PyramidKV decode metadata.
+--compilation-config '{
+  "cudagraph_mode": "PIECEWISE",
+  "cudagraph_capture_sizes": [1, 8, 16, 24, 32]
+}'
+
+# Full decode capture with fixed-address, per-layer slot and sequence-length
+# metadata. Prefill continues outside the full-decode graph.
+--compilation-config '{
+  "cudagraph_mode": "FULL_DECODE_ONLY",
+  "cudagraph_capture_sizes": [1, 8, 16, 24, 32]
+}'
+```
+
+Do not combine either graph configuration with `--enforce-eager`. Startup
+fails rather than silently falling back if the requested mode, CANN version,
+or FIA/PA configuration is unsupported. `FULL_DECODE_ONLY` allocates stable
+`int32[32, max_num_seqs]` slot-mapping and physical-length buffers. Each layer
+uses its own row during replay, while padding rows use an invalid slot and
+cannot write a real KV block.
 
 `max_capacity_prompt` must be greater than `window_size`; `kernel_size` must be
 positive and odd; `beta` must be positive. The other fields are fixed to the
@@ -126,7 +157,8 @@ measurements.
 
 A batch made entirely of prompts at or below the compression threshold uses
 the original attention and cache-write path and does not emit a compression
-plan.
+plan. In `FULL_DECODE_ONLY`, the runner still computes an exact read-only slot
+view for those requests so replay cannot use stale CPU slot metadata.
 
 For a mixed prefill/decode batch, compact decodes use their layer-specific
 physical slots and lengths. A new prefill remains complete in paged K/V while
@@ -135,6 +167,11 @@ forward succeeds does the provider compact that prefill in place and emit its
 plan. A decode block table may grow only by the exact monotonic tail allocation
 required for its next physical token; shrinking, reordering, or adding excess
 blocks is an error before the cache write.
+
+For `FULL_DECODE_ONLY`, only all-decode scheduler steps enter the full graph.
+Mixed prefill/decode steps remain outside that graph. The request state advances
+only after the complete model forward succeeds; graph preparation or execution
+failures do not acknowledge a decode step.
 
 ## Failure and rollback behavior
 
