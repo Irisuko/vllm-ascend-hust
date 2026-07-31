@@ -663,7 +663,14 @@ def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     git_push_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" push')
     assert staging_index < public_validator_index < trend_validator_index < git_add_index
     assert git_add_index < git_commit_index < git_push_index
-    assert 'write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected' in sync_script
+    assert "write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected" in sync_script
+    assert "required_submission_files=(leaderboard_manifest.json run_leaderboard.json STATUS)" in sync_script
+    assert "reset_publication_staging()" in sync_script
+    assert "reset_publication_staging || return $?" in sync_script
+    submit_index = runner_script.index('"${PYTHON_BIN}" -m vllm_hust_benchmark.cli submit')
+    status_index = runner_script.index("printf 'OK\\n' > \"$SUBMISSION_DIR/STATUS\"")
+    sync_index = runner_script.index("sync_benchmark_publication_to_github", status_index)
+    assert submit_index < status_index < sync_index
 
 
 def _write_snapshot_sync_test_doubles(tmp_path: Path) -> tuple[Path, Path]:
@@ -734,6 +741,7 @@ def _snapshot_sync_env(tmp_path: Path, fake_bin: Path, git_log: Path) -> tuple[d
     current_submission.mkdir()
     (current_submission / "leaderboard_manifest.json").write_text("{}\n", encoding="utf-8")
     (current_submission / "run_leaderboard.json").write_text("{}\n", encoding="utf-8")
+    (current_submission / "STATUS").write_text("OK\n", encoding="utf-8")
     website_repo = tmp_path / "website-repo"
     (website_repo / "scripts").mkdir(parents=True)
     (website_repo / "scripts" / "aggregate_results.py").write_text("", encoding="utf-8")
@@ -845,6 +853,7 @@ def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: P
     submission_dir = benchmark_repo / "submissions" / "test-run"
     assert (submission_dir / "leaderboard_manifest.json").read_text(encoding="utf-8") == "{}\n"
     assert (submission_dir / "run_leaderboard.json").read_text(encoding="utf-8") == "{}\n"
+    assert (submission_dir / "STATUS").read_text(encoding="utf-8") == "OK\n"
     snapshot_dir = benchmark_repo / "leaderboard-data" / "snapshots"
     for snapshot_name in (
         "leaderboard_single.json",
