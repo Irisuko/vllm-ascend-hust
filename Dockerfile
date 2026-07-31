@@ -79,6 +79,15 @@ RUN export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pyp
     python3 -m pip install triton-ascend==3.2.1 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     python3 -m pip cache purge
 
+# Keep the custom-op package built into the image discoverable when a
+# development container mounts another vllm-ascend source tree.
+ENV ASCEND_CUSTOM_OPP_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer \
+    LD_LIBRARY_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer/op_api/lib:$LD_LIBRARY_PATH
+RUN if [ "$COMPILE_CUSTOM_KERNELS" = "1" ]; then \
+        test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/include/aclnnop/aclnn_moe_init_routing_custom.h" && \
+        test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/lib/libcust_opapi.so"; \
+    fi
+
 # Append `libascend_hal.so` path (devlib) to LD_LIBRARY_PATH
 RUN echo "export LD_PRELOAD=/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2:$LD_PRELOAD" >> ~/.bashrc
 RUN echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib" >> ~/.bashrc
