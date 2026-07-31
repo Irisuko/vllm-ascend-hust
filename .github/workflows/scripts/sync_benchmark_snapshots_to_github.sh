@@ -110,25 +110,25 @@ export VLLM_HUST_WEBSITE_REPO="$WEBSITE_REPO_DIR"
 export VLLM_HUST_REPO="$VLLM_HUST_REPO_DIR"
 
 prepare_publication_commit() {
-  git -C "$BENCHMARK_REPO_DIR" fetch "$BENCHMARK_REPO_REMOTE" "$SNAPSHOT_TARGET_BRANCH"
-  git -C "$BENCHMARK_REPO_DIR" checkout -B "$SNAPSHOT_TARGET_BRANCH" "$BENCHMARK_REPO_REMOTE/$SNAPSHOT_TARGET_BRANCH"
+  git -C "$BENCHMARK_REPO_DIR" fetch "$BENCHMARK_REPO_REMOTE" "$SNAPSHOT_TARGET_BRANCH" || return $?
+  git -C "$BENCHMARK_REPO_DIR" checkout -B "$SNAPSHOT_TARGET_BRANCH" "$BENCHMARK_REPO_REMOTE/$SNAPSHOT_TARGET_BRANCH" || return $?
 
-  mkdir -p "$staged_submission_dir"
-  cp -a "$BENCHMARK_REPO_DIR/submissions/." "$staged_submission_dir/"
-  mkdir -p "$staged_submission_dir/$run_id"
+  mkdir -p "$staged_submission_dir" || return $?
+  cp -a "$BENCHMARK_REPO_DIR/submissions/." "$staged_submission_dir/" || return $?
+  mkdir -p "$staged_submission_dir/$run_id" || return $?
   for file_name in "${required_submission_files[@]}"; do
-    cp "$CURRENT_SUBMISSION_DIR/$file_name" "$staged_submission_dir/$run_id/$file_name"
+    cp "$CURRENT_SUBMISSION_DIR/$file_name" "$staged_submission_dir/$run_id/$file_name" || return $?
   done
 
   "$PYTHON_BIN" -m vllm_hust_benchmark.cli publish-website \
     --source-dir "$staged_submission_dir" \
     --output-dir "$staged_snapshot_dir" \
-    --execute
+    --execute || return $?
 
   for file_name in "${required_snapshot_files[@]}"; do
     if [[ ! -f "$staged_snapshot_dir/$file_name" ]]; then
-      echo "missing generated snapshot file: $SNAPSHOT_OUTPUT_DIR/$file_name" >&2
-      exit 2
+      echo "missing generated snapshot file: $staged_snapshot_dir/$file_name" >&2
+      return 2
     fi
   done
 
@@ -144,27 +144,27 @@ prepare_publication_commit() {
     return 2
   fi
 
-  mkdir -p "$target_submission_dir" "$SNAPSHOT_OUTPUT_DIR"
+  mkdir -p "$target_submission_dir" "$SNAPSHOT_OUTPUT_DIR" || return $?
   for file_name in "${required_submission_files[@]}"; do
-    cp "$CURRENT_SUBMISSION_DIR/$file_name" "$target_submission_dir/$file_name"
+    cp "$CURRENT_SUBMISSION_DIR/$file_name" "$target_submission_dir/$file_name" || return $?
   done
   for file_name in "${required_snapshot_files[@]}"; do
-    cp "$staged_snapshot_dir/$file_name" "$SNAPSHOT_OUTPUT_DIR/$file_name"
+    cp "$staged_snapshot_dir/$file_name" "$SNAPSHOT_OUTPUT_DIR/$file_name" || return $?
   done
 
   if [[ -n "$LOCAL_SNAPSHOT_OUTPUT_DIR" ]]; then
-    mkdir -p "$LOCAL_SNAPSHOT_OUTPUT_DIR"
+    mkdir -p "$LOCAL_SNAPSHOT_OUTPUT_DIR" || return $?
     for file_name in "${required_snapshot_files[@]}"; do
-      cp "$SNAPSHOT_OUTPUT_DIR/$file_name" "$LOCAL_SNAPSHOT_OUTPUT_DIR/$file_name"
+      cp "$SNAPSHOT_OUTPUT_DIR/$file_name" "$LOCAL_SNAPSHOT_OUTPUT_DIR/$file_name" || return $?
     done
   fi
 
-  git -C "$BENCHMARK_REPO_DIR" add "$relative_submission_dir" "$relative_snapshot_dir"
+  git -C "$BENCHMARK_REPO_DIR" add "$relative_submission_dir" "$relative_snapshot_dir" || return $?
   if git -C "$BENCHMARK_REPO_DIR" diff --cached --quiet; then
     return 3
   fi
 
-  git -C "$BENCHMARK_REPO_DIR" commit -m "$SNAPSHOT_COMMIT_MESSAGE"
+  git -C "$BENCHMARK_REPO_DIR" commit -m "$SNAPSHOT_COMMIT_MESSAGE" || return $?
 }
 
 for attempt in $(seq 1 "$SNAPSHOT_MAX_PUSH_ATTEMPTS"); do
@@ -189,22 +189,23 @@ for attempt in $(seq 1 "$SNAPSHOT_MAX_PUSH_ATTEMPTS"); do
       continue
     fi
     break
+  else
+    prepare_status=$?
+    if [[ "$prepare_status" -eq 3 ]]; then
+      echo "Benchmark publication already includes submission $run_id"
+      echo "Benchmark repo target: ${BENCHMARK_REPO_SLUG}@${SNAPSHOT_TARGET_BRANCH}"
+      echo "Submission path: $relative_submission_dir"
+      echo "Snapshot path: $relative_snapshot_dir"
+      write_github_env GITHUB_SNAPSHOT_SYNC_STATUS unchanged
+      write_github_env GITHUB_SNAPSHOT_SYNC_REPO "$BENCHMARK_REPO_SLUG"
+      write_github_env GITHUB_SNAPSHOT_SYNC_BRANCH "$SNAPSHOT_TARGET_BRANCH"
+      write_github_env GITHUB_SNAPSHOT_SYNC_SUBMISSION_PATH "$relative_submission_dir"
+      write_github_env GITHUB_SNAPSHOT_SYNC_SNAPSHOT_PATH "$relative_snapshot_dir"
+      exit 0
+    fi
+    write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected
+    exit "$prepare_status"
   fi
-  prepare_status=$?
-  if [[ "$prepare_status" -eq 3 ]]; then
-    echo "Benchmark publication already includes submission $run_id"
-    echo "Benchmark repo target: ${BENCHMARK_REPO_SLUG}@${SNAPSHOT_TARGET_BRANCH}"
-    echo "Submission path: $relative_submission_dir"
-    echo "Snapshot path: $relative_snapshot_dir"
-    write_github_env GITHUB_SNAPSHOT_SYNC_STATUS unchanged
-    write_github_env GITHUB_SNAPSHOT_SYNC_REPO "$BENCHMARK_REPO_SLUG"
-    write_github_env GITHUB_SNAPSHOT_SYNC_BRANCH "$SNAPSHOT_TARGET_BRANCH"
-    write_github_env GITHUB_SNAPSHOT_SYNC_SUBMISSION_PATH "$relative_submission_dir"
-    write_github_env GITHUB_SNAPSHOT_SYNC_SNAPSHOT_PATH "$relative_snapshot_dir"
-    exit 0
-  fi
-  write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected
-  exit "$prepare_status"
 done
 
 echo "failed to push benchmark publication after $SNAPSHOT_MAX_PUSH_ATTEMPTS attempts" >&2

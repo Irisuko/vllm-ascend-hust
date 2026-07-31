@@ -664,3 +664,167 @@ def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     assert staging_index < public_validator_index < trend_validator_index < git_add_index
     assert git_add_index < git_commit_index < git_push_index
     assert 'write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected' in sync_script
+
+
+def _write_snapshot_sync_test_doubles(tmp_path: Path) -> tuple[Path, Path]:
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    git_log = tmp_path / "git.log"
+
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        """#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FAKE_GIT_LOG"
+args=("$@")
+if [[ "${args[0]:-}" == "-C" ]]; then
+  args=("${args[@]:2}")
+fi
+if [[ "${args[0]:-}" == "fetch" && -n "${FAKE_GIT_FETCH_EXIT:-}" ]]; then
+  exit "$FAKE_GIT_FETCH_EXIT"
+fi
+if [[ "${args[0]:-}" == "diff" ]]; then
+  exit 1
+fi
+if [[ "${args[0]:-}" == "rev-parse" ]]; then
+  printf 'fake-publication-commit\\n'
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+
+    fake_python = fake_bin / "python"
+    fake_python.write_text(
+        """#!/bin/bash
+set -euo pipefail
+if [[ "$*" == *"publish-website"* ]]; then
+  while (( $# > 0 )); do
+    if [[ "$1" == "--output-dir" ]]; then
+      output_dir=$2
+      break
+    fi
+    shift
+  done
+  mkdir -p "$output_dir"
+  for snapshot in leaderboard_single.json leaderboard_multi.json leaderboard_compare.json last_updated.json; do
+    printf '{"snapshot":"%s"}\\n' "$snapshot" > "$output_dir/$snapshot"
+  done
+  exit 0
+fi
+if [[ "$*" == *"validate_public_leaderboard_snapshots.py"* ]]; then
+  exit "${FAKE_PUBLIC_VALIDATOR_EXIT:-0}"
+fi
+if [[ "$*" == *"validate-trend"* ]]; then
+  exit "${FAKE_TREND_VALIDATOR_EXIT:-0}"
+fi
+exit 0
+""",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    return fake_bin, git_log
+
+
+def _snapshot_sync_env(tmp_path: Path, fake_bin: Path, git_log: Path) -> tuple[dict[str, str], Path]:
+    benchmark_repo = tmp_path / "benchmark-repo"
+    (benchmark_repo / ".git").mkdir(parents=True)
+    (benchmark_repo / "submissions").mkdir()
+    current_submission = tmp_path / "current-submission"
+    current_submission.mkdir()
+    (current_submission / "leaderboard_manifest.json").write_text("{}\n", encoding="utf-8")
+    (current_submission / "run_leaderboard.json").write_text("{}\n", encoding="utf-8")
+    website_repo = tmp_path / "website-repo"
+    (website_repo / "scripts").mkdir(parents=True)
+    (website_repo / "scripts" / "aggregate_results.py").write_text("", encoding="utf-8")
+    hust_repo = tmp_path / "vllm-hust"
+    hust_repo.mkdir()
+    (hust_repo / "pyproject.toml").write_text("", encoding="utf-8")
+
+    return (
+        {
+            **os.environ,
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "PYTHON_BIN": str(fake_bin / "python"),
+            "FAKE_GIT_LOG": str(git_log),
+            "BENCHMARK_REPO_DIR": str(benchmark_repo),
+            "WEBSITE_REPO_DIR": str(website_repo),
+            "VLLM_HUST_REPO_DIR": str(hust_repo),
+            "CURRENT_SUBMISSION_DIR": str(current_submission),
+            "RUN_ID": "test-run",
+            "GITHUB_ACTIONS": "true",
+            "BENCHMARK_REPO_GH_TOKEN": "test-token",
+            "GITHUB_ENV": str(tmp_path / "github-env"),
+        },
+        benchmark_repo,
+    )
+
+
+def test_snapshot_sync_rejects_invalid_publication_before_git_writes(tmp_path: Path) -> None:
+    fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
+    env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
+    env["FAKE_PUBLIC_VALIDATOR_EXIT"] = "2"
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "sync_benchmark_snapshots_to_github.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "publication admission failed at public snapshot validation" in result.stderr
+    git_commands = git_log.read_text(encoding="utf-8")
+    assert " add " not in f" {git_commands} "
+    assert " commit " not in f" {git_commands} "
+    assert " push " not in f" {git_commands} "
+    assert not (benchmark_repo / "submissions" / "test-run").exists()
+    assert not (benchmark_repo / "leaderboard-data" / "snapshots").exists()
+    assert "GITHUB_SNAPSHOT_SYNC_STATUS=rejected" in (tmp_path / "github-env").read_text(encoding="utf-8")
+
+
+def test_snapshot_sync_stops_when_prepare_step_fails(tmp_path: Path) -> None:
+    fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
+    env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
+    env["FAKE_GIT_FETCH_EXIT"] = "7"
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "sync_benchmark_snapshots_to_github.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 7, result.stderr
+    git_commands = git_log.read_text(encoding="utf-8")
+    assert " checkout " not in f" {git_commands} "
+    assert " add " not in f" {git_commands} "
+    assert " commit " not in f" {git_commands} "
+    assert " push " not in f" {git_commands} "
+    assert not (benchmark_repo / "submissions" / "test-run").exists()
+    assert "GITHUB_SNAPSHOT_SYNC_STATUS=rejected" in (tmp_path / "github-env").read_text(encoding="utf-8")
+
+
+def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: Path) -> None:
+    fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
+    env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "sync_benchmark_snapshots_to_github.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (benchmark_repo / "submissions" / "test-run" / "leaderboard_manifest.json").read_text(encoding="utf-8") == "{}\n"
+    snapshot_dir = benchmark_repo / "leaderboard-data" / "snapshots"
+    assert (snapshot_dir / "leaderboard_single.json").read_text(encoding="utf-8") == '{"snapshot":"leaderboard_single.json"}\n'
+    git_commands = git_log.read_text(encoding="utf-8")
+    assert " add " in f" {git_commands} "
+    assert " commit " in f" {git_commands} "
+    assert " push " in f" {git_commands} "
+    assert "GITHUB_SNAPSHOT_SYNC_STATUS=pushed" in (tmp_path / "github-env").read_text(encoding="utf-8")
