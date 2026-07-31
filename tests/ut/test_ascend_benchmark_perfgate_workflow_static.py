@@ -662,8 +662,10 @@ def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     git_add_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" add')
     git_commit_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" commit')
     git_push_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" push')
+    verify_index = sync_script.index("verify_published_benchmark_repo_state", git_push_index)
     assert staging_index < public_validator_index < trend_validator_index < git_add_index
     assert git_add_index < git_commit_index < git_push_index
+    assert git_push_index < verify_index
     assert "write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected" in sync_script
     assert "required_submission_files=(leaderboard_manifest.json run_leaderboard.json STATUS)" in sync_script
     assert "reset_publication_staging()" in sync_script
@@ -868,6 +870,7 @@ def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: P
     assert " commit " in f" {git_commands} "
     assert " push " in f" {git_commands} "
     assert "GITHUB_SNAPSHOT_SYNC_STATUS=pushed" in (tmp_path / "github-env").read_text(encoding="utf-8")
+    assert "GITHUB_SNAPSHOT_SYNC_VERIFICATION=verified" in (tmp_path / "github-env").read_text(encoding="utf-8")
 
 
 def _run_git(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
