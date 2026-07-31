@@ -162,6 +162,11 @@ prepare_publication_commit() {
   git -C "$BENCHMARK_REPO_DIR" add "$relative_submission_dir" "$relative_snapshot_dir" || return $?
   if git -C "$BENCHMARK_REPO_DIR" diff --cached --quiet; then
     return 3
+  else
+    diff_status=$?
+    if [[ "$diff_status" -ne 1 ]]; then
+      return "$diff_status"
+    fi
   fi
 
   git -C "$BENCHMARK_REPO_DIR" commit -m "$SNAPSHOT_COMMIT_MESSAGE" || return $?

@@ -684,7 +684,7 @@ if [[ "${args[0]:-}" == "fetch" && -n "${FAKE_GIT_FETCH_EXIT:-}" ]]; then
   exit "$FAKE_GIT_FETCH_EXIT"
 fi
 if [[ "${args[0]:-}" == "diff" ]]; then
-  exit 1
+  exit "${FAKE_GIT_DIFF_EXIT:-1}"
 fi
 if [[ "${args[0]:-}" == "rev-parse" ]]; then
   printf 'fake-publication-commit\\n'
@@ -807,6 +807,28 @@ def test_snapshot_sync_stops_when_prepare_step_fails(tmp_path: Path) -> None:
     assert "GITHUB_SNAPSHOT_SYNC_STATUS=rejected" in (tmp_path / "github-env").read_text(encoding="utf-8")
 
 
+def test_snapshot_sync_rejects_git_diff_errors(tmp_path: Path) -> None:
+    fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
+    env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
+    env["FAKE_GIT_DIFF_EXIT"] = "128"
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "sync_benchmark_snapshots_to_github.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 128, result.stderr
+    git_commands = git_log.read_text(encoding="utf-8")
+    assert " add " in f" {git_commands} "
+    assert " commit " not in f" {git_commands} "
+    assert " push " not in f" {git_commands} "
+    assert "GITHUB_SNAPSHOT_SYNC_STATUS=rejected" in (tmp_path / "github-env").read_text(encoding="utf-8")
+    assert (benchmark_repo / "submissions" / "test-run").is_dir()
+
+
 def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: Path) -> None:
     fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
     env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
@@ -820,9 +842,17 @@ def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: P
     )
 
     assert result.returncode == 0, result.stderr
-    assert (benchmark_repo / "submissions" / "test-run" / "leaderboard_manifest.json").read_text(encoding="utf-8") == "{}\n"
+    submission_dir = benchmark_repo / "submissions" / "test-run"
+    assert (submission_dir / "leaderboard_manifest.json").read_text(encoding="utf-8") == "{}\n"
+    assert (submission_dir / "run_leaderboard.json").read_text(encoding="utf-8") == "{}\n"
     snapshot_dir = benchmark_repo / "leaderboard-data" / "snapshots"
-    assert (snapshot_dir / "leaderboard_single.json").read_text(encoding="utf-8") == '{"snapshot":"leaderboard_single.json"}\n'
+    for snapshot_name in (
+        "leaderboard_single.json",
+        "leaderboard_multi.json",
+        "leaderboard_compare.json",
+        "last_updated.json",
+    ):
+        assert (snapshot_dir / snapshot_name).read_text(encoding="utf-8") == f'{{"snapshot":"{snapshot_name}"}}\n'
     git_commands = git_log.read_text(encoding="utf-8")
     assert " add " in f" {git_commands} "
     assert " commit " in f" {git_commands} "
