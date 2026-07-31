@@ -59,7 +59,7 @@ configure_push_remote() {
     exit 2
   fi
 
-  git -C "$BENCHMARK_REPO_DIR" remote set-url "$BENCHMARK_REPO_REMOTE" "$remote_url"
+  echo "No benchmark repo credential configured outside GitHub Actions; using existing ${BENCHMARK_REPO_REMOTE} remote."
 }
 
 for file_name in "${required_submission_files[@]}"; do
