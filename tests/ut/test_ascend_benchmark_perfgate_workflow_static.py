@@ -654,3 +654,13 @@ def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     assert "VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY" in sync_script
     assert "VLLM_HUST_BENCHMARK_GH_TOKEN" in sync_script
     assert "Benchmark repo publish target:" in sync_script
+
+    staging_index = sync_script.index("publication_staging_dir=$(mktemp -d")
+    public_validator_index = sync_script.index("validate_public_leaderboard_snapshots.py")
+    trend_validator_index = sync_script.index("validate-trend --input")
+    git_add_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" add')
+    git_commit_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" commit')
+    git_push_index = sync_script.index('git -C "$BENCHMARK_REPO_DIR" push')
+    assert staging_index < public_validator_index < trend_validator_index < git_add_index
+    assert git_add_index < git_commit_index < git_push_index
+    assert 'write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected' in sync_script
