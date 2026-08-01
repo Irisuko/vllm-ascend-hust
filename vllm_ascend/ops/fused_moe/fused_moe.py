@@ -94,6 +94,11 @@ def mock_true():
     return True
 
 
+def should_force_load_balance(in_profile_run: bool) -> bool:
+    """Keep profile-only routing out of reusable torch.compile graphs."""
+    return in_profile_run and not torch.compiler.is_compiling()
+
+
 class AscendUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     def __init__(self, moe: FusedMoEConfig = None, tid2eid=None):
         super().__init__(moe=moe)
@@ -575,7 +580,13 @@ else:
             # Load balancing for token distribution among experts in dummy_run
             # TODO: The community only considers load balancing when DP > 1.
             # This approach may overlook some extreme scenarios.
-            enable_force_load_balance = _EXTRA_CTX.in_profile_run
+            # ``in_profile_run`` is Python-side context and is not a model
+            # input.  vLLM deliberately drops Dynamo guards for compiled
+            # models, so tracing the profile-only routing branch here would
+            # permanently bake synthetic expert IDs into the inference graph.
+            # Keep forced balancing for eager profiling, but never capture it
+            # into a reusable compiled graph.
+            enable_force_load_balance = should_force_load_balance(_EXTRA_CTX.in_profile_run)
             forward_context = get_forward_context()
             if self.multistream_overlap_gate:
                 fc3_context = get_flash_common3_context()
