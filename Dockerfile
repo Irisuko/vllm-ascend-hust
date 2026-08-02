@@ -15,7 +15,9 @@
 # This file is a part of the vllm-ascend project.
 #
 
-FROM quay.io/ascend/cann:9.0.0-910b-ubuntu22.04-py3.12
+ARG COMPILE_CUSTOM_KERNELS=1
+
+FROM quay.io/ascend/cann:9.0.0-910b-ubuntu22.04-py3.12 AS vllm-ascend-runtime
 
 ARG PIP_INDEX_URL="https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
 ARG MOONCAKE_TAG="v0.3.9"
@@ -63,7 +65,7 @@ RUN VLLM_TARGET_DEVICE="empty" python3 -m pip install -e /vllm-workspace/vllm/[a
 
 # Install vllm-ascend
 ARG SOC_VERSION="ascend910b1"
-ARG COMPILE_CUSTOM_KERNELS=1
+ARG COMPILE_CUSTOM_KERNELS
 ENV DEBIAN_FRONTEND=noninteractive
 ENV SOC_VERSION=$SOC_VERSION \
     TASK_QUEUE_ENABLE=1 \
@@ -79,17 +81,25 @@ RUN export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pyp
     python3 -m pip install triton-ascend==3.2.1 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     python3 -m pip cache purge
 
-# Keep the custom-op package built into the image discoverable when a
-# development container mounts another vllm-ascend source tree.
-ENV ASCEND_CUSTOM_OPP_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer \
-    LD_LIBRARY_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer/op_api/lib:$LD_LIBRARY_PATH
-RUN if [ "$COMPILE_CUSTOM_KERNELS" = "1" ]; then \
-        test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/include/aclnnop/aclnn_moe_init_routing_custom.h" && \
-        test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/lib/libcust_opapi.so"; \
-    fi
-
 # Append `libascend_hal.so` path (devlib) to LD_LIBRARY_PATH
 RUN echo "export LD_PRELOAD=/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2:$LD_PRELOAD" >> ~/.bashrc
 RUN echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib" >> ~/.bashrc
+
+# Keep custom ops built into the image discoverable when a development
+# container mounts another vllm-ascend source tree.  Selecting the final stage
+# also persists the build mode, so lightweight images do not advertise paths
+# or runtime support that they do not contain.
+FROM vllm-ascend-runtime AS custom-kernels-1
+ENV COMPILE_CUSTOM_KERNELS=1 \
+    ASCEND_CUSTOM_OPP_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer \
+    LD_LIBRARY_PATH=/vllm-workspace/vllm-ascend/vllm_ascend/_cann_ops_custom/vendors/custom_transformer/op_api/lib:$LD_LIBRARY_PATH
+RUN test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/include/aclnnop/aclnn_moe_init_routing_custom.h" && \
+    test -f "$ASCEND_CUSTOM_OPP_PATH/op_api/lib/libcust_opapi.so"
+
+FROM vllm-ascend-runtime AS custom-kernels-0
+ENV COMPILE_CUSTOM_KERNELS=0
+RUN echo 'echo "INFO: image custom ops were not built (COMPILE_CUSTOM_KERNELS=0)" >&2' >> ~/.bashrc
+
+FROM custom-kernels-${COMPILE_CUSTOM_KERNELS}
 
 CMD ["/bin/bash"]
