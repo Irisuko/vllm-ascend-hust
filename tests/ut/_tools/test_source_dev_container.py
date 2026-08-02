@@ -182,13 +182,14 @@ def test_managed_cache_refuses_dirty_checkout(tmp_path: Path):
 
 
 def test_image_reference_resolves_to_content_id(tmp_path: Path):
+    digest = "0123456789abcdef" * 4
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     docker = bin_dir / "docker"
     docker.write_text(
         "#!/usr/bin/env bash\n"
         "if [[ $1 == image && $2 == inspect ]]; then\n"
-        "    echo sha256:0123456789abcdef\n"
+        f"    echo sha256:{digest}\n"
         "else\n"
         "    exit 99\n"
         "fi\n",
@@ -203,7 +204,66 @@ def test_image_reference_resolves_to_content_id(tmp_path: Path):
     )
 
     assert result.returncode == 0
-    assert result.stdout == "sha256:0123456789abcdef\n"
+    assert result.stdout == f"sha256:{digest}\n"
+
+
+def test_raw_podman_image_id_is_normalized(tmp_path: Path):
+    raw_image_id = "0" * 64
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ $1 == image && $2 == inspect ]]; then\n"
+        f"    echo {raw_image_id}\n"
+        "else\n"
+        "    exit 99\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+
+    result = _run_shell(
+        tmp_path,
+        'resolve_image; printf "%s\\n" "$IMAGE_ID"',
+        env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == f"sha256:{raw_image_id}\n"
+
+
+def test_custom_ops_verification_runs_the_live_probe(tmp_path: Path):
+    result = _run_shell(
+        tmp_path,
+        'docker() { printf "%s\\n" "$*"; }; verify_custom_ops',
+        env={"CONTAINER_NAME": "source-dev-custom-ops-test"},
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == (
+        "exec -i source-dev-custom-ops-test bash /workspace/repo/tools/docker/verify_baked_custom_ops.sh\n"
+    )
+
+
+def test_failed_new_container_validation_removes_only_that_container(tmp_path: Path):
+    docker_log = tmp_path / "docker.log"
+    result = _run_shell(
+        tmp_path,
+        (
+            "verify_custom_ops() { return 1; }; "
+            'docker() { printf "%s\\n" "$*" >> "$DOCKER_LOG"; }; '
+            "validate_new_container_custom_ops source-dev-broken"
+        ),
+        env={"DOCKER_LOG": str(docker_log)},
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert docker_log.read_text(encoding="utf-8") == "rm -f source-dev-broken\n"
+    assert result.stderr == (
+        "error: baked custom-op validation failed; removed newly created container source-dev-broken\n"
+    )
 
 
 def test_duplicate_npu_device_is_rejected(tmp_path: Path):

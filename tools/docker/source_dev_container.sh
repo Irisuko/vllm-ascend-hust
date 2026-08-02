@@ -48,6 +48,7 @@ VLLM_CACHE_DIR=${VLLM_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/vllm-ascend-dev
 
 MANAGED_LABEL=dev.vllm-hust.source-container
 CACHE_MARKER=vllmAscend.sourceContainerCache
+CUSTOM_OPS_PROBE_PATH=/workspace/repo/tools/docker/verify_baked_custom_ops.sh
 
 declare -a NPU_DEVICE_IDS=()
 VLLM_SOURCE_MODE=
@@ -162,14 +163,28 @@ prepare_vllm_source() {
         die "fetched ref is not a vLLM source tree: $VLLM_REMOTE@$VLLM_REF"
 }
 
+normalize_image_id() {
+    local image_id=$1
+    if [[ $image_id =~ ^sha256:[0-9a-f]{64}$ ]]; then
+        echo "$image_id"
+    elif [[ $image_id =~ ^[0-9a-f]{64}$ ]]; then
+        echo "sha256:$image_id"
+    else
+        return 1
+    fi
+}
+
 resolve_image() {
+    local raw_image_id
     if ! IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null); then
         echo "pulling $IMAGE" >&2
         docker pull --quiet "$IMAGE" >/dev/null || die "failed to pull IMAGE=$IMAGE"
         IMAGE_ID=$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null) || \
             die "cannot resolve IMAGE=$IMAGE after pull"
     fi
-    [[ $IMAGE_ID == sha256:* ]] || die "Docker returned an invalid image ID for IMAGE=$IMAGE"
+    raw_image_id=$IMAGE_ID
+    IMAGE_ID=$(normalize_image_id "$raw_image_id") || \
+        die "Docker returned an invalid image ID for IMAGE=$IMAGE: $raw_image_id"
 }
 
 container_exists() {
@@ -193,6 +208,7 @@ require_managed_container() {
 }
 
 validate_existing_container() {
+    local container_image_id
     require_managed_container
     [[ $(container_label dev.vllm-hust.vllm-repo) == "$VLLM_SOURCE" ]] || \
         die "existing container uses a different vLLM source; run recreate"
@@ -206,7 +222,10 @@ validate_existing_container() {
         die "existing container uses a different IMAGE reference; run recreate"
     [[ $(container_label dev.vllm-hust.image-id) == "$IMAGE_ID" ]] || \
         die "IMAGE resolved to a different image ID; run recreate"
-    [[ $(docker container inspect --format '{{.Image}}' "$(container_name)") == "$IMAGE_ID" ]] || \
+    container_image_id=$(docker container inspect --format '{{.Image}}' "$(container_name)")
+    container_image_id=$(normalize_image_id "$container_image_id") || \
+        die "existing container has an invalid image ID: $container_image_id"
+    [[ $container_image_id == "$IMAGE_ID" ]] || \
         die "existing container image provenance is inconsistent; run recreate"
     if [[ $VLLM_SOURCE_MODE == managed-cache ]]; then
         [[ $(container_label dev.vllm-hust.vllm-ref) == "$VLLM_SOURCE_REF" ]] || \
@@ -216,8 +235,22 @@ validate_existing_container() {
     fi
 }
 
+verify_custom_ops() {
+    docker exec -i "$(container_name)" bash "$CUSTOM_OPS_PROBE_PATH"
+}
+
+validate_new_container_custom_ops() {
+    local name=$1
+    if verify_custom_ops; then
+        return
+    fi
+    docker rm -f "$name" >/dev/null
+    die "baked custom-op validation failed; removed newly created container $name"
+}
+
 start() {
     local name
+    local was_running
     local device_id
     local device_path
     local -a device_args=()
@@ -242,7 +275,14 @@ start() {
 
     if container_exists; then
         validate_existing_container
+        was_running=$(docker container inspect --format '{{.State.Running}}' "$name")
         docker start "$name" >/dev/null
+        if ! verify_custom_ops; then
+            if [[ $was_running != true ]]; then
+                docker stop "$name" >/dev/null || true
+            fi
+            die "baked custom-op validation failed for existing container $name"
+        fi
         echo "started existing container $name"
         return
     fi
@@ -275,6 +315,7 @@ start() {
         --shm-size "$SHM_SIZE" \
         "$IMAGE_ID" sleep infinity >/dev/null
 
+    validate_new_container_custom_ops "$name"
     echo "created $name"
     echo "  image:       $IMAGE@$IMAGE_ID"
     echo "  vLLM:        $VLLM_SOURCE@$VLLM_SHA -> /workspace/vllm (read-only)"
@@ -298,6 +339,7 @@ print(f"vllm={vllm_path}")
 print(f"vllm_ascend={ascend_path}")
 print("PASS: both Python packages resolve from the live workspace")
 PY
+    verify_custom_ops
     echo "vllm_commit=$(container_label dev.vllm-hust.vllm-sha)"
 }
 
