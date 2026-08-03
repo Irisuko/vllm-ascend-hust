@@ -299,6 +299,23 @@ class TestAscendEmbeddingForwardOOT:
 
 
 class TestAscendYaRNRotaryEmbeddingForwardOOT:
+    def test_initializes_state_read_by_delegated_forward(self, patch_init_side_effects, make_yarn_embedding):
+        patch_init_side_effects.return_value.model_config.architectures = ["Qwen2ForCausalLM"]
+
+        with patch.dict(os.environ, {}, clear=True):
+            emb = make_yarn_embedding()
+
+        assert emb.use_mtp is None
+        assert emb.force_native_qwen2_rope is False
+
+    def test_initializes_native_qwen2_fallback_opt_in(self, patch_init_side_effects, make_yarn_embedding):
+        patch_init_side_effects.return_value.model_config.architectures = ["Qwen2ForCausalLM"]
+
+        with patch.dict(os.environ, {"VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE": "1"}, clear=True):
+            emb = make_yarn_embedding()
+
+        assert emb.force_native_qwen2_rope is True
+
     @patch("vllm_ascend.ops.rotary_embedding.AscendRotaryEmbedding.forward_oot")
     def test_delegates_to_ascend_rotary_forward_oot(self, mock_delegate, make_yarn_embedding):
         """forward_oot must delegate to AscendRotaryEmbedding.forward_oot."""
