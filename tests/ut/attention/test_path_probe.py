@@ -7,11 +7,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch.distributed as dist
 
 from vllm_ascend.attention.path_probe import (
     EVENT_SEMANTICS,
     AttentionPathProbe,
     classify_dispatch_coverage,
+    get_attention_path_probe,
 )
 
 
@@ -113,6 +115,39 @@ def test_missing_or_invalid_rank_context_fails_closed(monkeypatch, tmp_path):
     assert AttentionPathProbe.from_env() is None
     monkeypatch.setenv("WORLD_SIZE", "invalid")
     assert AttentionPathProbe.from_env() is None
+
+
+def test_from_env_prefers_initialized_distributed_rank(monkeypatch, tmp_path):
+    monkeypatch.setenv("VLLM_ASCEND_ATTENTION_PATH_PROBE_JSONL", str(tmp_path / "attention"))
+    monkeypatch.setenv("VLLM_TELEMETRY_RUN_ID", "distributed-rank")
+    monkeypatch.setenv("VLLM_ASCEND_ATTENTION_PATH_PROBE_EVERY", "1")
+    monkeypatch.setenv("WORLD_SIZE", "1")
+    monkeypatch.delenv("RANK", raising=False)
+    monkeypatch.setattr(dist, "is_available", lambda: True)
+    monkeypatch.setattr(dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(dist, "get_rank", lambda: 1)
+    monkeypatch.setattr(dist, "get_world_size", lambda: 2)
+    monkeypatch.setenv("VLLM_ASCEND_ATTENTION_PATH_PROBE_OWNER_RANK", "1")
+
+    probe = AttentionPathProbe.from_env()
+    assert probe is not None
+    assert ".rank-1." in probe.output_path.name
+    _record(probe)
+    dispatch, summary = _rows(probe)
+    assert dispatch["rank"] == summary["rank"] == 1
+    assert dispatch["world_size"] == summary["world_size"] == 2
+
+
+def test_probe_initialization_is_lazy(monkeypatch):
+    import vllm_ascend.attention.path_probe as path_probe
+
+    sentinel = object()
+    monkeypatch.setattr(path_probe, "_ATTENTION_PATH_PROBE", None)
+    monkeypatch.setattr(path_probe, "_ATTENTION_PATH_PROBE_INITIALIZED", False)
+    monkeypatch.setattr(path_probe.AttentionPathProbe, "from_env", lambda: sentinel)
+
+    assert get_attention_path_probe() is sentinel
+    assert get_attention_path_probe() is sentinel
 
 
 def test_buffered_records_flush_at_threshold_and_shutdown(tmp_path):

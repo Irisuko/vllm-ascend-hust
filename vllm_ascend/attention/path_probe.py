@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 import regex as re
+import torch.distributed as dist
 from vllm.logger import logger
 
 from vllm_ascend import envs
@@ -50,6 +51,18 @@ def _read_int_env(name: str, default: int, *, minimum: int) -> int:
 
 
 def _rank_context() -> tuple[int, int] | None:
+    if dist.is_available() and dist.is_initialized():
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+        if world_size < 1 or not 0 <= rank < world_size:
+            logger.warning(
+                "Invalid initialized distributed topology rank=%d world_size=%d; disabling attention-path probe",
+                rank,
+                world_size,
+            )
+            return None
+        return rank, world_size
+
     raw_world_size = os.getenv("WORLD_SIZE", "1")
     try:
         world_size = int(raw_world_size)
@@ -364,10 +377,24 @@ class AttentionPathProbe:
                 self._disable_after_error()
 
 
-ATTENTION_PATH_PROBE = AttentionPathProbe.from_env()
+_ATTENTION_PATH_PROBE: AttentionPathProbe | None = None
+_ATTENTION_PATH_PROBE_INITIALIZED = False
+_ATTENTION_PATH_PROBE_LOCK = threading.Lock()
+
+
+def get_attention_path_probe() -> AttentionPathProbe | None:
+    """Initialize the process probe after distributed rank setup."""
+    global _ATTENTION_PATH_PROBE, _ATTENTION_PATH_PROBE_INITIALIZED
+    if _ATTENTION_PATH_PROBE_INITIALIZED:
+        return _ATTENTION_PATH_PROBE
+    with _ATTENTION_PATH_PROBE_LOCK:
+        if not _ATTENTION_PATH_PROBE_INITIALIZED:
+            _ATTENTION_PATH_PROBE = AttentionPathProbe.from_env()
+            _ATTENTION_PATH_PROBE_INITIALIZED = True
+    return _ATTENTION_PATH_PROBE
 
 
 def shutdown_attention_path_probe() -> None:
     """Flush the process-owned probe from the normal worker shutdown path."""
-    if ATTENTION_PATH_PROBE is not None:
-        ATTENTION_PATH_PROBE.shutdown()
+    if _ATTENTION_PATH_PROBE is not None:
+        _ATTENTION_PATH_PROBE.shutdown()

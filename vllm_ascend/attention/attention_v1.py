@@ -47,10 +47,7 @@ from vllm_ascend.attention.kvcomp_attn.attention_utils import (
     is_enable_hamming_sparse,
     reshape_and_cache_kvcomp,
 )
-from vllm_ascend.attention.path_probe import (
-    ATTENTION_PATH_PROBE,
-    classify_dispatch_coverage,
-)
+from vllm_ascend.attention.path_probe import classify_dispatch_coverage, get_attention_path_probe
 from vllm_ascend.attention.utils import (
     AscendCommonAttentionMetadata,
     cache_graph_workspace,
@@ -456,10 +453,11 @@ class AscendAttentionBackendImpl(AttentionImpl):
         is_c8: bool = False,
         pooling: bool = False,
     ) -> None:
-        if ATTENTION_PATH_PROBE is None:
+        attention_path_probe = get_attention_path_probe()
+        if attention_path_probe is None:
             return
         capturing = bool(getattr(_EXTRA_CTX, "capturing", False))
-        ATTENTION_PATH_PROBE.record_dispatch(
+        attention_path_probe.record_dispatch(
             operator_id=operator_id,
             layer_id=layer_id,
             coverage=classify_dispatch_coverage(
@@ -1536,7 +1534,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         if attn_metadata is None:
             return output.fill_(0)
 
-        if ATTENTION_PATH_PROBE is not None:
+        if get_attention_path_probe() is not None:
             is_pooling = attn_metadata.model_runner_type == "pooling" and not attn_metadata.causal
             self._record_python_dispatch(
                 layer_id=layer.layer_name,
@@ -1610,7 +1608,7 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         if attn_metadata is None:
             return output.fill_(0)
 
-        if ATTENTION_PATH_PROBE is not None:
+        if get_attention_path_probe() is not None:
             self._record_python_dispatch(
                 layer_id=layer.layer_name,
                 operator_id="c8_attention_dispatch",
