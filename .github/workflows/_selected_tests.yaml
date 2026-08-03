@@ -71,14 +71,14 @@ jobs:
       options: >-
         ${{
           matrix.group.runner == 'linux-aarch64-a2b3-1' &&
-          '--device /dev/davinci1 --device /dev/davinci_manager --device /dev/devmm_svm --device /dev/hisi_hdc --volume /usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro --volume /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:ro' ||
+          '--device /dev/davinci1:/dev/davinci0 --device /dev/davinci_manager --device /dev/devmm_svm --device /dev/hisi_hdc --volume /usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro --volume /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:ro' ||
           ''
         }}
       env:
         VLLM_LOGGING_LEVEL: ERROR
         VLLM_USE_MODELSCOPE: True
         HF_HUB_OFFLINE: 1
-        ASCEND_RT_VISIBLE_DEVICES: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '1' || '' }}
+        ASCEND_RT_VISIBLE_DEVICES: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '0' || '' }}
         MAX_JOBS: 4
         UV_INDEX_URL: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://pypi.org/simple' || 'http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple' }}
         UV_EXTRA_INDEX_URL: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://repo.huaweicloud.com/ascend/repos/pypi https://download.pytorch.org/whl/cpu/' || 'https://repo.huaweicloud.com/ascend/repos/pypi http://cache-service.nginx-pypi-cache.svc.cluster.local/whl/cpu/' }}
@@ -99,7 +99,8 @@ jobs:
         if: ${{ matrix.group.npu_type != 'cpu' }}
         run: |
           python3 .github/workflows/scripts/check_ascend_container_runtime.py \
-            --expected-npus "${{ matrix.group.num_npus }}"
+            --expected-npus "${{ matrix.group.num_npus }}" \
+            --physical-device-ids "${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '1' || '' }}"
 
       - name: Install packages
         run: |
