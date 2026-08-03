@@ -22,11 +22,11 @@ import gc
 import logging
 import math
 import os
-import re
 import subprocess
 import sys
 from types import NoneType
 
+import regex as re
 import torch
 import torch.nn as nn
 import torch_npu
@@ -595,6 +595,13 @@ class NPUWorker(WorkerBase):
         self._is_checkpoint_format = True
 
     def shutdown(self) -> None:
+        # Flush bounded Python-dispatch telemetry during normal worker teardown.
+        # The probe also has an atexit fallback for initialization failures that
+        # happen before the model runner is attached.
+        from vllm_ascend.attention.path_probe import shutdown_attention_path_probe
+
+        shutdown_attention_path_probe()
+
         if ensure_kv_transfer_shutdown is not None:
             ensure_kv_transfer_shutdown()
 
@@ -614,9 +621,7 @@ class NPUWorker(WorkerBase):
         self.cache_config.num_cpu_blocks = num_cpu_blocks
 
     def _init_device(self):
-        selected_device = _maybe_auto_select_idle_ascend_device(
-            self.local_rank, self.parallel_config
-        )
+        selected_device = _maybe_auto_select_idle_ascend_device(self.local_rank, self.parallel_config)
         device_index = selected_device if selected_device is not None else self.local_rank
 
         device = torch.device(f"npu:{device_index}")
