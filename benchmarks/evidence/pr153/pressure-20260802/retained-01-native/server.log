@@ -1,0 +1,218 @@
+can not use command: npu-smi info
+INFO 08-02 19:35:23 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 08-02 19:35:23 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 08-02 19:35:23 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 08-02 19:35:23 [__init__.py:246] Platform plugin ascend is activated
+INFO 08-02 19:35:23 [platform.py:60] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+INFO 08-02 19:35:35 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+INFO 08-02 19:35:35 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458] 
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458]        █     █     █▄   ▄█
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.21.0
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458]   █▄█▀ █     █     █     █  model   /workspace/model
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:458] 
+(APIServer pid=2352) INFO 08-02 19:35:35 [api_utils.py:392] non-default args: {'host': '127.0.0.1', 'port': 8081, 'disable_uvicorn_access_log': True, 'model': '/workspace/model', 'dtype': 'float16', 'max_model_len': 32768, 'enforce_eager': True, 'served_model_name': ['Qwen/Qwen2.5-14B-Instruct'], 'generation_config': 'vllm', 'kv_cache_memory_bytes': 8589934592, 'enable_prefix_caching': True, 'prefix_caching_hash_algo': 'sha256', 'max_num_batched_tokens': 8192, 'max_num_seqs': 64, 'kv_transfer_config': KVTransferConfig(kv_connector='OffloadingConnector', engine_id='313c2682-6f84-4497-81a7-0e3efe527265', kv_buffer_device='npu', kv_buffer_size=1000000000.0, kv_role='kv_both', kv_rank=None, kv_parallel_size=1, kv_ip='127.0.0.1', kv_port=14579, kv_connector_extra_config={'spec_name': 'NPUOffloadingSpec', 'spec_module_path': 'vllm_ascend.kv_offload.npu', 'cpu_bytes_to_use': 17179869184, 'block_size': 128, 'eviction_policy': 'lru'}, kv_connector_module_path=None, enable_permute_local_kv=False, kv_load_failure_policy='fail')}
+(APIServer pid=2352) WARNING 08-02 19:35:35 [envs.py:2070] Unknown vLLM environment variable detected: VLLM_ASCEND_DISABLE_TOP_K_TOP_P_CUSTOM_OP
+(APIServer pid=2352) WARNING 08-02 19:35:35 [envs.py:2070] Unknown vLLM environment variable detected: VLLM_ASCEND_TORCH_PREFLIGHT
+(APIServer pid=2352) INFO 08-02 19:35:35 [model.py:606] Resolved architecture: Qwen2ForCausalLM
+(APIServer pid=2352) WARNING 08-02 19:35:35 [model.py:2074] Casting torch.bfloat16 to torch.float16.
+(APIServer pid=2352) INFO 08-02 19:35:35 [model.py:1736] Using max model len 32768
+(APIServer pid=2352) INFO 08-02 19:35:35 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=2352) INFO 08-02 19:35:35 [vllm.py:1040] Asynchronous scheduling is enabled.
+(APIServer pid=2352) WARNING 08-02 19:35:35 [vllm.py:1094] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(APIServer pid=2352) WARNING 08-02 19:35:35 [vllm.py:1142] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(APIServer pid=2352) INFO 08-02 19:35:35 [kernel.py:286] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=2352) INFO 08-02 19:35:35 [vllm.py:1320] Cudagraph is disabled under eager mode
+(APIServer pid=2352) INFO 08-02 19:35:35 [utils.py:203] No quantization signature detected from model files for "/workspace/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(APIServer pid=2352) WARNING 08-02 19:35:35 [platform.py:1182] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+(APIServer pid=2352) INFO 08-02 19:35:35 [ascend_config.py:914] Dynamic EPLB is False
+(APIServer pid=2352) INFO 08-02 19:35:35 [ascend_config.py:915] The number of redundant experts is 0
+(APIServer pid=2352) INFO 08-02 19:35:35 [platform.py:674] Compilation disabled, using eager mode by default
+(APIServer pid=2352) INFO 08-02 19:35:35 [utils.py:1458] Block size is set to 128 if prefix cache or chunked prefill is enabled.
+(APIServer pid=2352) INFO 08-02 19:35:35 [platform.py:892] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=2352) INFO 08-02 19:35:36 [compilation.py:312] Enabled custom fusions: norm_quant, act_quant
+can not use command: npu-smi info
+INFO 08-02 19:35:48 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 08-02 19:35:48 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 08-02 19:35:48 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 08-02 19:35:48 [__init__.py:246] Platform plugin ascend is activated
+INFO 08-02 19:35:48 [platform.py:60] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+INFO 08-02 19:36:00 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+INFO 08-02 19:36:00 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458] 
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458]        █     █     █▄   ▄█
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.21.0
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458]   █▄█▀ █     █     █     █  model   /workspace/model
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:458] 
+(APIServer pid=2422) INFO 08-02 19:36:00 [api_utils.py:392] non-default args: {'host': '127.0.0.1', 'port': 8081, 'disable_uvicorn_access_log': True, 'model': '/workspace/model', 'dtype': 'float16', 'max_model_len': 32768, 'enforce_eager': True, 'served_model_name': ['Qwen/Qwen2.5-14B-Instruct'], 'generation_config': 'vllm', 'kv_cache_memory_bytes': 8589934592, 'enable_prefix_caching': True, 'prefix_caching_hash_algo': 'sha256', 'max_num_batched_tokens': 8192, 'max_num_seqs': 64, 'kv_transfer_config': KVTransferConfig(kv_connector='OffloadingConnector', engine_id='e9c99638-a408-4211-a9f2-20531ec9a627', kv_buffer_device='npu', kv_buffer_size=1000000000.0, kv_role='kv_both', kv_rank=None, kv_parallel_size=1, kv_ip='127.0.0.1', kv_port=14579, kv_connector_extra_config={'spec_name': 'NPUOffloadingSpec', 'spec_module_path': 'vllm_ascend.kv_offload.npu', 'cpu_bytes_to_use': 17179869184, 'block_size': 128, 'eviction_policy': 'lru'}, kv_connector_module_path=None, enable_permute_local_kv=False, kv_load_failure_policy='fail')}
+(APIServer pid=2422) WARNING 08-02 19:36:00 [envs.py:2070] Unknown vLLM environment variable detected: VLLM_ASCEND_DISABLE_TOP_K_TOP_P_CUSTOM_OP
+(APIServer pid=2422) WARNING 08-02 19:36:00 [envs.py:2070] Unknown vLLM environment variable detected: VLLM_ASCEND_TORCH_PREFLIGHT
+(APIServer pid=2422) INFO 08-02 19:36:00 [model.py:606] Resolved architecture: Qwen2ForCausalLM
+(APIServer pid=2422) WARNING 08-02 19:36:00 [model.py:2074] Casting torch.bfloat16 to torch.float16.
+(APIServer pid=2422) INFO 08-02 19:36:00 [model.py:1736] Using max model len 32768
+(APIServer pid=2422) INFO 08-02 19:36:00 [scheduler.py:252] Chunked prefill is enabled with max_num_batched_tokens=8192.
+(APIServer pid=2422) INFO 08-02 19:36:00 [vllm.py:1040] Asynchronous scheduling is enabled.
+(APIServer pid=2422) WARNING 08-02 19:36:00 [vllm.py:1094] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(APIServer pid=2422) WARNING 08-02 19:36:00 [vllm.py:1142] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(APIServer pid=2422) INFO 08-02 19:36:00 [kernel.py:286] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(APIServer pid=2422) INFO 08-02 19:36:00 [vllm.py:1320] Cudagraph is disabled under eager mode
+(APIServer pid=2422) INFO 08-02 19:36:00 [utils.py:203] No quantization signature detected from model files for "/workspace/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(APIServer pid=2422) WARNING 08-02 19:36:00 [platform.py:1182] GPU-specific parameter is not supported on Ascend. parameter=disable_cascade_attn, value=True, action: resetting to False.
+(APIServer pid=2422) INFO 08-02 19:36:00 [ascend_config.py:914] Dynamic EPLB is False
+(APIServer pid=2422) INFO 08-02 19:36:00 [ascend_config.py:915] The number of redundant experts is 0
+(APIServer pid=2422) INFO 08-02 19:36:00 [platform.py:674] Compilation disabled, using eager mode by default
+(APIServer pid=2422) INFO 08-02 19:36:00 [utils.py:1458] Block size is set to 128 if prefix cache or chunked prefill is enabled.
+(APIServer pid=2422) INFO 08-02 19:36:00 [platform.py:892] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(APIServer pid=2422) INFO 08-02 19:36:00 [compilation.py:312] Enabled custom fusions: norm_quant, act_quant
+can not use command: npu-smi info
+INFO 08-02 19:36:13 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 08-02 19:36:13 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 08-02 19:36:13 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 08-02 19:36:13 [__init__.py:246] Platform plugin ascend is activated
+INFO 08-02 19:36:13 [platform.py:60] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+(EngineCore pid=2491) INFO 08-02 19:36:25 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>` with load format `netloader`
+(EngineCore pid=2491) INFO 08-02 19:36:25 [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>` with load format `rfork`
+(EngineCore pid=2491) INFO 08-02 19:36:25 [core.py:114] Initializing a V1 LLM engine (v0.21.0) with config: model='/workspace/model', speculative_config=None, tokenizer='/workspace/model', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.float16, max_seq_len=32768, download_dir=None, load_format=auto, tensor_parallel_size=1, pipeline_parallel_size=1, data_parallel_size=1, decode_context_parallel_size=1, dcp_comm_backend=ag_rs, disable_custom_all_reduce=True, quantization=None, quantization_config=None, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=npu, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False, jit_monitor_mode='warn', jit_monitor_verbose=False), seed=0, served_model_name=Qwen/Qwen2.5-14B-Instruct, enable_prefix_caching=True, enable_chunked_prefill=True, pooler_config=None, compilation_config={'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'vllm_ascend.compilation.compiler_interface.AscendCompiler', 'custom_ops': ['all'], 'ir_enable_torch_wrap': False, 'splitting_ops': [], 'compile_mm_encoder': False, 'cudagraph_mm_encoder': False, 'encoder_cudagraph_token_budgets': [], 'encoder_cudagraph_max_vision_items_per_batch': 0, 'encoder_cudagraph_max_frames_per_batch': None, 'compile_sizes': [], 'compile_ranges_endpoints': [8192], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'size_asserts': False, 'alignment_asserts': False, 'scalar_asserts': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 1, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': True, 'fuse_act_quant': True, 'fuse_attn_quant': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False, 'fuse_rope_kvcache_cat_mla': False, 'fuse_act_padding': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': False}, 'local_cache_dir': None, 'fast_moe_cold_start': True, 'static_all_moe_layers': []}, kernel_config=KernelConfig(ir_op_priority=IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native']), enable_flashinfer_autotune=True, enable_cutedsl_warmup=True, moe_backend='auto', linear_backend='auto')
+(EngineCore pid=2491) INFO 08-02 19:36:26 [camem.py:83] Loaded acl after adding /usr/local/Ascend/cann-9.0.0/python/site-packages to sys.path
+(EngineCore pid=2491) INFO 08-02 19:36:28 [ascend_config.py:914] Dynamic EPLB is False
+(EngineCore pid=2491) INFO 08-02 19:36:28 [ascend_config.py:915] The number of redundant experts is 0
+(EngineCore pid=2491) INFO 08-02 19:36:28 [worker.py:283] Unable to inspect Ascend visibility before auto-selection: [Errno 2] No such file or directory: 'npu-smi'
+(EngineCore pid=2491) INFO 08-02 19:36:30 [parallel_state.py:1692] world_size=1 rank=0 local_rank=0 distributed_init_method=tcp://10.88.1.83:56949 backend=hccl
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+(EngineCore pid=2491) INFO 08-02 19:36:30 [parallel_state.py:2027] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A, EPLB rank N/A
+[Gloo] Rank 0 is connected to 0 peer ranks. Expected number of connected peer ranks is : 0
+(EngineCore pid=2491) INFO 08-02 19:36:31 [model_runner_v1.py:3757] Starting to load model /workspace/model...
+(EngineCore pid=2491) INFO 08-02 19:36:32 [weight_utils.py:854] Filesystem type for checkpoints: XFS. Checkpoint size: 27.51 GiB. Available RAM: 1932.82 GiB.
+(EngineCore pid=2491) INFO 08-02 19:36:32 [weight_utils.py:877] Auto-prefetch is disabled because the filesystem (XFS) is not a recognized network FS (NFS/Lustre). If you want to force prefetching, start vLLM with --safetensors-load-strategy=prefetch.
+(EngineCore pid=2491) Loading safetensors checkpoint shards:   0% Completed | 0/8 [00:00<?, ?it/s]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  12% Completed | 1/8 [00:05<00:40,  5.72s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  25% Completed | 2/8 [00:13<00:40,  6.69s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  38% Completed | 3/8 [00:21<00:36,  7.27s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  50% Completed | 4/8 [00:28<00:28,  7.24s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  62% Completed | 5/8 [00:35<00:21,  7.26s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  75% Completed | 6/8 [00:43<00:15,  7.63s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards:  88% Completed | 7/8 [00:51<00:07,  7.61s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards: 100% Completed | 8/8 [00:54<00:00,  6.10s/it]
+(EngineCore pid=2491) Loading safetensors checkpoint shards: 100% Completed | 8/8 [00:54<00:00,  6.79s/it]
+(EngineCore pid=2491) 
+(EngineCore pid=2491) INFO 08-02 19:37:27 [default_loader.py:430] Loading weights took 54.42 seconds
+(EngineCore pid=2491) INFO 08-02 19:37:28 [model_runner_v1.py:3833] Loading model weights took 27.5350 GB
+(EngineCore pid=2491) INFO 08-02 19:37:28 [model_runner_v1.py:3860] Model runner load_model total time: 57.60 seconds
+(EngineCore pid=2491) INFO 08-02 19:37:28 [interface.py:620] Setting kv cache block size to 128 for CUSTOM backend.
+(EngineCore pid=2491) WARNING 08-02 19:37:28 [single_type_kv_cache_manager.py:1532] Knorm KV compression is disabled because prefix caching is enabled. Set --no-enable-prefix-caching to use Knorm.
+(EngineCore pid=2491) INFO 08-02 19:37:30 [worker.py:730] Initial free memory 60.60 GiB, reserved 8.00 GiB for KV Cache as specified by kv_cache_memory_bytes, skipping memory profiling. This does not respect the gpu_memory_utilization config. Only use kv_cache_memory_bytes when you want manual control of KV cache memory size. If OOM'ed, check the difference of initial free memory between the current run and the previous run where kv_cache_memory_bytes is suggested and update it correspondingly.
+(EngineCore pid=2491) INFO 08-02 19:37:30 [kv_cache_utils.py:2203] GPU KV cache size: 43,648 tokens
+(EngineCore pid=2491) INFO 08-02 19:37:30 [kv_cache_utils.py:2204] Maximum concurrency for 32,768 tokens per request: 1.33x
+(EngineCore pid=2491) INFO 08-02 19:37:30 [factory.py:62] Creating v1 connector with name: OffloadingConnector and engine_id: e9c99638-a408-4211-a9f2-20531ec9a627-0b5769bbde884637bf38324879bb80a4
+(EngineCore pid=2491) WARNING 08-02 19:37:30 [base.py:190] Initializing KVConnectorBase_V1. This API is experimental and subject to change in the future as we iterate the design.
+(EngineCore pid=2491) INFO 08-02 19:37:31 [factory.py:61] Creating offloading spec with name: NPUOffloadingSpec
+(EngineCore pid=2491) WARNING 08-02 19:37:31 [base.py:555] Initializing OffloadingSpec. This API is experimental and subject to change in the future as we iterate the design.
+(EngineCore pid=2491) INFO 08-02 19:37:31 [npu_worker.py:461] Allocating 96 CPU tensors for Ascend KV offload
+(EngineCore pid=2491) WARNING 08-02 19:37:33 [worker.py:1041] Bind cpus failed in rank0: [Errno 2] No such file or directory: 'npu-smi' Skip binding cpu.
+(EngineCore pid=2491) INFO 08-02 19:37:33 [core.py:349] init engine (profile, create kv cache, warmup model) took 4.62 s
+(EngineCore pid=2491) INFO 08-02 19:37:34 [factory.py:62] Creating v1 connector with name: OffloadingConnector and engine_id: e9c99638-a408-4211-a9f2-20531ec9a627-0b5769bbde884637bf38324879bb80a4
+(EngineCore pid=2491) WARNING 08-02 19:37:34 [base.py:190] Initializing KVConnectorBase_V1. This API is experimental and subject to change in the future as we iterate the design.
+(EngineCore pid=2491) INFO 08-02 19:37:34 [factory.py:61] Creating offloading spec with name: NPUOffloadingSpec
+(EngineCore pid=2491) WARNING 08-02 19:37:34 [base.py:555] Initializing OffloadingSpec. This API is experimental and subject to change in the future as we iterate the design.
+(EngineCore pid=2491) INFO 08-02 19:37:34 [vllm.py:1040] Asynchronous scheduling is enabled.
+(EngineCore pid=2491) WARNING 08-02 19:37:34 [vllm.py:1094] Enforce eager set, disabling torch.compile and CUDAGraphs. This is equivalent to setting -cc.mode=none -cc.cudagraph_mode=none
+(EngineCore pid=2491) WARNING 08-02 19:37:34 [vllm.py:1142] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+(EngineCore pid=2491) INFO 08-02 19:37:34 [kernel.py:286] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(EngineCore pid=2491) INFO 08-02 19:37:34 [vllm.py:1320] Cudagraph is disabled under eager mode
+(EngineCore pid=2491) INFO 08-02 19:37:34 [utils.py:203] No quantization signature detected from model files for "/workspace/model". The model will be loaded as float. To force a quantization method, pass "--quantization <method>" explicitly.
+(EngineCore pid=2491) INFO 08-02 19:37:34 [platform.py:674] Compilation disabled, using eager mode by default
+(EngineCore pid=2491) INFO 08-02 19:37:34 [platform.py:892] Set PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+(EngineCore pid=2491) INFO 08-02 19:37:34 [compilation.py:312] Enabled custom fusions: norm_quant, act_quant
+(APIServer pid=2422) INFO 08-02 19:37:34 [api_server.py:620] Supported tasks: ['generate']
+(APIServer pid=2422) INFO 08-02 19:37:35 [hf.py:548] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+(APIServer pid=2422) INFO 08-02 19:37:35 [api_server.py:624] Starting vLLM server on http://127.0.0.1:8081
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:37] Available routes are:
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /openapi.json, Methods: HEAD, GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /docs, Methods: HEAD, GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: HEAD, GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /redoc, Methods: HEAD, GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /load, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /version, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /health, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /metrics, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /tokenize, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /detokenize, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/models, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /ping, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /ping, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /invocations, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/chat/completions/batch, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/responses, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/completions, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/messages, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/messages/count_tokens, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /generative_scoring, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/chat/completions/derender, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /v1/completions/derender, Methods: POST
+(APIServer pid=2422) INFO 08-02 19:37:35 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+(APIServer pid=2422) INFO:     Started server process [2422]
+(APIServer pid=2422) INFO:     Waiting for application startup.
+(APIServer pid=2422) INFO:     Application startup complete.
+(APIServer pid=2422) WARNING 08-02 19:38:00 [input_processor.py:234] VLLM_DISABLE_REQUEST_ID_RANDOMIZATION is set and will be removed in a future release. Duplicate externally-provided request IDs may cause failures and/or subtle correctness errors.
+(EngineCore pid=2491) WARNING 08-02 19:38:01 [sampler.py:317] Custom op npu_apply_top_k_top_p is unavailable (op is not registered); falling back to the pytorch implementation.
+(APIServer pid=2422) INFO 08-02 19:38:06 [loggers.py:282] Engine 000: Avg prompt throughput: 1638.4 tokens/s, Avg generation throughput: 11.3 tokens/s, Running: 5 reqs, Waiting: 0 reqs, GPU KV cache usage: 48.2%, Prefix cache hit rate: 0.0%, External prefix cache hit rate: 0.0%
+(APIServer pid=2422) INFO 08-02 19:38:06 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0469208211143695, vllm:kv_offload_store_bytes=3221225472, vllm:kv_offload_store_time=0.2669348182678223, vllm:kv_offload_store_size_count=5, vllm:kv_offload_store_size_sum=3221225472
+(APIServer pid=2422) INFO 08-02 19:38:16 [loggers.py:282] Engine 000: Avg prompt throughput: 2316.5 tokens/s, Avg generation throughput: 116.1 tokens/s, Running: 19 reqs, Waiting: 4 reqs, GPU KV cache usage: 96.5%, Prefix cache hit rate: 17.6%, External prefix cache hit rate: 0.0%
+(APIServer pid=2422) INFO 08-02 19:38:16 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0, vllm:kv_offload_store_bytes=4529848320, vllm:kv_offload_store_time=0.5371610593795777, vllm:kv_offload_store_size_count=15, vllm:kv_offload_store_size_sum=4529848320
+(EngineCore pid=2491) INFO 08-02 19:38:23 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=7 utility_hits=0 default_hits=7 hit_rate=0.000 tokens_freed=29508 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=1.00
+(EngineCore pid=2491) INFO 08-02 19:38:24 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=10 utility_hits=0 default_hits=10 hit_rate=0.000 tokens_freed=42166 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=2.00
+(APIServer pid=2422) INFO 08-02 19:38:26 [loggers.py:282] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 175.6 tokens/s, Running: 17 reqs, Waiting: 9 reqs, GPU KV cache usage: 99.7%, Prefix cache hit rate: 7.6%, External prefix cache hit rate: 0.0%
+(APIServer pid=2422) INFO 08-02 19:38:26 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0
+(EngineCore pid=2491) INFO 08-02 19:38:32 [npu_worker.py:200] Allocated a 24.00 MiB Ascend KV load staging buffer
+(EngineCore pid=2491) INFO 08-02 19:38:32 [npu_worker.py:200] Allocated a 48.00 MiB Ascend KV load staging buffer
+(EngineCore pid=2491) INFO 08-02 19:38:34 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=11 utility_hits=0 default_hits=11 hit_rate=0.000 tokens_freed=46262 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=2.00
+(APIServer pid=2422) INFO 08-02 19:38:36 [loggers.py:282] Engine 000: Avg prompt throughput: 613.9 tokens/s, Avg generation throughput: 155.9 tokens/s, Running: 21 reqs, Waiting: 9 reqs, Deferred: 1 reqs, GPU KV cache usage: 93.8%, Prefix cache hit rate: 20.4%, External prefix cache hit rate: 0.0%
+(APIServer pid=2422) INFO 08-02 19:38:36 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.01466275659824047, vllm:kv_offload_load_bytes=125829120, vllm:kv_offload_load_time=0.07613789916038513, vllm:kv_offload_load_size_count=3, vllm:kv_offload_load_size_sum=125829120, vllm:kv_offload_store_bytes=956301312, vllm:kv_offload_store_time=0.10068124008178711, vllm:kv_offload_store_size_count=4, vllm:kv_offload_store_size_sum=956301312
+(EngineCore pid=2491) INFO 08-02 19:38:37 [npu_worker.py:200] Allocated a 64.00 MiB Ascend KV load staging buffer
+(EngineCore pid=2491) INFO 08-02 19:38:37 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=12 utility_hits=0 default_hits=12 hit_rate=0.000 tokens_freed=50358 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=2.00
+(EngineCore pid=2491) INFO 08-02 19:38:38 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=13 utility_hits=0 default_hits=13 hit_rate=0.000 tokens_freed=54454 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=2.00
+(EngineCore pid=2491) INFO 08-02 19:38:40 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=15 utility_hits=0 default_hits=15 hit_rate=0.000 tokens_freed=62646 kv_pressure_events=0 consecutive_preempt_ratio=0.000 p95_preemptions_per_request=2.00
+(APIServer pid=2422) INFO 08-02 19:38:46 [loggers.py:282] Engine 000: Avg prompt throughput: 320.2 tokens/s, Avg generation throughput: 195.5 tokens/s, Running: 22 reqs, Waiting: 1 reqs, Deferred: 1 reqs, GPU KV cache usage: 99.7%, Prefix cache hit rate: 26.2%, External prefix cache hit rate: 10.1%
+(APIServer pid=2422) INFO 08-02 19:38:46 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_store_bytes=880803840, vllm:kv_offload_store_time=0.10384575963020325, vllm:kv_offload_store_size_count=17, vllm:kv_offload_store_size_sum=880803840, vllm:kv_offload_cpu_cache_usage_perc=0.0, vllm:kv_offload_load_bytes=1082130432, vllm:kv_offload_load_time=0.17491682434082031, vllm:kv_offload_load_size_count=2, vllm:kv_offload_load_size_sum=1082130432
+(EngineCore pid=2491) INFO 08-02 19:38:46 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=36 utility_hits=0 default_hits=36 hit_rate=0.000 tokens_freed=150816 kv_pressure_events=0 consecutive_preempt_ratio=0.029 p95_preemptions_per_request=2.00
+(EngineCore pid=2491) INFO 08-02 19:38:48 [victim_selector.py:408] [UtilityVictim][AsyncScheduler] total_preemptions=53 utility_hits=0 default_hits=53 hit_rate=0.000 tokens_freed=222132 kv_pressure_events=0 consecutive_preempt_ratio=0.019 p95_preemptions_per_request=3.00
+(APIServer pid=2422) INFO 08-02 19:38:56 [loggers.py:282] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 185.3 tokens/s, Running: 21 reqs, Waiting: 0 reqs, GPU KV cache usage: 95.0%, Prefix cache hit rate: 26.2%, External prefix cache hit rate: 10.1%
+(APIServer pid=2422) INFO 08-02 19:38:56 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0, vllm:kv_offload_load_bytes=100663296, vllm:kv_offload_load_time=0.06086884117126465, vllm:kv_offload_load_size_count=2, vllm:kv_offload_load_size_sum=100663296
+(APIServer pid=2422) INFO 08-02 19:39:06 [loggers.py:282] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 168.5 tokens/s, Running: 4 reqs, Waiting: 0 reqs, GPU KV cache usage: 22.4%, Prefix cache hit rate: 26.2%, External prefix cache hit rate: 10.1%
+(APIServer pid=2422) INFO 08-02 19:39:06 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0
+(APIServer pid=2422) INFO 08-02 19:39:16 [loggers.py:282] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 15.6 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 26.2%, External prefix cache hit rate: 10.1%
+(APIServer pid=2422) INFO 08-02 19:39:16 [metrics.py:103] KV Transfer metrics: vllm:kv_offload_cpu_cache_usage_perc=0.0
+(APIServer pid=2422) INFO 08-02 19:39:26 [loggers.py:282] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 0.0 tokens/s, Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%, Prefix cache hit rate: 26.2%, External prefix cache hit rate: 10.1%
+(EngineCore pid=2491) INFO 08-02 19:39:45 [core.py:1219] [shutdown] EngineCore: trigger received signal=SIGTERM
+(EngineCore pid=2491) INFO 08-02 19:39:45 [core.py:1338] [shutdown] EngineCore: start mode=abort timeout=0s
+(EngineCore pid=2491) INFO 08-02 19:39:45 [core.py:1369] [shutdown] EngineCore: request processing complete; starting resource teardown
+(EngineCore pid=2491) INFO 08-02 19:39:45 [core.py:1232] [shutdown] EngineCore: exiting busy loop
+(EngineCore pid=2491) WARNING 08-02 19:39:46 [parallel_state.py:2228] torch._C._host_emptyCache() only available in Pytorch >=2.5
+(APIServer pid=2422) WARNING 08-02 19:39:57 [core_client.py:706] [shutdown] MPClient: engine core exited unexpectedly; starting cleanup
+(APIServer pid=2422) INFO 08-02 19:39:57 [core_client.py:659] [shutdown] MPClient: start timeout=default
+(APIServer pid=2422) INFO 08-02 19:39:57 [core_client.py:661] [shutdown] MPClient: stopping engine manager
+(APIServer pid=2422) INFO 08-02 19:39:57 [core_client.py:663] [shutdown] MPClient: engine manager stopped
+(APIServer pid=2422) INFO 08-02 19:39:57 [core_client.py:664] [shutdown] MPClient: cleaning up background resources
+(APIServer pid=2422) INFO 08-02 19:39:57 [core_client.py:666] [shutdown] MPClient: complete
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707] AsyncLLM output_handler failed.
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707] Traceback (most recent call last):
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707]   File "/workspace/vllm/vllm/v1/engine/async_llm.py", line 663, in output_handler
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707]     outputs = await engine_core.get_output_async()
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707]   File "/workspace/vllm/vllm/v1/engine/core_client.py", line 1065, in get_output_async
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707]     raise self._format_exception(outputs) from None
+(APIServer pid=2422) ERROR 08-02 19:39:57 [async_llm.py:707] vllm.v1.engine.exceptions.EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.

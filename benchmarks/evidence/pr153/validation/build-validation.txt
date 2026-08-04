@@ -1,0 +1,41 @@
+Code under test:
+  vllm-ascend-hust 3b029f6d54694175e834488bed2f01c2c063a7ce
+  tested/published tree ebdf2c042b344c9c3479978400b9d8a348dce802
+  published code parent a77efd8828acaa1555ee607a08b33bcfda6e13de
+  vllm-hust        a30addc7548a9a8b9b3323a7bc3eb7d7c4895d1c
+
+Targeted custom-op package:
+  cd /workspace/vllm-ascend/csrc
+  bash build.sh --pkg --ops=kv_cache_block_gather --soc=ascend910b -j16 -O2
+  Result: PASS; all four dtype kernels and relocatable variants produced.
+  Embedded Makeself payload SHA-256:
+    a7c2a55e6acbe234e62ad39dd6ba5f2a63c8459f84a7f0646c009728b7533d09
+  Complete .run file SHA-256:
+    5b2b5c36a167e3d4ffae7b771ab42009a4603a03c4fdc54a14009621f199c30e
+
+Full extension configuration:
+  cmake -S /workspace/vllm-ascend \
+    -B /workspace/vllm-ascend/build/pr153-exact \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+    -DASCEND_HOME_PATH=/usr/local/Ascend/cann-9.0.0 \
+    -DPYTHON_EXECUTABLE=/usr/local/python3.12.13/bin/python \
+    -DPYTHON_INCLUDE_PATH=/usr/local/python3.12.13/include/python3.12 \
+    -DCMAKE_PREFIX_PATH=/usr/local/python3.12.13/lib/python3.12/site-packages/pybind11/share/cmake/pybind11\;/usr/local/python3.12.13/lib/python3.12/site-packages/torch/share/cmake \
+    -DSOC_VERSION=ascend910b1 \
+    -DFETCHCONTENT_BASE_DIR=/workspace/vllm-ascend/.deps \
+    -DTORCH_NPU_PATH=/usr/local/python3.12.13/lib/python3.12/site-packages/torch_npu \
+    -DCMAKE_INSTALL_PREFIX=/workspace/vllm-ascend/vllm_ascend \
+    /workspace/vllm-ascend
+
+Full extension build:
+  cmake --build /workspace/vllm-ascend/build/pr153-exact -j 16 \
+    --target vllm_ascend_C vllm_ascend_kernels
+  cmake --install /workspace/vllm-ascend/build/pr153-exact
+  Result: PASS.
+
+Artifact SHA-256:
+  f3a7d532da657a23996bf45d6542c89857bebb7e3bd200894e52728651ac38fb  vllm_ascend_C.cpython-312-aarch64-linux-gnu.so
+  c7b5ff70f84119a19d576f8a74bd413b51c051f2374fd30c1472f3398efbb828  libvllm_ascend_kernels.so
+  f7fb69cad8dd80bca4525b67d3bd16979fc660e064dae265b200fe2c2b808470  libcust_opapi.so
+  4a469206e006a7bc294ac88061e8813fac924d944705d6342dc5a4ecc61d22c5  kv_cache_block_gather.json

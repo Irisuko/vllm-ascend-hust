@@ -1,0 +1,28 @@
+model_file_manifest:
+.gitattributes	1519
+LICENSE	11343
+README.md	6240
+config.json	663
+configuration.json	2
+generation_config.json	243
+merges.txt	1671839
+model-00001-of-00004.safetensors	3945441440
+model-00002-of-00004.safetensors	3864726352
+model-00003-of-00004.safetensors	3864726424
+model-00004-of-00004.safetensors	3556377672
+model.safetensors.index.json	27752
+tokenizer.json	7031645
+tokenizer_config.json	7305
+vocab.json	2776833
+selected_hashes:
+7463bb0ea78315365e6c6b74de4e73bbcc8359dfb0c5a737584e077d42c0b03c  /workspace/models/modelscope/Qwen/Qwen2.5-7B-Instruct/config.json
+c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539  /workspace/models/modelscope/Qwen/Qwen2.5-7B-Instruct/tokenizer.json
+624bf7c47cd12468fdc16e38a47cf4f19e0415b859a223ba3c027eed2f0e1028  /workspace/models/modelscope/Qwen/Qwen2.5-7B-Instruct/model.safetensors.index.json
+backend:
+d48784c2e0803df4f4eb6212f49d11f219aa13c0
+372508902acfb5ed02c1bdd143fac98a36543c11
+core:
+6901c26b23fa60ca1a2450b0999f803f6ee6c335
+829202c4f054e11527dd6867878c76e36859a1bb
+request_set:
+607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23  benchmark_results/pr153-highprefix-ab-20260803/request_set.json
