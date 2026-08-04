@@ -23,14 +23,6 @@ import requests
 from vllm.utils.network_utils import get_open_port
 
 from tests.e2e.conftest import RemoteOpenAIServer, wait_until_npu_memory_free
-from vllm_ascend.utils import vllm_version_is
-
-pytestmark = pytest.mark.skipif(
-    not vllm_version_is("0.23.0"),
-    reason="broken on main, fix me.",
-)
-
-
 @wait_until_npu_memory_free()
 def test_moe_tp_ep_eplb_full_decode_only():
     """Verify MoE serving with TP, EP, EPLB, and full decode only."""
