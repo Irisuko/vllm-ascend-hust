@@ -34,6 +34,9 @@ SAME_SPEC_BENCHMARK_ENABLED=${SAME_SPEC_BENCHMARK_ENABLED:-1}
 SAME_SPEC_SPEC_FILE=${SAME_SPEC_SPEC_FILE:-}
 SAME_SPEC_CONSTRAINTS_FILE=${SAME_SPEC_CONSTRAINTS_FILE:-$VLLM_HUST_BENCHMARK_REPO/docs/official-baselines/official-ascend-constraints.stub.json}
 SAME_SPEC_PR_PREVIEW_COMPAT=${SAME_SPEC_PR_PREVIEW_COMPAT:-1}
+PERFGATE_WARMUP_RUNS=${PERFGATE_WARMUP_RUNS:-0}
+PERFGATE_MEASURED_RUNS=${PERFGATE_MEASURED_RUNS:-1}
+PERFGATE_AGGREGATION=${PERFGATE_AGGREGATION:-primary-median-run}
 
 MODEL_NAME=${MODEL_NAME:-Qwen/Qwen2.5-14B-Instruct}
 MODEL_PARAMETERS=${MODEL_PARAMETERS:-14B}
@@ -144,6 +147,7 @@ RESOURCE_BUSY_EXIT_CODE=${RESOURCE_BUSY_EXIT_CODE:-75}
 SUDO_AUTH_EXIT_CODE=${SUDO_AUTH_EXIT_CODE:-76}
 INVALID_BENCHMARK_RESULT_EXIT_CODE=${INVALID_BENCHMARK_RESULT_EXIT_CODE:-77}
 NODE_ENV_FAILURE_EXIT_CODE=${NODE_ENV_FAILURE_EXIT_CODE:-86}
+NPU_MEMORY_EXIT_CODE=${NPU_MEMORY_EXIT_CODE:-87}
 ASCEND_BENCHMARK_USE_SUDO=${ASCEND_BENCHMARK_USE_SUDO:-0}
 SAME_SPEC_READY_TIMEOUT_SECONDS=${SAME_SPEC_READY_TIMEOUT_SECONDS:-$SERVER_READY_TIMEOUT_SECONDS}
 SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS=${SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS:-300}
@@ -295,6 +299,9 @@ SUDO_PRESERVE_ENV_VARS=(
   MODEL_QUANTIZATION
   NODE_COUNT
   PATH
+  PERFGATE_AGGREGATION
+  PERFGATE_MEASURED_RUNS
+  PERFGATE_WARMUP_RUNS
   PORT
   PUBLISH_TO_BENCHMARK_REPO
   PYTHON_BIN
@@ -484,6 +491,11 @@ cleanup() {
 same_spec_server_log_indicates_resource_busy() {
   local same_spec_server_log=$RESULT_ROOT/server.stdout.log
   [[ -f "$same_spec_server_log" ]] && grep -qE 'Resource_Busy\(EL0005\)|aclInit, error code is 507899|The resources are busy' "$same_spec_server_log"
+}
+
+same_spec_server_log_indicates_npu_memory_pressure() {
+  local same_spec_server_log=$RESULT_ROOT/server.stdout.log
+  [[ -f "$same_spec_server_log" ]] && grep -Eqi 'Free memory on device .* less than desired GPU memory utilization|NPU out of memory|torch_npu.*OutOfMemoryError|ACL_ERROR_RT_MEMORY_ALLOCATION' "$same_spec_server_log"
 }
 
 print_same_spec_server_log_tail() {
@@ -781,7 +793,10 @@ run_same_spec_current_benchmark() {
   local same_spec_raw_result=$RESULT_ROOT/raw_benchmark_result.json
   local same_spec_submission_dir=$RESULT_ROOT/submission
   local effective_same_spec_file=$SAME_SPEC_SPEC_FILE
+  local benchmark_runner_commit
+  local current_plugin_commit
   local current_vllm_hust_commit
+  local runtime_manager_commit
   local same_spec_exit_code=0
 
   if [[ ! -f "$same_spec_runner" ]]; then
@@ -798,6 +813,9 @@ run_same_spec_current_benchmark() {
   fi
 
   current_vllm_hust_commit=$(git -C "$VLLM_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+  current_plugin_commit=$(git -C "$VLLM_ASCEND_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+  benchmark_runner_commit=$(git -C "$VLLM_HUST_BENCHMARK_REPO" rev-parse HEAD 2>/dev/null || true)
+  runtime_manager_commit=$(git -C "${HUST_ASCEND_MANAGER_REPO:-}" rev-parse HEAD 2>/dev/null || true)
   rm -f "$same_spec_raw_result" "$RAW_RESULT_FILE"
   rm -rf "$same_spec_submission_dir" "$SUBMISSION_DIR"
 
@@ -871,6 +889,9 @@ PY
       READY_TIMEOUT_SECONDS="$SAME_SPEC_READY_TIMEOUT_SECONDS" \
       CLIENT_READY_CHECK_TIMEOUT_SECONDS="$SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS" \
       CONSTRAINTS_FILE="$SAME_SPEC_CONSTRAINTS_FILE" \
+      PERFGATE_WARMUP_RUNS="$PERFGATE_WARMUP_RUNS" \
+      PERFGATE_MEASURED_RUNS="$PERFGATE_MEASURED_RUNS" \
+      PERFGATE_AGGREGATION="$PERFGATE_AGGREGATION" \
       run_ascend_root_helper same-spec "$same_spec_runner" "$effective_same_spec_file" || same_spec_exit_code=$?
   else
     env \
@@ -903,6 +924,9 @@ PY
       READY_TIMEOUT_SECONDS="$SAME_SPEC_READY_TIMEOUT_SECONDS" \
       CLIENT_READY_CHECK_TIMEOUT_SECONDS="$SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS" \
       CONSTRAINTS_FILE="$SAME_SPEC_CONSTRAINTS_FILE" \
+      PERFGATE_WARMUP_RUNS="$PERFGATE_WARMUP_RUNS" \
+      PERFGATE_MEASURED_RUNS="$PERFGATE_MEASURED_RUNS" \
+      PERFGATE_AGGREGATION="$PERFGATE_AGGREGATION" \
       bash "$same_spec_runner" "$effective_same_spec_file" || same_spec_exit_code=$?
   fi
 
@@ -930,6 +954,86 @@ PY
   cp "$same_spec_raw_result" "$RAW_RESULT_FILE"
   cp "$same_spec_submission_dir/leaderboard_manifest.json" "$SUBMISSION_DIR/leaderboard_manifest.json"
   cp "$same_spec_submission_dir/run_leaderboard.json" "$SUBMISSION_DIR/run_leaderboard.json"
+
+  if [[ "$PERFGATE_WARMUP_RUNS" -gt 0 || "$PERFGATE_MEASURED_RUNS" -gt 1 ]]; then
+    if [[ ! -f "$same_spec_submission_dir/measurement.json" ]]; then
+      echo "same-spec benchmark did not produce required measurement.json" >&2
+      return 2
+    fi
+    cp "$same_spec_submission_dir/measurement.json" "$SUBMISSION_DIR/measurement.json"
+
+    local provenance_sha
+    for provenance_sha in "$current_vllm_hust_commit" "$current_plugin_commit" "$benchmark_runner_commit" "$runtime_manager_commit"; do
+      if ! [[ "$provenance_sha" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "Could not resolve full lowercase runtime provenance SHAs" >&2
+        return 2
+      fi
+    done
+
+    PERFGATE_PROVENANCE_OUTPUT="$SUBMISSION_DIR/perfgate-provenance.json" \
+    PERFGATE_VLLM_HUST_SHA="$current_vllm_hust_commit" \
+    PERFGATE_VLLM_ASCEND_HUST_SHA="$current_plugin_commit" \
+    PERFGATE_BENCHMARK_RUNNER_SHA="$benchmark_runner_commit" \
+    PERFGATE_RUNTIME_MANAGER_SHA="$runtime_manager_commit" \
+    PERFGATE_HARDWARE_CHIP_MODEL="$HARDWARE_CHIP_MODEL" \
+    PERFGATE_CANN_VERSION="${HUST_ASCEND_RUNTIME_VERSION:-}" \
+      "$PYTHON_BIN" - <<'PY'
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+
+import torch
+import torch_npu
+
+
+def one_line(value, name):
+    normalized = str(value or "").strip().replace("\n", " ").replace("\r", " ")
+    if not normalized:
+        raise RuntimeError(f"unable to determine {name}")
+    return normalized
+
+
+cann_version = os.environ.get("PERFGATE_CANN_VERSION")
+if not cann_version:
+    try:
+        from torch_npu import version as torch_npu_version
+
+        cann_version = getattr(torch_npu_version, "cann", None)
+    except Exception:
+        cann_version = None
+
+payload = {
+    "schema_version": "perfgate-runtime-provenance/v1",
+    "vllm_hust_sha": one_line(
+        os.environ["PERFGATE_VLLM_HUST_SHA"], "vllm-hust SHA"
+    ),
+    "vllm_ascend_hust_sha": one_line(
+        os.environ["PERFGATE_VLLM_ASCEND_HUST_SHA"], "vllm-ascend-hust SHA"
+    ),
+    "benchmark_runner_sha": one_line(
+        os.environ["PERFGATE_BENCHMARK_RUNNER_SHA"], "benchmark runner SHA"
+    ),
+    "runtime_manager_sha": one_line(
+        os.environ["PERFGATE_RUNTIME_MANAGER_SHA"], "runtime manager SHA"
+    ),
+    "hardware_chip_model": one_line(
+        os.environ["PERFGATE_HARDWARE_CHIP_MODEL"], "hardware chip model"
+    ),
+    "cann_version": one_line(cann_version, "CANN version"),
+    "torch_version": one_line(torch.__version__, "PyTorch version"),
+    "torch_npu_version": one_line(
+        getattr(torch_npu, "__version__", None)
+        or importlib.metadata.version("torch-npu"),
+        "torch-npu version",
+    ),
+}
+output = Path(os.environ["PERFGATE_PROVENANCE_OUTPUT"])
+output.write_text(
+    json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+  fi
 }
 
 validate_benchmark_result_file() {
@@ -1386,6 +1490,10 @@ if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then
       fi
       echo "Detected transient Ascend resource busy state after exhausting ${SERVER_START_RETRIES} same-spec benchmark attempt(s)"
       exit "$RESOURCE_BUSY_EXIT_CODE"
+    fi
+    if same_spec_server_log_indicates_npu_memory_pressure; then
+      echo "Detected deterministic Ascend NPU memory pressure in same-spec server log." >&2
+      exit "$NPU_MEMORY_EXIT_CODE"
     fi
     exit "$same_spec_exit_code"
   done
