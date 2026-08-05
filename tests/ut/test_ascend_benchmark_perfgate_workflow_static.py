@@ -25,6 +25,7 @@ INSTALL_PLUGIN_SCRIPT = REPO_ROOT / "scripts/install_local_ascend_plugin.sh"
 INSTALL_DEV_HUB_SCRIPT = SCRIPT_DIR / "install_ascend_benchmark_with_dev_hub.sh"
 USE_SINGLE_ASCEND_ENV_SCRIPT = REPO_ROOT / "scripts/use_single_ascend_env.sh"
 PERFGATE_VALIDATE_REQUIRED_SCRIPT = SCRIPT_DIR / "perfgate_validate_required.sh"
+PROCESS_CLEANUP_SCRIPT = SCRIPT_DIR / "cleanup_ascend_benchmark_processes.sh"
 
 
 def test_perfgate_scripts_are_present() -> None:
@@ -39,8 +40,120 @@ def test_perfgate_scripts_are_present() -> None:
         "parse_ascend_comment_command.py",
         "resolve_ascend_benchmark_scenario.py",
         "resolve_perfgate_spec_file.py",
+        "cleanup_ascend_benchmark_processes.py",
+        "cleanup_ascend_benchmark_processes.sh",
+        "capture_ascend_benchmark_diagnostics.sh",
     ):
         assert (SCRIPT_DIR / script_name).is_file()
+
+
+def test_engine_core_cleanup_is_scoped_and_runs_before_hardware_unlock() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
+    root_helper = (SCRIPT_DIR / "run_ascend_benchmark_root_helper.sh").read_text(encoding="utf-8")
+    cleanup_wrapper = PROCESS_CLEANUP_SCRIPT.read_text(encoding="utf-8")
+
+    acquire_index = workflow.index("- name: Acquire Ascend hardware lock")
+    stale_index = workflow.index("- name: Cleanup stale Ascend benchmark processes")
+    current_index = workflow.index("- name: Cleanup current Ascend benchmark processes")
+    release_index = workflow.index("- name: Release Ascend hardware lock")
+    assert acquire_index < stale_index < current_index < release_index
+
+    current_step = workflow[current_index:release_index]
+    assert "if: always()" in current_step
+    assert "cleanup_ascend_benchmark_processes.sh current" in current_step
+    assert "ASCEND_BENCHMARK_CLEANUP_MARKER_FILE:" in current_step
+    assert "runtime/process-markers/ascend-benchmark-server.pid" in current_step
+    assert "cleanup_ascend_benchmark_processes.sh stale" in workflow[stale_index:current_index]
+
+    preserve_block = runner_script[runner_script.index("SUDO_PRESERVE_ENV_VARS=(") :]
+    for variable in (
+        "GITHUB_REPOSITORY",
+        "GITHUB_WORKFLOW",
+        "GITHUB_JOB",
+        "GITHUB_RUN_ID",
+        "GITHUB_RUN_ATTEMPT",
+        "RUNNER_NAME",
+        "RUNNER_WORKSPACE",
+    ):
+        assert variable in preserve_block
+        assert variable in cleanup_wrapper
+
+    assert "cleanup-processes)" in root_helper
+    assert "cleanup_ascend_benchmark_processes.py" in root_helper
+    assert 'elif [[ "$mode" == "stale" ]]' in cleanup_wrapper
+    assert "ascend-benchmark-server.pid" in cleanup_wrapper
+    assert "pkill" not in cleanup_wrapper
+    assert "grep -E 'vllm|python|pytest'" not in runner_script
+    assert 'ASCEND_BENCHMARK_CLEANUP_MARKER_FILE="$SERVER_PID_MARKER"' in runner_script
+    assert "record_server_marker_members()" in runner_script
+    assert '--refresh-marker-members "$SERVER_PID_MARKER"' in runner_script
+    assert "record_server_marker\n  # Start the verified-member journal immediately" in runner_script
+    assert (
+        'for attempt in $(seq 1 "$server_ready_max_attempts"); do\n'
+        "      # Keep an append-only snapshot while the launcher identity and ancestry\n"
+        "      # are still available. Cleanup revalidates every PID by start time.\n"
+        "      record_server_marker_members"
+    ) in runner_script
+    assert '  record_server_marker_members\n\n  case "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE"' in runner_script
+    assert 'kill -TERM -- "-$server_group_pid"' not in runner_script
+    assert "if ! command -v setsid >/dev/null 2>&1; then" in runner_script
+    assert "setsid is required to launch the benchmark with an isolated process group" in runner_script
+    assert "VLLM_ASCEND_HUST_BENCHMARK_RUNNER_LABEL" in workflow
+    assert "linux-aarch64-a2b3-npu0" in workflow
+    assert "vllm-ascend-0-21-0rc1" in workflow
+    assert "      - ascend\n      - 910b\n      - docker" in workflow
+    assert 'ASCEND_RT_VISIBLE_DEVICES: "0"' in workflow
+    assert "cleanup-ascend-benchmark:" in workflow
+    assert "needs: ascend-benchmark" in workflow
+    assert "runner_name: ${{ steps.runner-identity.outputs.runner_name }}" in workflow
+    assert "Capture benchmark runner identity" in workflow
+    assert "Verify cleanup runner identity" in workflow
+    assert "Cleanup runner mismatch: expected" in workflow
+    assert "ASCEND_BENCHMARK_CLEANUP_EXPECTED_RUNNER_NAME:" in workflow
+    assert "cleanup_validation_mode:" in workflow
+    assert "failure-after-server-ready" in workflow
+    assert "wait-for-manual-cancel" in workflow
+    assert "wait-for-timeout" in workflow
+    assert "cleanup_validation_timeout_minutes:" in workflow
+    assert "inputs.cleanup_validation_mode != 'normal'" in workflow
+    assert "format('{0}@{1}', github.repository, github.ref_name)" in workflow
+    assert "always() && !cancelled() &&" in workflow
+    assert "Capture idle Ascend NPU diagnostics" in workflow
+    assert workflow.count("Capture post-cleanup Ascend NPU diagnostics") == 2
+    assert "if: ${{ always() && needs.ascend-benchmark.result != 'skipped' }}" in workflow
+    assert "ASCEND_BENCHMARK_CLEANUP_TARGET_JOB: ascend-benchmark" in workflow
+    assert "ASCEND_BENCHMARK_CLEANUP_TARGET_RUN_ID: ${{ github.run_id }}" in workflow
+    assert "ASCEND_BENCHMARK_CLEANUP_TARGET_RUN_ATTEMPT: ${{ github.run_attempt }}" in workflow
+    assert "ASCEND_BENCHMARK_CLEANUP_MARKER_FILE:" in workflow
+    cleanup_job = workflow[
+        workflow.index("  cleanup-ascend-benchmark:") : workflow.index("  store-main-perfgate-baseline:")
+    ]
+    assert "BENCHMARK_CHECKOUT_USE_SSH_443:" in cleanup_job
+    assert "Configure GitHub SSH over 443" in cleanup_job
+    assert "ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}" in cleanup_job
+    assert "ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}" in cleanup_job
+    assert "timeout-minutes: 10" in workflow
+
+    diagnostics = (SCRIPT_DIR / "capture_ascend_benchmark_diagnostics.sh").read_text(encoding="utf-8")
+    assert '"$npu_smi_bin" info' in diagnostics
+    assert "HBM diagnostics could not be captured" in diagnostics
+
+    assert "validate_cleanup_validation_mode()" in runner_script
+    assert "Ascend cleanup validation modes are restricted to workflow_dispatch" in runner_script
+    assert "Ascend cleanup validation modes cannot publish benchmark results" in runner_script
+    assert "CLEANUP_VALIDATION_READY mode=" in runner_script
+    assert "failure-after-server-ready" in runner_script
+    assert "wait-for-manual-cancel|wait-for-timeout" in runner_script
+    assert 'capture_ascend_benchmark_diagnostics.sh" job-exit' in runner_script
+
+
+def test_cleanup_wrapper_fails_closed_on_runner_mismatch() -> None:
+    cleanup_wrapper = (SCRIPT_DIR / "cleanup_ascend_benchmark_processes.sh").read_text(encoding="utf-8")
+
+    assert "ASCEND_BENCHMARK_CLEANUP_EXPECTED_RUNNER_NAME" in cleanup_wrapper
+    assert '"$RUNNER_NAME" != "$expected_runner_name"' in cleanup_wrapper
+    assert "Cleanup runner mismatch: expected" in cleanup_wrapper
 
 
 def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
@@ -59,10 +172,9 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
         "      - docker\n"
         "      - vllm-ascend-0-21-0rc1\n"
         "      - linux-aarch64-a2b3-pool\n"
-        "      - ascend-benchmark"
+        "      - ascend-benchmark\n"
+        "      - ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_RUNNER_LABEL || 'linux-aarch64-a2b3-npu0' }}"
     ) in workflow
-    assert 'ASCEND_RT_VISIBLE_DEVICES: "0"' in workflow
-    assert "VLLM_ASCEND_HUST_BENCHMARK_VISIBLE_DEVICES" not in workflow
     assert (
         "HARDWARE_CHIP_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.hardware_chip_model || '910B2' }}"
         in workflow
@@ -83,6 +195,8 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "docs/official-baselines/perfgate-ascend-qwen25-3b-910b3.json" not in workflow
     assert "perfgate-ascend-qwen25-3b-910b3.json" not in workflow
     assert "VLLM_HUST_BENCHMARK_REF" in workflow
+    assert "model_parameters:" in workflow
+    assert "inputs.model_parameters" in workflow
     assert "ref: ${{ env.VLLM_HUST_BENCHMARK_REF }}" in workflow
     assert 'hust_run_pip install -e "${VLLM_HUST_BENCHMARK_REPO}[publish]"' not in workflow
     assert "Detect PR fork point" in workflow
@@ -120,7 +234,10 @@ def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     assert "multi_scenario_results.tsv" in workflow
     assert "Perfgate comparison: `skipped for multi-scenario run" in workflow
     assert "os.environ.get('BENCH_SCENARIO_COUNT', '1') == '1'" in workflow
-    assert "timeout-minutes: 60" in workflow
+    assert (
+        "timeout-minutes: ${{ fromJSON(github.event_name == 'workflow_dispatch' && "
+        "inputs.cleanup_validation_timeout_minutes || '60') }}"
+    ) in workflow
     assert "VLLM_ASCEND_HUST_PUBLISH_BENCHMARK_ON_PR" not in workflow
     assert "github.event_name == 'pull_request' || github.event_name == 'issue_comment'" in workflow
     assert "Checkout dev-hub repo" not in workflow
@@ -366,7 +483,7 @@ def test_perfgate_baseline_events_match_pull_request_spec_size() -> None:
         assert fixed_spec_events in line
 
     assert "'Qwen/Qwen2.5-3B-Instruct'" in workflow
-    assert "&& '3B' || '14B'" in workflow
+    assert "&& '3B' || (github.event_name == 'workflow_dispatch' && inputs.model_parameters || '14B')" in workflow
     assert "&& 'BF16' ||" in workflow
     assert "&& 'bfloat16' ||" in workflow
     assert "&& '64' || '1024'" in workflow
@@ -498,6 +615,16 @@ def test_benchmark_prepare_preserves_torch_npu_stack() -> None:
     assert "VLLM_HUST_PYTHON_BIN" in prepare_step
 
 
+def test_benchmark_bootstrap_supports_container_native_python() -> None:
+    install_script = INSTALL_DEV_HUB_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'CONDA_BIN="$(resolve_conda_bin 2>/dev/null || true)"' in install_script
+    assert "VLLM_HUST_PYTHON_BIN:-$(command -v python3" in install_script
+    assert "Conda is unavailable; reusing container Python" in install_script
+    assert "Skipping conda runtime library installation in container-native Python mode" in install_script
+    assert 'marker_root="${CI_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/ascend-benchmark"' in install_script
+
+
 def test_benchmark_verify_uses_resolved_python_not_conda_lookup() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     verify_step = workflow[workflow.index("Verify installation") :]
@@ -535,7 +662,7 @@ def test_benchmark_server_uses_inferred_max_model_len_by_default() -> None:
     assert "MAX_MODEL_LEN=${MAX_MODEL_LEN:-}" in runner_script
     assert "max_model_len_args=()" in runner_script
     assert '"${max_model_len_args[@]}"' in runner_script
-    assert runner_script.count('"${max_model_len_args[@]}"') == 2
+    assert runner_script.count('"${max_model_len_args[@]}"') == 1
     assert "max_model_len_args=()" in root_helper
     assert '"${max_model_len_args[@]}"' in root_helper
     assert "MAX_MODEL_LEN must be set" not in root_helper

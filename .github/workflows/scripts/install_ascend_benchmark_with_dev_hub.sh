@@ -100,8 +100,28 @@ resolve_conda_env_prefix() {
 
 ensure_conda_env() {
   local env_prefix
+  local python_bin
 
-  CONDA_BIN="$(resolve_conda_bin)"
+  CONDA_BIN="$(resolve_conda_bin 2>/dev/null || true)"
+  if [[ -z "$CONDA_BIN" ]]; then
+    python_bin="${VLLM_HUST_PYTHON_BIN:-$(command -v python3 2>/dev/null || true)}"
+    if [[ -z "$python_bin" || ! -x "$python_bin" ]]; then
+      echo "Neither conda nor a usable python3 executable is available for benchmark bootstrap" >&2
+      return 1
+    fi
+    VLLM_HUST_PYTHON_BIN="$python_bin"
+    VLLM_HUST_CONDA_PREFIX="$($python_bin -c 'import sys; print(sys.prefix)' 2>/dev/null)"
+    if [[ -z "$VLLM_HUST_CONDA_PREFIX" ]]; then
+      echo "Could not resolve the container Python prefix: $python_bin" >&2
+      return 1
+    fi
+    export VLLM_HUST_PYTHON_BIN VLLM_HUST_CONDA_PREFIX
+    write_github_env "VLLM_HUST_CONDA_PREFIX" "$VLLM_HUST_CONDA_PREFIX"
+    write_github_env "VLLM_HUST_PYTHON_BIN" "$VLLM_HUST_PYTHON_BIN"
+    log "Conda is unavailable; reusing container Python: $VLLM_HUST_PYTHON_BIN"
+    return 0
+  fi
+
   env_prefix="$(resolve_conda_env_prefix || true)"
 
   if [[ -z "$env_prefix" ]]; then
@@ -220,6 +240,10 @@ ensure_bootstrap_python_tools() {
 }
 
 ensure_conda_runtime_libs() {
+  if [[ -z "$CONDA_BIN" ]]; then
+    log "Skipping conda runtime library installation in container-native Python mode"
+    return 0
+  fi
   if [[ -f "$VLLM_HUST_CONDA_PREFIX/lib/libstdc++.so.6" && -f "$VLLM_HUST_CONDA_PREFIX/lib/libgcc_s.so.1" ]]; then
     log "Reusing conda runtime libs from $VLLM_HUST_CONDA_PREFIX/lib"
     return 0
@@ -342,7 +366,12 @@ patch_triton_ascend_for_cann9() {
 }
 
 install_benchmark_baseline_stack() {
-  local marker_file="$VLLM_HUST_CONDA_PREFIX/.ascend-benchmark-install-only-stack"
+  local marker_root="$VLLM_HUST_CONDA_PREFIX"
+  if [[ ! -w "$marker_root" ]]; then
+    marker_root="${CI_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/ascend-benchmark"
+    mkdir -p "$marker_root"
+  fi
+  local marker_file="$marker_root/.ascend-benchmark-install-only-stack"
   local vllm_hust_requirements_file="$VLLM_HUST_REPO/requirements/common.txt"
   local requirements_hash
   local expected_marker
