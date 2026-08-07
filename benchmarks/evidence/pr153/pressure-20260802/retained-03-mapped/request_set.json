@@ -1,0 +1,248 @@
+{
+  "generator": "PrefixRepetitionRandomDataset",
+  "request_set_sha256": "43edb2018fdf3ab73d75fedbfe6197fbf04bfa1ea69866b682fadac6be9a0499",
+  "requests": [
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "f4bad4f2371e90401bf419acf3be7e91adc26dbd376a38a5757fa919c162ec12",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-0-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "d1815c8c608dc2813e2d09d83148340fb16c29e85f979bc84781464510e6d774",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-27-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "ee09c41be51e79e49a01b85f973c9c87bc660bdd98aa8d3d4cdf1e38c6f042ee",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-12-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "65c54f2500083f96e98c1b933caf012067e52c9c2323a46be8b4a4184ca2c0bb",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-21-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "d364aa08fb5642e0fafd86a2b5d106389bcede38d977b8d05ae64dc7a70d39b2",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-29-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "39469d14456eab8e0f3c98f533351048cec445afe97dbd7bb37a6e000f22d296",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-15-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "680c4ee4104a3cec8f83965f0f8a226aebb70545543961c6950462f259a7ee7d",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-38-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "f889215854fde20e034380fe42531b29dcc7101526f4ea78a102766ec4f1ff16",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-34-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "0b8377e92d59414b18ad2d4a8279cd895dab12efa1c95ae865dacae477faf8ab",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-1-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "f70fc9e2a3a7bf5eab6e6b49906b71ea6a6869b53061431590c0de9450a790be",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-20-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "34d6099b054a0115b3a903799512626924397f37b92a6bdfaaf105c2d6d913b8",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-7-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "3da1d140b9214d5b51d26af0778d77d887ead6a9662357c0a5a4a8e42698308b",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-5-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "c48d11033d8fa226dbab486b3d7b5fa56dd8ad5bb51417a9f2a28c8eed426b00",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-10-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "8e0eefa6f7b2d1c1df56d96e750d3d72c97e67d5975cb03c26a2cbbdf29ca4bf",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-13-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "095fe6e814a68c1096b11be0b5f609ecf36badce0f90a9b5180039181dcff6f1",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-14-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "c015a83d3311b719f020183a3107cedc1b1f5ec8ac80f5613dd517a925b9d89a",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-37-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "a8a187eb98dcf767ca780535844987431ade4066742e6095aa806a4b89d77373",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-22-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "ec8206c07e4c7ddde80d3c6ae27394c5c4ac074213ede3cfa79eb1fa9990f420",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-39-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "650f8bc56fe6b0aac9b762a41d3797270ad6fdc47d0e5edd1b883a10a539a1b4",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-23-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "ab54d5312aea4a5f7955066cf04c8e1a80eb2479d0e67b2a772688e7358c06dc",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-17-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "02e8b4eaa666924c7df3b8243127c0dcdd699f95fd694c76373ced5f6e50112d",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-8-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "296260d96085f52034bfc9f41bdea288c8b2c18eb8e175948baa04a29eff143e",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-35-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "92d3b7c832a6295d07d1ea56ca00a5b0031dca1001761288c37531f8270cd258",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-3-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "2a2f3be1a713b44e8e658b91fac1d79e6e089f43ada122cb33fbdbbc753e7cea",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-33-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "645621320fe6be6f7dfc22a6eddccf56cf9504acd3ad84589e8fc0f89c7cbd71",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-9-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "387804b84eb58321063439f84b927962b4f46ebf205bac4e50694d0f585ea9de",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-4-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "5c210804a2bf3933636807e50e7793048986090b2ce9aaea14067d2b4d207802",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-36-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "2b0f6b0b287f1d46b0a7c4a3ee0adb12e2e51a791af7cdbc43f056b59ea300c6",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-6-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "e4ea1d9b6f3edffe1191a73cd6fecf0a82069c42a9ed497fa340ba9f93b52daa",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-28-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "ccfb143c5b613f6b941bc883ebb3cafd6bfedf6d35e0d9ce4efcd0e2f6aa6b55",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-18-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "7770785a95015646caf89850458d7f16bb732898af34a419c0aebb215ce5e8ab",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-11-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "cb61b7ac2124258affe366532b3ddf77a077392d332b8e42164f95e42966efb4",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-30-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "5ca19ece2821c7f1aa0f8b01f4b737be9c97904637fe6677d3190a985cbadf00",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-19-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "b833992608cd6da64aa300783bb54110e34d8f969c8a248d1eaae05c23abe65e",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-25-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "f579eb1bdad6c9ef0693d38e6d27be741442db41e5657dd782be3e859de26471",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-31-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "5fd8be1ca96e3a4c40605039dd4ac06c27d8f162f12feaa1d1e70ef6d01e8144",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-32-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "366f2a500628d6678961aed44b7be8a43284b9e2409c63067c65b88dd1767a0e",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-16-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "8154b2b193fe05c87d1fccbaae607e07819d78779e41863ccb07dfcd45991a94",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-2-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "7f645d36dc6a6a49410d87a2663da725ecd25294cf0759ea9f2e5c6bec2c1dec",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-26-0"
+    },
+    {
+      "output_tokens": 256,
+      "prompt_sha256": "6930e89f1ceed73b58829b62d5d1f8ba0377020bff8c1188e6b9d490ef212470",
+      "prompt_tokens": 4096,
+      "request_id": "cmpl-m0-pilot-24-0"
+    }
+  ],
+  "schema_version": 1,
+  "seed": 0
+}

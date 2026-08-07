@@ -1,0 +1,6 @@
+Downloading ruff (12.0MiB)
+ Downloaded ruff
+Installed 1 package in 37ms
+ruff 0.14.0
+All checks passed!
+14 files already formatted

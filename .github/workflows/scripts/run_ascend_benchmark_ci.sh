@@ -34,6 +34,9 @@ SAME_SPEC_BENCHMARK_ENABLED=${SAME_SPEC_BENCHMARK_ENABLED:-1}
 SAME_SPEC_SPEC_FILE=${SAME_SPEC_SPEC_FILE:-}
 SAME_SPEC_CONSTRAINTS_FILE=${SAME_SPEC_CONSTRAINTS_FILE:-$VLLM_HUST_BENCHMARK_REPO/docs/official-baselines/official-ascend-constraints.stub.json}
 SAME_SPEC_PR_PREVIEW_COMPAT=${SAME_SPEC_PR_PREVIEW_COMPAT:-1}
+PERFGATE_WARMUP_RUNS=${PERFGATE_WARMUP_RUNS:-0}
+PERFGATE_MEASURED_RUNS=${PERFGATE_MEASURED_RUNS:-1}
+PERFGATE_AGGREGATION=${PERFGATE_AGGREGATION:-primary-median-run}
 
 MODEL_NAME=${MODEL_NAME:-Qwen/Qwen2.5-14B-Instruct}
 MODEL_PARAMETERS=${MODEL_PARAMETERS:-14B}
@@ -59,6 +62,8 @@ PUBLISH_TO_HF=${PUBLISH_TO_HF:-0}
 PUBLISH_TO_BENCHMARK_REPO=${PUBLISH_TO_BENCHMARK_REPO:-0}
 HF_REPO_ID=${HF_REPO_ID:-}
 VLLM_HUST_BENCHMARK_REF=${VLLM_HUST_BENCHMARK_REF:-}
+ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE=${ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE:-normal}
+ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES=${ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES:-60}
 
 validate_benchmark_inputs() {
   if [[ -n "$VLLM_HUST_BENCHMARK_REF" && "$MODEL_NAME" == "$VLLM_HUST_BENCHMARK_REF" ]]; then
@@ -76,7 +81,40 @@ validate_benchmark_inputs() {
   fi
 }
 
+validate_cleanup_validation_mode() {
+  case "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE" in
+    normal)
+      return
+      ;;
+    failure-after-server-ready|wait-for-manual-cancel|wait-for-timeout)
+      ;;
+    *)
+      echo "Unsupported Ascend cleanup validation mode: $ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE" >&2
+      exit 2
+      ;;
+  esac
+
+  if [[ "${GITHUB_EVENT_NAME:-}" != "workflow_dispatch" ]]; then
+    echo "Ascend cleanup validation modes are restricted to workflow_dispatch." >&2
+    exit 2
+  fi
+  if [[ "$PUBLISH_TO_HF" == "1" || "$PUBLISH_TO_BENCHMARK_REPO" == "1" ]]; then
+    echo "Ascend cleanup validation modes cannot publish benchmark results." >&2
+    exit 2
+  fi
+  if [[ "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE" == "wait-for-timeout" ]]; then
+    if [[ "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES" != "5" ]]; then
+      echo "wait-for-timeout requires cleanup_validation_timeout_minutes=5." >&2
+      exit 2
+    fi
+  elif [[ "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES" != "60" ]]; then
+    echo "Only wait-for-timeout may use cleanup_validation_timeout_minutes=5." >&2
+    exit 2
+  fi
+}
+
 validate_benchmark_inputs
+validate_cleanup_validation_mode
 
 # shellcheck source=/dev/null
 source "${VLLM_ASCEND_HUST_REPO}/scripts/hust_ascend_manager_helper.sh"
@@ -109,6 +147,7 @@ RESOURCE_BUSY_EXIT_CODE=${RESOURCE_BUSY_EXIT_CODE:-75}
 SUDO_AUTH_EXIT_CODE=${SUDO_AUTH_EXIT_CODE:-76}
 INVALID_BENCHMARK_RESULT_EXIT_CODE=${INVALID_BENCHMARK_RESULT_EXIT_CODE:-77}
 NODE_ENV_FAILURE_EXIT_CODE=${NODE_ENV_FAILURE_EXIT_CODE:-86}
+NPU_MEMORY_EXIT_CODE=${NPU_MEMORY_EXIT_CODE:-87}
 ASCEND_BENCHMARK_USE_SUDO=${ASCEND_BENCHMARK_USE_SUDO:-0}
 SAME_SPEC_READY_TIMEOUT_SECONDS=${SAME_SPEC_READY_TIMEOUT_SECONDS:-$SERVER_READY_TIMEOUT_SECONDS}
 SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS=${SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS:-300}
@@ -176,83 +215,6 @@ server_pid=""
 server_group_pid=""
 cleanup_ran=0
 
-find_orphaned_engine_pids() {
-  "$PYTHON_BIN" - <<'PY'
-import os
-
-
-def read_proc_bytes(path: str) -> bytes:
-    try:
-        with open(path, "rb") as proc_file:
-            return proc_file.read()
-    except OSError:
-        return b""
-
-
-def read_environ(pid: str) -> dict[str, str]:
-    env = {}
-    for item in read_proc_bytes(f"/proc/{pid}/environ").split(b"\0"):
-        if b"=" not in item:
-            continue
-        key, value = item.split(b"=", 1)
-        env[key.decode(errors="ignore")] = value.decode(errors="ignore")
-    return env
-
-
-run_id = os.environ.get("GITHUB_RUN_ID", "")
-job_name = os.environ.get("GITHUB_JOB", "")
-repository = os.environ.get("GITHUB_REPOSITORY", "")
-workspace = os.environ.get("RUNNER_WORKSPACE", "")
-current_pid = str(os.getpid())
-matches = []
-
-if not run_id or not job_name or not repository:
-    print("")
-    raise SystemExit(0)
-
-for entry in os.listdir("/proc"):
-    if not entry.isdigit() or entry == current_pid:
-        continue
-
-    status_text = read_proc_bytes(f"/proc/{entry}/status").decode(errors="ignore")
-    status_name = ""
-    for line in status_text.splitlines():
-        if line.startswith("Name:\t"):
-            status_name = line.split("\t", 1)[1].strip()
-            break
-
-    if status_name != "VLLM::EngineCor":
-        cmdline_text = read_proc_bytes(f"/proc/{entry}/cmdline").replace(b"\0", b" ").decode(errors="ignore")
-        if "VLLM::EngineCore" not in cmdline_text:
-            continue
-
-    proc_env = read_environ(entry)
-    if proc_env.get("GITHUB_RUN_ID") != run_id:
-        continue
-    if proc_env.get("GITHUB_JOB") != job_name:
-        continue
-    if proc_env.get("GITHUB_REPOSITORY") != repository:
-        continue
-    if workspace and proc_env.get("RUNNER_WORKSPACE") != workspace:
-        continue
-
-    matches.append(entry)
-
-print(" ".join(matches))
-PY
-}
-
-kill_matching_pids() {
-  local signal="$1"
-  shift
-
-  if [[ "$#" -eq 0 ]]; then
-    return
-  fi
-
-  kill "-$signal" "$@" 2>/dev/null || true
-}
-
 SUDO_PRESERVE_ENV_VARS=(
   ASCEND_AICPU_PATH
   ASCEND_BENCHMARK_USE_SUDO
@@ -318,6 +280,11 @@ SUDO_PRESERVE_ENV_VARS=(
   DTYPE
   GITHUB_ACTOR
   GITHUB_EVENT_NAME
+  GITHUB_JOB
+  GITHUB_REPOSITORY
+  GITHUB_RUN_ATTEMPT
+  GITHUB_RUN_ID
+  GITHUB_WORKFLOW
   HCCL_CONNECT_TIMEOUT
   HCCL_EXEC_TIMEOUT
   HF_HOME
@@ -332,6 +299,9 @@ SUDO_PRESERVE_ENV_VARS=(
   MODEL_QUANTIZATION
   NODE_COUNT
   PATH
+  PERFGATE_AGGREGATION
+  PERFGATE_MEASURED_RUNS
+  PERFGATE_WARMUP_RUNS
   PORT
   PUBLISH_TO_BENCHMARK_REPO
   PYTHON_BIN
@@ -339,6 +309,8 @@ SUDO_PRESERVE_ENV_VARS=(
   RESULT_DIR
   RESULT_ROOT
   RUN_ID
+  RUNNER_NAME
+  RUNNER_WORKSPACE
   SAME_SPEC_CONSTRAINTS_FILE
   SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS
   SAME_SPEC_PR_PREVIEW_COMPAT
@@ -497,58 +469,33 @@ cleanup() {
   fi
   cleanup_ran=1
 
-  if [[ -n "$server_group_pid" ]]; then
-    kill -TERM -- "-$server_group_pid" 2>/dev/null || true
-    for _ in $(seq 1 10); do
-      if ! kill -0 -- "-$server_group_pid" 2>/dev/null; then
-        break
-      fi
-      sleep 1
-    done
-    kill -KILL -- "-$server_group_pid" 2>/dev/null || true
-  elif [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-    kill "$server_pid" 2>/dev/null || true
-  fi
+  # The marker records the launcher's stable identity. The shared utility then
+  # verifies and signals every current-job member of its process group by pidfd.
+  VLLM_ASCEND_HUST_REPO="$VLLM_ASCEND_HUST_REPO" \
+    PYTHON_BIN="$PYTHON_BIN" \
+    ASCEND_BENCHMARK_CLEANUP_MARKER_FILE="$SERVER_PID_MARKER" \
+    bash "$SCRIPT_DIR/cleanup_ascend_benchmark_processes.sh" current || \
+    echo "Warning: final EngineCore cleanup did not complete" >&2
+
+  bash "$SCRIPT_DIR/capture_ascend_benchmark_diagnostics.sh" job-exit || true
 
   if [[ -n "$server_pid" ]]; then
     wait "$server_pid" || true
   fi
 
-  # GitHub Actions cancellation can outlive the vLLM launcher and leave
-  # EngineCore workers behind, so sweep matching leftovers by run metadata.
-  local orphaned_engine_pids
-  orphaned_engine_pids="$(find_orphaned_engine_pids)"
-  if [[ -n "$orphaned_engine_pids" ]]; then
-    kill_matching_pids TERM $orphaned_engine_pids
-    for _ in $(seq 1 10); do
-      local remaining_engine_pids=()
-      local orphaned_pid
-      for orphaned_pid in $orphaned_engine_pids; do
-        if kill -0 "$orphaned_pid" 2>/dev/null; then
-          remaining_engine_pids+=("$orphaned_pid")
-        fi
-      done
-      if [[ "${#remaining_engine_pids[@]}" -eq 0 ]]; then
-        orphaned_engine_pids=""
-        break
-      fi
-      orphaned_engine_pids="${remaining_engine_pids[*]}"
-      sleep 1
-    done
-
-    if [[ -n "$orphaned_engine_pids" ]]; then
-      kill_matching_pids KILL $orphaned_engine_pids
-    fi
-  fi
-
   server_pid=""
   server_group_pid=""
-  rm -f "$SERVER_PID_MARKER" "$SERVER_PGID_MARKER"
+  rm -f "$SERVER_PGID_MARKER"
 }
 
 same_spec_server_log_indicates_resource_busy() {
   local same_spec_server_log=$RESULT_ROOT/server.stdout.log
   [[ -f "$same_spec_server_log" ]] && grep -qE 'Resource_Busy\(EL0005\)|aclInit, error code is 507899|The resources are busy' "$same_spec_server_log"
+}
+
+same_spec_server_log_indicates_npu_memory_pressure() {
+  local same_spec_server_log=$RESULT_ROOT/server.stdout.log
+  [[ -f "$same_spec_server_log" ]] && grep -Eqi 'Free memory on device .* less than desired GPU memory utilization|NPU out of memory|torch_npu.*OutOfMemoryError|ACL_ERROR_RT_MEMORY_ALLOCATION' "$same_spec_server_log"
 }
 
 print_same_spec_server_log_tail() {
@@ -581,57 +528,23 @@ runtime_ready_log_indicates_node_env_failure() {
 }
 
 cleanup_previous_ci_processes() {
-  local marker_pgid marker_pid remaining_matches remaining_pids
+  VLLM_ASCEND_HUST_REPO="$VLLM_ASCEND_HUST_REPO" \
+    PYTHON_BIN="$PYTHON_BIN" \
+    ASCEND_BENCHMARK_CLEANUP_MARKER_FILE="$SERVER_PID_MARKER" \
+    bash "$SCRIPT_DIR/cleanup_ascend_benchmark_processes.sh" current
+  rm -f "$SERVER_PGID_MARKER"
+}
 
-  if [[ -f "$SERVER_PGID_MARKER" ]]; then
-    marker_pgid=$(tr -d '[:space:]' <"$SERVER_PGID_MARKER")
-    if [[ -n "$marker_pgid" ]] && kill -0 "$marker_pgid" 2>/dev/null; then
-      echo "Cleaning leftover Ascend benchmark process group: $marker_pgid"
-      kill -TERM -- "-$marker_pgid" 2>/dev/null || true
-      for _ in $(seq 1 10); do
-        if ! kill -0 "$marker_pgid" 2>/dev/null; then
-          break
-        fi
-        sleep 1
-      done
-      kill -KILL -- "-$marker_pgid" 2>/dev/null || true
-    fi
-  fi
+record_server_marker() {
+  "$PYTHON_BIN" "$SCRIPT_DIR/cleanup_ascend_benchmark_processes.py" \
+    --record-marker "$SERVER_PID_MARKER" \
+    --pid "$server_pid" \
+    --isolated-session
+}
 
-  if [[ -f "$SERVER_PID_MARKER" ]]; then
-    marker_pid=$(tr -d '[:space:]' <"$SERVER_PID_MARKER")
-    if [[ -n "$marker_pid" ]] && kill -0 "$marker_pid" 2>/dev/null; then
-      echo "Cleaning leftover Ascend benchmark process: $marker_pid"
-      kill "$marker_pid" 2>/dev/null || true
-    fi
-  fi
-
-  remaining_matches=$(ps -eo pid,ppid,pgid,sid,etimes,args \
-    | grep -F "$WORKSPACE_ROOT" \
-    | grep -E 'vllm|python|pytest' \
-    | grep -v grep || true)
-  if [[ -n "$remaining_matches" ]]; then
-    echo "Remaining workspace-scoped vLLM/Python processes before benchmark:"
-    echo "$remaining_matches"
-    remaining_pids=$(printf '%s\n' "$remaining_matches" | awk '{print $1}')
-    if [[ -n "$remaining_pids" ]]; then
-      echo "Cleaning workspace-scoped leftover process(es): $remaining_pids"
-      # shellcheck disable=SC2086
-      kill -TERM $remaining_pids 2>/dev/null || true
-      for _ in $(seq 1 10); do
-        if ! ps -p "$(printf '%s' "$remaining_pids" | paste -sd, -)" >/dev/null 2>&1; then
-          break
-        fi
-        sleep 1
-      done
-      # shellcheck disable=SC2086
-      kill -KILL $remaining_pids 2>/dev/null || true
-    fi
-  else
-    echo "No leftover workspace-scoped vLLM/Python processes detected before benchmark."
-  fi
-
-  rm -f "$SERVER_PID_MARKER" "$SERVER_PGID_MARKER"
+record_server_marker_members() {
+  "$PYTHON_BIN" "$SCRIPT_DIR/cleanup_ascend_benchmark_processes.py" \
+    --refresh-marker-members "$SERVER_PID_MARKER"
 }
 
 wait_for_ascend_runtime_ready() {
@@ -713,46 +626,39 @@ start_server() {
     serve_extra_args+=(--enforce-eager)
   fi
 
-  if command -v setsid >/dev/null 2>&1; then
-    if [[ "$ASCEND_BENCHMARK_USE_SUDO" == "1" ]]; then
-      local preserve_list
-      export_sudo_preserved_env_vars
-      preserve_list=$(build_sudo_env_preserve_list)
-      if [[ -n "$preserve_list" ]]; then
-        setsid sudo --preserve-env="$preserve_list" -E -n "$ASCEND_BENCHMARK_ROOT_HELPER" serve >"$SERVER_LOG" 2>&1 &
-      else
-        setsid sudo -E -n "$ASCEND_BENCHMARK_ROOT_HELPER" serve >"$SERVER_LOG" 2>&1 &
-      fi
-    else
-      setsid env VLLM_ASCEND_TORCH_PREFLIGHT=0 "${VLLM_SERVE[@]}" \
-        --model "$MODEL_NAME" \
-        --host "$HOST" \
-        --port "$PORT" \
-        --dtype "$DTYPE" \
-        "${max_model_len_args[@]}" \
-        --max-num-seqs "$MAX_NUM_SEQS" \
-        "${serve_extra_args[@]}" >"$SERVER_LOG" 2>&1 &
-    fi
-    server_pid=$!
-    server_group_pid=$server_pid
-    printf '%s\n' "$server_pid" >"$SERVER_PID_MARKER"
-    printf '%s\n' "$server_group_pid" >"$SERVER_PGID_MARKER"
-  else
-    if [[ "$ASCEND_BENCHMARK_USE_SUDO" == "1" ]]; then
-      run_ascend_root_helper serve >"$SERVER_LOG" 2>&1 &
-    else
-      env VLLM_ASCEND_TORCH_PREFLIGHT=0 "${VLLM_SERVE[@]}" \
-        --model "$MODEL_NAME" \
-        --host "$HOST" \
-        --port "$PORT" \
-        --dtype "$DTYPE" \
-        "${max_model_len_args[@]}" \
-        --max-num-seqs "$MAX_NUM_SEQS" \
-        "${serve_extra_args[@]}" >"$SERVER_LOG" 2>&1 &
-    fi
-    server_pid=$!
-    printf '%s\n' "$server_pid" >"$SERVER_PID_MARKER"
+  if ! command -v setsid >/dev/null 2>&1; then
+    echo "setsid is required to launch the benchmark with an isolated process group" >&2
+    return 2
   fi
+
+  if [[ "$ASCEND_BENCHMARK_USE_SUDO" == "1" ]]; then
+    local preserve_list
+    export_sudo_preserved_env_vars
+    preserve_list=$(build_sudo_env_preserve_list)
+    if [[ -n "$preserve_list" ]]; then
+      setsid sudo --preserve-env="$preserve_list" -E -n "$ASCEND_BENCHMARK_ROOT_HELPER" serve >"$SERVER_LOG" 2>&1 &
+    else
+      setsid sudo -E -n "$ASCEND_BENCHMARK_ROOT_HELPER" serve >"$SERVER_LOG" 2>&1 &
+    fi
+  else
+    setsid env VLLM_ASCEND_TORCH_PREFLIGHT=0 "${VLLM_SERVE[@]}" \
+      --model "$MODEL_NAME" \
+      --host "$HOST" \
+      --port "$PORT" \
+      --dtype "$DTYPE" \
+      "${max_model_len_args[@]}" \
+      --max-num-seqs "$MAX_NUM_SEQS" \
+      "${serve_extra_args[@]}" >"$SERVER_LOG" 2>&1 &
+  fi
+  server_pid=$!
+  server_group_pid=$server_pid
+  printf '%s\n' "$server_pid" >"$SERVER_PID_MARKER"
+  printf '%s\n' "$server_group_pid" >"$SERVER_PGID_MARKER"
+  record_server_marker
+  # Start the verified-member journal immediately. Later readiness polls add
+  # descendants as soon as they appear, before GitHub cancellation can reap
+  # the launcher and reparent them outside its session.
+  record_server_marker_members
 }
 
 run_completions_smoke() {
@@ -887,7 +793,10 @@ run_same_spec_current_benchmark() {
   local same_spec_raw_result=$RESULT_ROOT/raw_benchmark_result.json
   local same_spec_submission_dir=$RESULT_ROOT/submission
   local effective_same_spec_file=$SAME_SPEC_SPEC_FILE
+  local benchmark_runner_commit
+  local current_plugin_commit
   local current_vllm_hust_commit
+  local runtime_manager_commit
   local same_spec_exit_code=0
 
   if [[ ! -f "$same_spec_runner" ]]; then
@@ -904,6 +813,9 @@ run_same_spec_current_benchmark() {
   fi
 
   current_vllm_hust_commit=$(git -C "$VLLM_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+  current_plugin_commit=$(git -C "$VLLM_ASCEND_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+  benchmark_runner_commit=$(git -C "$VLLM_HUST_BENCHMARK_REPO" rev-parse HEAD 2>/dev/null || true)
+  runtime_manager_commit=$(git -C "${HUST_ASCEND_MANAGER_REPO:-}" rev-parse HEAD 2>/dev/null || true)
   rm -f "$same_spec_raw_result" "$RAW_RESULT_FILE"
   rm -rf "$same_spec_submission_dir" "$SUBMISSION_DIR"
 
@@ -977,6 +889,9 @@ PY
       READY_TIMEOUT_SECONDS="$SAME_SPEC_READY_TIMEOUT_SECONDS" \
       CLIENT_READY_CHECK_TIMEOUT_SECONDS="$SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS" \
       CONSTRAINTS_FILE="$SAME_SPEC_CONSTRAINTS_FILE" \
+      PERFGATE_WARMUP_RUNS="$PERFGATE_WARMUP_RUNS" \
+      PERFGATE_MEASURED_RUNS="$PERFGATE_MEASURED_RUNS" \
+      PERFGATE_AGGREGATION="$PERFGATE_AGGREGATION" \
       run_ascend_root_helper same-spec "$same_spec_runner" "$effective_same_spec_file" || same_spec_exit_code=$?
   else
     env \
@@ -1009,6 +924,9 @@ PY
       READY_TIMEOUT_SECONDS="$SAME_SPEC_READY_TIMEOUT_SECONDS" \
       CLIENT_READY_CHECK_TIMEOUT_SECONDS="$SAME_SPEC_CLIENT_READY_TIMEOUT_SECONDS" \
       CONSTRAINTS_FILE="$SAME_SPEC_CONSTRAINTS_FILE" \
+      PERFGATE_WARMUP_RUNS="$PERFGATE_WARMUP_RUNS" \
+      PERFGATE_MEASURED_RUNS="$PERFGATE_MEASURED_RUNS" \
+      PERFGATE_AGGREGATION="$PERFGATE_AGGREGATION" \
       bash "$same_spec_runner" "$effective_same_spec_file" || same_spec_exit_code=$?
   fi
 
@@ -1036,6 +954,86 @@ PY
   cp "$same_spec_raw_result" "$RAW_RESULT_FILE"
   cp "$same_spec_submission_dir/leaderboard_manifest.json" "$SUBMISSION_DIR/leaderboard_manifest.json"
   cp "$same_spec_submission_dir/run_leaderboard.json" "$SUBMISSION_DIR/run_leaderboard.json"
+
+  if [[ "$PERFGATE_WARMUP_RUNS" -gt 0 || "$PERFGATE_MEASURED_RUNS" -gt 1 ]]; then
+    if [[ ! -f "$same_spec_submission_dir/measurement.json" ]]; then
+      echo "same-spec benchmark did not produce required measurement.json" >&2
+      return 2
+    fi
+    cp "$same_spec_submission_dir/measurement.json" "$SUBMISSION_DIR/measurement.json"
+
+    local provenance_sha
+    for provenance_sha in "$current_vllm_hust_commit" "$current_plugin_commit" "$benchmark_runner_commit" "$runtime_manager_commit"; do
+      if ! [[ "$provenance_sha" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "Could not resolve full lowercase runtime provenance SHAs" >&2
+        return 2
+      fi
+    done
+
+    PERFGATE_PROVENANCE_OUTPUT="$SUBMISSION_DIR/perfgate-provenance.json" \
+    PERFGATE_VLLM_HUST_SHA="$current_vllm_hust_commit" \
+    PERFGATE_VLLM_ASCEND_HUST_SHA="$current_plugin_commit" \
+    PERFGATE_BENCHMARK_RUNNER_SHA="$benchmark_runner_commit" \
+    PERFGATE_RUNTIME_MANAGER_SHA="$runtime_manager_commit" \
+    PERFGATE_HARDWARE_CHIP_MODEL="$HARDWARE_CHIP_MODEL" \
+    PERFGATE_CANN_VERSION="${HUST_ASCEND_RUNTIME_VERSION:-}" \
+      "$PYTHON_BIN" - <<'PY'
+import importlib.metadata
+import json
+import os
+from pathlib import Path
+
+import torch
+import torch_npu
+
+
+def one_line(value, name):
+    normalized = str(value or "").strip().replace("\n", " ").replace("\r", " ")
+    if not normalized:
+        raise RuntimeError(f"unable to determine {name}")
+    return normalized
+
+
+cann_version = os.environ.get("PERFGATE_CANN_VERSION")
+if not cann_version:
+    try:
+        from torch_npu import version as torch_npu_version
+
+        cann_version = getattr(torch_npu_version, "cann", None)
+    except Exception:
+        cann_version = None
+
+payload = {
+    "schema_version": "perfgate-runtime-provenance/v1",
+    "vllm_hust_sha": one_line(
+        os.environ["PERFGATE_VLLM_HUST_SHA"], "vllm-hust SHA"
+    ),
+    "vllm_ascend_hust_sha": one_line(
+        os.environ["PERFGATE_VLLM_ASCEND_HUST_SHA"], "vllm-ascend-hust SHA"
+    ),
+    "benchmark_runner_sha": one_line(
+        os.environ["PERFGATE_BENCHMARK_RUNNER_SHA"], "benchmark runner SHA"
+    ),
+    "runtime_manager_sha": one_line(
+        os.environ["PERFGATE_RUNTIME_MANAGER_SHA"], "runtime manager SHA"
+    ),
+    "hardware_chip_model": one_line(
+        os.environ["PERFGATE_HARDWARE_CHIP_MODEL"], "hardware chip model"
+    ),
+    "cann_version": one_line(cann_version, "CANN version"),
+    "torch_version": one_line(torch.__version__, "PyTorch version"),
+    "torch_npu_version": one_line(
+        getattr(torch_npu, "__version__", None)
+        or importlib.metadata.version("torch-npu"),
+        "torch-npu version",
+    ),
+}
+output = Path(os.environ["PERFGATE_PROVENANCE_OUTPUT"])
+output.write_text(
+    json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+PY
+  fi
 }
 
 validate_benchmark_result_file() {
@@ -1351,9 +1349,6 @@ PY
 }
 
 configure_single_card_ascend_device() {
-  local start_attempt="${1:-1}"
-  local selected_device_info=""
-
   if [[ "$USER_PROVIDED_ASCEND_VISIBLE_DEVICES" == "1" ]]; then
     export VLLM_ASCEND_TORCH_PREFLIGHT_DEVICE="${VLLM_ASCEND_TORCH_PREFLIGHT_DEVICE:-npu:0}"
     echo "using explicit Ascend visible devices from environment: $ASCEND_RT_VISIBLE_DEVICES"
@@ -1361,17 +1356,10 @@ configure_single_card_ascend_device() {
     return 0
   fi
 
-  selected_device_info="$(select_ascend_device "$start_attempt" "$NPU_SMI_BIN")"
-  if [[ -n "$selected_device_info" ]]; then
-    IFS=$'\t' read -r SELECTED_ASCEND_DEVICE SELECTED_ASCEND_DEVICE_SOURCE <<<"$selected_device_info"
-    export ASCEND_RT_VISIBLE_DEVICES="$SELECTED_ASCEND_DEVICE"
-    export VLLM_ASCEND_TORCH_PREFLIGHT_DEVICE="npu:0"
-    echo "selected single-card Ascend device: $ASCEND_RT_VISIBLE_DEVICES (${SELECTED_ASCEND_DEVICE_SOURCE})"
-  else
-    unset ASCEND_RT_VISIBLE_DEVICES
-    unset VLLM_ASCEND_TORCH_PREFLIGHT_DEVICE
-    echo "Could not resolve a single-card Ascend device; probing runtime without device scoping"
-  fi
+  # Dedicated runner containers provide the physical-device isolation. Do not
+  # run host-level npu-smi selection or invent a physical device id here.
+  export VLLM_ASCEND_TORCH_PREFLIGHT_DEVICE="npu:0"
+  echo "using container-provided Ascend device visibility"
 }
 
 echo "== Ascend benchmark CI =="
@@ -1503,6 +1491,10 @@ if [[ "$SAME_SPEC_BENCHMARK_ENABLED" == "1" ]]; then
       echo "Detected transient Ascend resource busy state after exhausting ${SERVER_START_RETRIES} same-spec benchmark attempt(s)"
       exit "$RESOURCE_BUSY_EXIT_CODE"
     fi
+    if same_spec_server_log_indicates_npu_memory_pressure; then
+      echo "Detected deterministic Ascend NPU memory pressure in same-spec server log." >&2
+      exit "$NPU_MEMORY_EXIT_CODE"
+    fi
     exit "$same_spec_exit_code"
   done
 else
@@ -1548,6 +1540,10 @@ else
     start_server
 
     for attempt in $(seq 1 "$server_ready_max_attempts"); do
+      # Keep an append-only snapshot while the launcher identity and ancestry
+      # are still available. Cleanup revalidates every PID by start time.
+      record_server_marker_members
+
       if curl -fsS "http://$HOST:$PORT/v1/models" >/dev/null; then
         if wait_for_completions_smoke; then
           server_ready=1
@@ -1617,6 +1613,28 @@ else
     exit 1
   fi
 
+  # Capture the descendants while the isolated launcher is still alive. A
+  # GitHub cancellation can reap that launcher before this script's cleanup
+  # trap executes, leaving EngineCore reparented in its own session.
+  record_server_marker_members
+
+  case "$ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE" in
+    normal)
+      ;;
+    failure-after-server-ready)
+      echo "CLEANUP_VALIDATION_READY mode=failure-after-server-ready runner=${RUNNER_NAME:-unknown} server_pid=$server_pid"
+      echo "Injecting requested failure after the vLLM server became ready." >&2
+      exit 1
+      ;;
+    wait-for-manual-cancel|wait-for-timeout)
+      echo "CLEANUP_VALIDATION_READY mode=$ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE runner=${RUNNER_NAME:-unknown} server_pid=$server_pid"
+      echo "Waiting for ${ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE}; cancel this workflow only for manual-cancel validation." >&2
+      while true; do
+        sleep 15
+      done
+      ;;
+  esac
+
   "${VLLM_CLI[@]}" bench serve \
     --model "$MODEL_NAME" \
     --host "$HOST" \
@@ -1670,6 +1688,8 @@ PY
     --github-event-name "${GITHUB_EVENT_NAME:-manual}" \
     --submissions-dir "$SUBMISSIONS_ROOT"
 fi
+
+printf 'OK\n' > "$SUBMISSION_DIR/STATUS"
 
 if [[ "$PUBLISH_TO_BENCHMARK_REPO" == "1" ]]; then
   sync_benchmark_publication_to_github

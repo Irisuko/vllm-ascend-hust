@@ -26,13 +26,15 @@ def test_a2_single_npu_container_uses_runner_scoped_runtime_contract() -> None:
 
     assert '"linux-aarch64-a2b3-1"' in runner_labels
     assert "matrix.group.runner == 'linux-aarch64-a2b3-1'" in workflow
-    assert "--device /dev/davinci1" in workflow
+    assert "--device /dev/davinci1:/dev/davinci0" in workflow
     assert "--device /dev/davinci_manager" in workflow
     assert "--device /dev/devmm_svm" in workflow
     assert "--device /dev/hisi_hdc" in workflow
     assert "/usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro" in workflow
     assert "/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64:ro" in workflow
-    assert "ASCEND_RT_VISIBLE_DEVICES" in workflow
+    assert "ASCEND_RT_VISIBLE_DEVICES: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '0' || '' }}" in workflow
+    assert "--physical-device-ids" in workflow
+    assert "matrix.group.runner == 'linux-aarch64-a2b3-1' && '1' || ''" in workflow
 
 
 def test_npu_preflight_is_fail_closed_and_runs_before_package_install() -> None:

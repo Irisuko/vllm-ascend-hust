@@ -39,27 +39,31 @@ class RuntimeContractError(RuntimeError):
     """Raised when the container does not satisfy the Ascend runtime contract."""
 
 
-def parse_visible_device_ids(value: str, expected_npus: int) -> tuple[int, ...]:
+def parse_device_ids(value: str, expected_npus: int, *, contract_name: str) -> tuple[int, ...]:
     if expected_npus < 1:
         raise RuntimeContractError("expected_npus must be positive for an NPU job")
     if not value.strip():
-        raise RuntimeContractError("ASCEND_RT_VISIBLE_DEVICES is not set")
+        raise RuntimeContractError(f"{contract_name} is not set")
 
     raw_ids = [item.strip() for item in value.split(",")]
     try:
         device_ids = tuple(int(item) for item in raw_ids)
     except ValueError as exc:
-        raise RuntimeContractError(f"ASCEND_RT_VISIBLE_DEVICES must contain integer IDs: {value!r}") from exc
+        raise RuntimeContractError(f"{contract_name} must contain integer IDs: {value!r}") from exc
     if any(device_id < 0 for device_id in device_ids):
-        raise RuntimeContractError("Ascend device IDs must be non-negative")
+        raise RuntimeContractError(f"{contract_name} IDs must be non-negative")
     if len(set(device_ids)) != len(device_ids):
-        raise RuntimeContractError("ASCEND_RT_VISIBLE_DEVICES contains duplicate IDs")
+        raise RuntimeContractError(f"{contract_name} contains duplicate IDs")
     if len(device_ids) != expected_npus:
         raise RuntimeContractError(
-            "Visible Ascend device count does not match the selected test group: "
+            f"{contract_name} count does not match the selected test group: "
             f"expected {expected_npus}, got {len(device_ids)}"
         )
     return device_ids
+
+
+def parse_visible_device_ids(value: str, expected_npus: int) -> tuple[int, ...]:
+    return parse_device_ids(value, expected_npus, contract_name="ASCEND_RT_VISIBLE_DEVICES")
 
 
 def resolve_npu_smi(candidates: Sequence[Path] = NPU_SMI_CANDIDATES) -> Path:
@@ -119,30 +123,42 @@ def validate_runtime(
     *,
     expected_npus: int,
     visible_devices: str,
+    physical_devices: str | None = None,
     device_root: Path = Path("/dev"),
     npu_smi_candidates: Sequence[Path] = NPU_SMI_CANDIDATES,
     is_char_device: Callable[[Path], bool] | None = None,
     run_probe: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> tuple[Path, tuple[int, ...]]:
-    device_ids = parse_visible_device_ids(visible_devices, expected_npus)
+) -> tuple[Path, tuple[int, ...], tuple[int, ...]]:
+    logical_device_ids = parse_visible_device_ids(visible_devices, expected_npus)
+    physical_device_ids = (
+        logical_device_ids
+        if physical_devices is None or not physical_devices.strip()
+        else parse_device_ids(physical_devices, expected_npus, contract_name="physical Ascend device mapping")
+    )
     npu_smi = resolve_npu_smi(npu_smi_candidates)
-    validate_device_nodes(device_root, device_ids, is_char_device=is_char_device)
+    validate_device_nodes(device_root, logical_device_ids, is_char_device=is_char_device)
     probe_npu_smi(npu_smi, run=run_probe)
-    return npu_smi, device_ids
+    return npu_smi, logical_device_ids, physical_device_ids
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate Ascend device exposure inside a CI job container.")
     parser.add_argument("--expected-npus", type=int, required=True)
+    parser.add_argument(
+        "--physical-device-ids",
+        default="",
+        help="Host physical device IDs mapped into the container; defaults to the logical IDs",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
     try:
-        npu_smi, device_ids = validate_runtime(
+        npu_smi, logical_device_ids, physical_device_ids = validate_runtime(
             expected_npus=args.expected_npus,
             visible_devices=os.environ.get("ASCEND_RT_VISIBLE_DEVICES", ""),
+            physical_devices=args.physical_device_ids,
         )
     except RuntimeContractError as exc:
         print(f"Ascend container runtime preflight failed: {exc}", file=sys.stderr)
@@ -152,7 +168,11 @@ def main() -> int:
     if github_env:
         with open(github_env, "a", encoding="utf-8") as env_file:
             env_file.write(f"NPU_SMI_BIN={npu_smi}\n")
-    print(f"Ascend container runtime ready: devices={','.join(map(str, device_ids))}, npu_smi={npu_smi}")
+    print(
+        "Ascend container runtime ready: "
+        f"physical_devices={','.join(map(str, physical_device_ids))}, "
+        f"logical_devices={','.join(map(str, logical_device_ids))}, npu_smi={npu_smi}"
+    )
     return 0
 
 

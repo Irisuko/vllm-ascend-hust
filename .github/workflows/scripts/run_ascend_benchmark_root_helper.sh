@@ -3,7 +3,7 @@ set -euo pipefail
 
 subcommand=${1:-}
 if [[ -z "$subcommand" ]]; then
-  echo "Usage: $0 <runtime-ready|same-spec|serve|cleanup-paths> [args...]" >&2
+  echo "Usage: $0 <runtime-ready|same-spec|serve|cleanup-paths|cleanup-processes> [args...]" >&2
   exit 2
 fi
 shift || true
@@ -32,6 +32,16 @@ restore_user_workspace_ownership() {
 }
 
 case "$subcommand" in
+  cleanup-processes)
+    cleanup_script=${1:?cleanup process script path is required}
+    shift
+    expected_script=${VLLM_ASCEND_HUST_REPO:?VLLM_ASCEND_HUST_REPO must be set}/.github/workflows/scripts/cleanup_ascend_benchmark_processes.py
+    if [[ "$cleanup_script" != "$expected_script" || ! -f "$cleanup_script" ]]; then
+      echo "Invalid Ascend benchmark cleanup script: $cleanup_script" >&2
+      exit 2
+    fi
+    exec "${PYTHON_BIN:-python3}" "$cleanup_script" "$@"
+    ;;
   cleanup-paths)
     if [[ "$#" -eq 0 ]]; then
       echo "cleanup-paths requires at least one path" >&2

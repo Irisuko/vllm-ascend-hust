@@ -16,8 +16,17 @@ self-hosted-runner:
     - linux-amd64-cpu-16-hk
     - linux-arm64-cpu-16
     - ascend-benchmark
+    - ascend
+    - 910b
+    - docker
+    - vllm-ascend-0-21-0rc1
+    - linux-aarch64-a2b3-pool
     - linux-aarch64-a2b3-0
     - linux-aarch64-a2b3-1
     - linux-aarch64-a2b3-2
     - linux-aarch64-a2b3-4
     - linux-aarch64-a2b3-8
+    - linux-aarch64-a2b3-npu0
+    - linux-aarch64-a2b3-npu1
+    - linux-aarch64-a2b3-npu2
+    - linux-aarch64-a2b3-npu3

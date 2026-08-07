@@ -1,0 +1,9 @@
+container=pr153-evidence-npu01-20260721
+runtime=podman
+image_ref=quay.io/ascend/vllm-ascend:v0.21.0rc1-openeuler
+image_id=sha256:0fc116f43369c0dd71bc253dff83d7702dc44747d10ca1c8e9569e7265e10731
+container_image_id=sha256:0fc116f43369c0dd71bc253dff83d7702dc44747d10ca1c8e9569e7265e10731
+devices=/dev/davinci0 /dev/davinci1 /dev/davinci_manager /dev/devmm_svm /dev/hisi_hdc
+
+physical_devices=0,1
+logical_devices=npu:0,npu:1

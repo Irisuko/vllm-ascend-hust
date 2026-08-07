@@ -5,7 +5,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [labeled]
+    types: [labeled, synchronize, reopened]
   issue_comment:
     types: [created]
   schedule:
@@ -52,6 +52,11 @@ on:
         required: false
         type: string
         default: Qwen/Qwen2.5-14B-Instruct
+      model_parameters:
+        description: Model parameter scale recorded in benchmark metadata (for example 3B or 14B)
+        required: false
+        type: string
+        default: "14B"
       model_precision:
         description: Model weight precision (e.g. FP16, BF16, INT8)
         required: false
@@ -107,6 +112,24 @@ on:
         required: false
         type: string
         default: ""
+      cleanup_validation_mode:
+        description: Manual-only cleanup acceptance path; never use for benchmark publication
+        required: false
+        type: choice
+        default: normal
+        options:
+          - normal
+          - failure-after-server-ready
+          - wait-for-manual-cancel
+          - wait-for-timeout
+      cleanup_validation_timeout_minutes:
+        description: Use 5 only with wait-for-timeout; normal and other validation paths use 60
+        required: false
+        type: choice
+        default: "60"
+        options:
+          - "60"
+          - "5"
 
 concurrency:
   group: >-
@@ -273,8 +296,9 @@ jobs:
     needs: [issue-comment-command]
     outputs:
       target_sha: ${{ steps.target-metadata.outputs.target_sha }}
+      runner_name: ${{ steps.runner-identity.outputs.runner_name }}
     if: >-
-      always() &&
+      always() && !cancelled() &&
       (
         github.event_name == 'workflow_dispatch' ||
         github.event_name == 'schedule' ||
@@ -282,7 +306,10 @@ jobs:
         (
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository &&
-          (github.event.label.name == 'ready' || github.event.label.name == 'verified')
+          (
+            contains(github.event.pull_request.labels.*.name, 'ready') ||
+            contains(github.event.pull_request.labels.*.name, 'verified')
+          )
         ) ||
         (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.should_run == '1')
       )
@@ -292,9 +319,17 @@ jobs:
       issues: write
     runs-on:
       - self-hosted
-      - linux-aarch64-a2b3-0
+      - Linux
+      - ARM64
+      - ascend
+      - 910b
+      - docker
+      - vllm-ascend-0-21-0rc1
+      - linux-aarch64-a2b3-pool
       - ascend-benchmark
-    timeout-minutes: 60
+      - ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_RUNNER_LABEL || 'linux-aarch64-a2b3-npu0' }}
+    # Main publication executes one warmup and three measured client passes.
+    timeout-minutes: ${{ fromJSON(github.event_name == 'push' && github.ref == 'refs/heads/main' && '150' || (github.event_name == 'workflow_dispatch' && inputs.cleanup_validation_timeout_minutes || '60')) }}
     env:
       BENCHMARK_CHECKOUT_USE_SSH_443: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY != '' && '1' || '0' }}
       DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER: /usr/local/bin/run_ascend_benchmark_root_helper.sh
@@ -313,26 +348,29 @@ jobs:
       SAME_SPEC_PR_PREVIEW_COMPAT: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '1' || '0' }}
       HF_TOKEN: ${{ (github.event_name != 'pull_request' && github.event_name != 'issue_comment') && secrets.HF_TOKEN || '' }}
       HF_REPO_ID: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_HF_REPO || 'intellistream/vllm-ascend-hust-benchmark-results' }}
-      ASCEND_HUST_TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.ascend_hust_target || format('{0}@{1}', github.repository, github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.pr_head_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name)) }}
+      ASCEND_HUST_TARGET: ${{ (github.event_name == 'workflow_dispatch' && inputs.cleanup_validation_mode != 'normal') && format('{0}@{1}', github.repository, github.ref_name) || (github.event_name == 'workflow_dispatch' && inputs.ascend_hust_target || format('{0}@{1}', github.repository, github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.pr_head_sha || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name))) }}
       VLLM_HUST_CONDA_ENV: vllm-hust-dev
       VLLM_HUST_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.vllm_hust_ref || vars.VLLM_ASCEND_HUST_VLLM_HUST_REF || 'main' }}
       VLLM_HUST_BENCHMARK_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_ref || vars.VLLM_ASCEND_HUST_BENCHMARK_REF || 'main' }}
       HUST_ASCEND_MANAGER_REF: ${{ vars.VLLM_ASCEND_HUST_MANAGER_REF || 'main' }}
-      MODEL_NAME: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.model_name || 'Qwen/Qwen2.5-3B-Instruct') || (github.event_name == 'workflow_dispatch' && inputs.model_name || 'Qwen/Qwen2.5-14B-Instruct') }}
+      PERFGATE_BENCHMARK_RUNNER_SHA: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BENCHMARK_RUNNER_SHA || '' }}
+      PERFGATE_VLLM_HUST_SHA: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_VLLM_HUST_SHA || '' }}
+      PERFGATE_RUNTIME_MANAGER_SHA: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_RUNTIME_MANAGER_SHA || '' }}
+      MODEL_NAME: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.model_name || 'Qwen/Qwen2.5-3B-Instruct') || (github.event_name == 'workflow_dispatch' && inputs.model_name || 'Qwen/Qwen2.5-14B-Instruct') }}
       SOC_VERSION: ascend910b2
       BENCH_SCENARIO: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.benchmark_scenario || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenario || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_SCENARIO) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIO) || 'random-online') }}
       BENCH_SCENARIOS: ${{ (github.event_name == 'schedule' && (vars.VLLM_ASCEND_HUST_SCHEDULE_BENCHMARK_SCENARIOS || 'random-online,sharegpt-online,prefix-repetition-online,random-latency,sharegpt-throughput,sonnet-throughput,instructcoder-online,agent-research-online,visionarena-online')) || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios != 'perfgate-bootstrap' && inputs.benchmark_scenarios) || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_SCENARIOS) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS) || '' }}
       BENCH_DATASET_PATH: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.dataset_path || (github.event_name == 'workflow_dispatch' && inputs.dataset_path || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_DATASET_PATH) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_DATASET_PATH) || '') }}
       BENCH_CONSTRAINTS_FILE: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.constraints_file || (github.event_name == 'workflow_dispatch' && inputs.constraints_file || (github.event_name == 'pull_request' && vars.VLLM_ASCEND_HUST_PR_BENCHMARK_CONSTRAINTS_FILE) || (github.event_name == 'push' && vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_CONSTRAINTS_FILE) || '') }}
-      MODEL_PARAMETERS: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '3B' || '14B' }}
-      MODEL_PRECISION: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'BF16' || (github.event_name == 'workflow_dispatch' && inputs.model_precision || 'FP16') }}
+      MODEL_PARAMETERS: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '3B' || (github.event_name == 'workflow_dispatch' && inputs.model_parameters || '14B') }}
+      MODEL_PRECISION: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'BF16' || (github.event_name == 'workflow_dispatch' && inputs.model_precision || 'FP16') }}
       MODEL_QUANTIZATION: ${{ github.event_name == 'workflow_dispatch' && inputs.model_quantization || '' }}
-      DTYPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'bfloat16' || (github.event_name == 'workflow_dispatch' && inputs.dtype || 'float16') }}
+      DTYPE: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && 'bfloat16' || (github.event_name == 'workflow_dispatch' && inputs.dtype || 'float16') }}
       MAX_MODEL_LEN: ""
       MAX_NUM_SEQS: "1"
       BENCH_NUM_PROMPTS: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.num_prompts || (github.event_name == 'workflow_dispatch' && inputs.num_prompts || '200') }}
-      BENCH_RANDOM_INPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '64' || '1024' }}
-      BENCH_RANDOM_OUTPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '16' || '256' }}
+      BENCH_RANDOM_INPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '64' || '1024' }}
+      BENCH_RANDOM_OUTPUT_LEN: ${{ (github.event_name == 'pull_request' || github.event_name == 'issue_comment' || (github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap')) && '16' || '256' }}
       BENCH_REQUEST_RATE: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.request_rate || (github.event_name == 'workflow_dispatch' && inputs.request_rate || '1') }}
       BENCH_MAX_CONCURRENCY: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.max_concurrency || (github.event_name == 'workflow_dispatch' && inputs.max_concurrency || '4') }}
       BENCH_INPUT_LEN: ${{ github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.input_length || (github.event_name == 'workflow_dispatch' && inputs.input_length || '') }}
@@ -345,9 +383,10 @@ jobs:
       NODE_COUNT: "1"
       ASCEND_BENCHMARK_USE_SUDO: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_USE_SUDO || 'auto' }}
       ASCEND_BENCHMARK_ROOT_HELPER: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_ROOT_HELPER || '' }}
-      ASCEND_RT_VISIBLE_DEVICES: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_VISIBLE_DEVICES || '' }}
+      # Each pool runner exposes one physical NPU as container-local logical device 0.
+      ASCEND_RT_VISIBLE_DEVICES: "0"
       ALLOW_RANDOM_HF_PUBLISH: ${{ vars.VLLM_ASCEND_HUST_ALLOW_RANDOM_HF_PUBLISH || '0' }}
-      SAME_SPEC_BENCHMARK_ENABLED: ${{ vars.VLLM_ASCEND_HUST_SAME_SPEC_BENCHMARK_ENABLED || '1' }}
+      SAME_SPEC_BENCHMARK_ENABLED: ${{ (github.event_name == 'workflow_dispatch' && inputs.cleanup_validation_mode != 'normal') && '0' || (vars.VLLM_ASCEND_HUST_SAME_SPEC_BENCHMARK_ENABLED || '1') }}
       PERFGATE_MODE: ${{ github.event_name == 'pull_request' && 'enforce' || (vars.VLLM_ASCEND_HUST_PERFGATE_MODE || 'report') }}
       PERFGATE_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_SPEC_FILE || '' }}
       PERFGATE_BASELINE_BRANCH: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BASELINE_BRANCH || 'benchmark-baselines' }}
@@ -359,6 +398,8 @@ jobs:
       WEBSITE_LEADERBOARD_URL: ${{ vars.VLLM_ASCEND_HUST_LEADERBOARD_URL || vars.VLLM_HUST_LEADERBOARD_URL || '' }}
       PUBLISH_TO_BENCHMARK_REPO: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VLLM_ASCEND_HUST_PUBLISH_BENCHMARK_ON_MAIN == '1') || (github.event_name == 'schedule' && vars.VLLM_ASCEND_HUST_SCHEDULE_PUBLISH_BENCHMARK != '0') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_hf)) && '1' || '0' }}
       PUBLISH_TO_HF: ${{ (((github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.VLLM_ASCEND_HUST_PUBLISH_BENCHMARK_ON_MAIN == '1') || (github.event_name == 'schedule' && vars.VLLM_ASCEND_HUST_SCHEDULE_PUBLISH_BENCHMARK != '0') || (github.event_name == 'workflow_dispatch' && inputs.publish_to_hf)) && secrets.HF_TOKEN != '') && '1' || '0' }}
+      ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup_validation_mode || 'normal' }}
+      ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup_validation_timeout_minutes || '60' }}
       BENCHMARK_REPO_SLUG: vLLM-HUST/vllm-hust-benchmark
       BENCHMARK_REPO_GH_TOKEN: ${{ (github.event_name != 'pull_request' && github.event_name != 'issue_comment') && secrets.VLLM_HUST_BENCHMARK_GH_TOKEN || '' }}
       BENCHMARK_REPO_SSH_KEY: ${{ (github.event_name != 'pull_request' && github.event_name != 'issue_comment') && secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY || '' }}
@@ -366,6 +407,17 @@ jobs:
       HUST_ASCEND_MANAGER_REPO: ${{ github.workspace }}/ascend-runtime-manager
 
     steps:
+      - name: Capture benchmark runner identity
+        id: runner-identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RUNNER_NAME:-}" ]]; then
+            echo "RUNNER_NAME is required for host-affine benchmark cleanup" >&2
+            exit 2
+          fi
+          echo "runner_name=$RUNNER_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Mask benchmark credentials
         shell: bash
         run: |
@@ -458,6 +510,27 @@ jobs:
             fi
           } >> "$GITHUB_ENV"
 
+      - name: Resolve trusted main dependency SHAs
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            PERFGATE_BENCHMARK_RUNNER_SHA \
+            PERFGATE_VLLM_HUST_SHA \
+            PERFGATE_RUNTIME_MANAGER_SHA; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$name must be configured as a full lowercase 40-character Git SHA for trusted main publication" >&2
+              exit 2
+            fi
+          done
+          {
+            echo "VLLM_HUST_REF=$PERFGATE_VLLM_HUST_SHA"
+            echo "VLLM_HUST_BENCHMARK_REF=$PERFGATE_BENCHMARK_RUNNER_SHA"
+            echo "HUST_ASCEND_MANAGER_REF=$PERFGATE_RUNTIME_MANAGER_SHA"
+          } >> "$GITHUB_ENV"
+
       - name: Configure GitHub SSH over 443
         if: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 == '1' }}
         shell: bash
@@ -481,7 +554,7 @@ jobs:
           fetch-depth: 0
           ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
           ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Checkout manual benchmark repo history
         if: ${{ github.event_name == 'workflow_dispatch' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
@@ -490,7 +563,7 @@ jobs:
           fetch-depth: 0
           ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
           ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Preserve bootstrap workflow scripts
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.benchmark_scenarios == 'perfgate-bootstrap' && env.ASCEND_HUST_LOCAL_CHECKOUT == '1' }}
@@ -562,8 +635,6 @@ jobs:
           repository: vLLM-HUST/vllm-hust
           ref: ${{ env.VLLM_HUST_REF }}
           path: vllm-hust
-          ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
-          ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
           persist-credentials: false
 
       - name: Checkout benchmark repo
@@ -572,9 +643,8 @@ jobs:
           repository: vLLM-HUST/vllm-hust-benchmark
           ref: ${{ env.VLLM_HUST_BENCHMARK_REF }}
           path: vllm-hust-benchmark
-          ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
-          ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
-          persist-credentials: true
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Resolve L1/L2 benchmark scenario
         id: resolve-scenario
@@ -633,9 +703,22 @@ jobs:
           repository: vLLM-HUST/ascend-runtime-manager
           ref: ${{ env.HUST_ASCEND_MANAGER_REF }}
           path: ascend-runtime-manager
-          ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
-          ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
           persist-credentials: false
+
+      - name: Verify trusted main dependency SHAs
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$GITHUB_WORKSPACE/vllm-hust" rev-parse HEAD)" = "$PERFGATE_VLLM_HUST_SHA"
+          test "$(git -C "$GITHUB_WORKSPACE/vllm-hust-benchmark" rev-parse HEAD)" = "$PERFGATE_BENCHMARK_RUNNER_SHA"
+          test "$(git -C "$GITHUB_WORKSPACE/ascend-runtime-manager" rev-parse HEAD)" = "$PERFGATE_RUNTIME_MANAGER_SHA"
+          if ! PYTHONPATH="$GITHUB_WORKSPACE/vllm-hust-benchmark/src${PYTHONPATH:+:$PYTHONPATH}" \
+            python3 -m vllm_hust_benchmark.perfgate_baselines publish --help | \
+            grep -Fq -- '--runtime-manager-sha'; then
+            echo "Pinned benchmark runner does not support --runtime-manager-sha; update VLLM_ASCEND_HUST_PERFGATE_BENCHMARK_RUNNER_SHA to a compatible immutable SHA." >&2
+            exit 2
+          fi
 
       - name: Checkout website repo
         uses: actions/checkout@v7
@@ -748,6 +831,12 @@ jobs:
       - name: Acquire Ascend hardware lock
         run: bash .github/workflows/scripts/acquire_ascend_hardware_lock.sh
 
+      - name: Cleanup stale Ascend benchmark processes
+        run: bash .github/workflows/scripts/cleanup_ascend_benchmark_processes.sh stale
+
+      - name: Capture idle Ascend NPU diagnostics
+        run: bash .github/workflows/scripts/capture_ascend_benchmark_diagnostics.sh idle-before-benchmark
+
       - name: Prepare Ascend runtime and install repos
         env:
           VLLM_HUST_REPO: ${{ github.workspace }}/vllm-hust
@@ -851,7 +940,161 @@ jobs:
           PERFGATE_ALLOW_BASELINE_FALLBACK: "0"
         run: bash .github/workflows/scripts/perfgate_fetch_baseline.sh "$FORK_POINT"
 
-      - name: Run benchmark CI and optional HF sync
+      # Main publication is intentionally separate from the consumer and the
+      # formal leaderboard path. Evidence is uploaded before writer access.
+      - name: Run Plugin perfgate baseline producer
+        id: perfgate-producer
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        continue-on-error: true
+        shell: bash
+        env:
+          WORKSPACE_ROOT: ${{ github.workspace }}
+          VLLM_HUST_REPO: ${{ github.workspace }}/vllm-hust
+          VLLM_ASCEND_HUST_REPO: ${{ github.workspace }}
+          VLLM_HUST_BENCHMARK_REPO: ${{ github.workspace }}/vllm-hust-benchmark
+          CI_STATE_ROOT: ${{ env.CI_STATE_ROOT }}
+          BENCHMARK_RESULTS_ROOT: ${{ env.BENCHMARK_RESULTS_ROOT }}
+          CI_HOME: ${{ env.CI_HOME }}
+          CI_RUNTIME_ROOT: ${{ env.CI_RUNTIME_ROOT }}
+          RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate
+          RESULT_ROOT: ${{ env.BENCHMARK_RESULTS_ROOT }}/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate
+          SUBMISSION_DIR: ${{ env.BENCHMARK_RESULTS_ROOT }}/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate/submissions/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate
+          MAIN_BENCH_SCENARIO: ${{ vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIO || 'random-online' }}
+          HARDWARE_CHIP_MODEL: 910B2
+          MODEL_NAME: Qwen/Qwen2.5-3B-Instruct
+          MODEL_PARAMETERS: 3B
+          MODEL_PRECISION: BF16
+          DTYPE: bfloat16
+          BENCH_RANDOM_INPUT_LEN: "64"
+          BENCH_RANDOM_OUTPUT_LEN: "16"
+          PERFGATE_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_SPEC_FILE || '' }}
+          PERFGATE_WARMUP_RUNS: "1"
+          PERFGATE_MEASURED_RUNS: "3"
+          PERFGATE_AGGREGATION: "primary-median-run"
+          SAME_SPEC_PR_PREVIEW_COMPAT: "0"
+          PUBLISH_TO_BENCHMARK_REPO: "0"
+          PUBLISH_TO_HF: "0"
+        run: |
+          set -euo pipefail
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+
+          fetch_with_retry() {
+            local max_attempts=4
+            local delay_seconds=15
+            local attempt=1
+
+            while [[ "$attempt" -le "$max_attempts" ]]; do
+              echo "[plugin-perfgate-producer] fetch attempt ${attempt}/${max_attempts}: git fetch $*"
+              if git -C "$VLLM_HUST_BENCHMARK_REPO" fetch --quiet "$@"; then
+                return 0
+              fi
+              echo "[plugin-perfgate-producer] fetch failed (${attempt}/${max_attempts}): git fetch $*" >&2
+              if [[ "$attempt" -lt "$max_attempts" ]]; then
+                sleep "$delay_seconds"
+              fi
+              attempt=$((attempt + 1))
+              delay_seconds=$((delay_seconds * 2))
+            done
+
+            echo "[plugin-perfgate-producer] fetch failed after ${max_attempts} attempts: git fetch $*" >&2
+            return 1
+          }
+
+          if [[ "$(git -C "$VLLM_HUST_BENCHMARK_REPO" rev-parse --is-shallow-repository)" == "true" ]]; then
+            fetch_with_retry --unshallow origin main
+          else
+            fetch_with_retry origin main
+          fi
+          git -C "$VLLM_HUST_BENCHMARK_REPO" merge-base --is-ancestor HEAD origin/main
+
+          perfgate_spec_file="${PERFGATE_SPEC_FILE:-}"
+          if [[ -z "$perfgate_spec_file" ]]; then
+            export PYTHONPATH="${VLLM_HUST_BENCHMARK_REPO}/src${PYTHONPATH:+:$PYTHONPATH}"
+            perfgate_spec_file="$("${PYTHON_BIN:-python3}" -m vllm_hust_benchmark.perfgate_specs resolve \
+              --scenario "${MAIN_BENCH_SCENARIO}" \
+              --hardware-chip-model "${HARDWARE_CHIP_MODEL}" \
+              --repo-root "${VLLM_HUST_BENCHMARK_REPO}")"
+          fi
+          if [[ "$perfgate_spec_file" = /* ]]; then
+            export SAME_SPEC_SPEC_FILE="$perfgate_spec_file"
+          else
+            export SAME_SPEC_SPEC_FILE="${VLLM_HUST_BENCHMARK_REPO}/${perfgate_spec_file}"
+          fi
+          echo "[plugin-perfgate-producer] using spec file: $SAME_SPEC_SPEC_FILE"
+
+          source scripts/use_single_ascend_env.sh
+          max_attempts=${NODE_ENV_RETRY_MAX_ATTEMPTS:-3}
+          retry_delay_seconds=${NODE_ENV_RETRY_DELAY_SECONDS:-30}
+          attempt=1
+          while [[ "$attempt" -le "$max_attempts" ]]; do
+            echo "[plugin-perfgate-producer] attempt ${attempt}/${max_attempts}"
+            set +e
+            bash .github/workflows/scripts/run_ascend_benchmark_ci.sh
+            rc=$?
+            set -e
+            if [[ "$rc" -eq 0 ]]; then
+              break
+            fi
+            if [[ "$rc" -eq 86 && "$attempt" -lt "$max_attempts" ]]; then
+              bash .github/workflows/scripts/cleanup_ascend_benchmark_processes.sh current
+              sleep "$retry_delay_seconds"
+              attempt=$((attempt + 1))
+              continue
+            fi
+            exit "$rc"
+          done
+
+          "${PYTHON_BIN:-python3}" \
+            .github/workflows/scripts/prepare_plugin_perfgate_artifact.py \
+            --source "$SUBMISSION_DIR/run_leaderboard.json" \
+            --output "$SUBMISSION_DIR/plugin-run_leaderboard.json" \
+            --target-repository "$GITHUB_REPOSITORY" \
+            --target-ref "$ASCEND_HUST_TARGET_REF" \
+            --target-sha "$ASCEND_HUST_TARGET_SHA" \
+            --github-server-url "$GITHUB_SERVER_URL"
+          echo "status=success" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Plugin perfgate producer artifact
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.perfgate-producer.outputs.status == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ascend-plugin-perfgate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.BENCHMARK_RESULTS_ROOT }}/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Sanitize runner before Plugin baseline publication
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.perfgate-producer.outputs.status == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/workflows/scripts/cleanup_ascend_benchmark_processes.sh current
+          test -z "${GIT_ASKPASS:-}"
+          test -z "${PERFGATE_BASELINE_WRITER_TOKEN:-}"
+
+      - name: Publish central Plugin perfgate baseline
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.perfgate-producer.outputs.status == 'success' }}
+        shell: bash
+        env:
+          # The independent scoped writer exists only in this trusted step.
+          PERFGATE_BASELINE_WRITER_TOKEN: ${{ secrets.VLLM_ASCEND_HUST_CENTRAL_BASELINE_WRITER_TOKEN }}
+          RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate
+          RESULT_ROOT: ${{ env.BENCHMARK_RESULTS_ROOT }}/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate
+          PERFGATE_BASELINE_SOURCE_FILE: ${{ env.BENCHMARK_RESULTS_ROOT }}/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate/submissions/ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.ASCEND_HUST_TARGET_SHA_SHORT }}-perfgate/plugin-run_leaderboard.json
+          PERFGATE_CENTRAL_REPO_URL: https://github.com/vLLM-HUST/vllm-hust-benchmark.git
+          PERFGATE_BENCHMARK_REPO_DIR: ${{ github.workspace }}/vllm-hust-benchmark
+          PERFGATE_TARGET_GIT_REPOSITORY: ${{ github.workspace }}
+          PERFGATE_TARGET_REPOSITORY: ${{ github.repository }}
+          PERFGATE_TARGET_SHA: ${{ env.ASCEND_HUST_TARGET_SHA }}
+          PERFGATE_BASELINE_BRANCH: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BASELINE_BRANCH || 'benchmark-baselines' }}
+          PERFGATE_EXPECTED_WARMUP_RUNS: "1"
+          PERFGATE_EXPECTED_MEASURED_RUNS: "3"
+          PERFGATE_EXPECTED_SCHEMA_VERSION: "perfgate-measurement/v2"
+          PERFGATE_EXPECTED_STRATEGY: "warmup+primary-median-run"
+          PERFGATE_EXPECTED_AGGREGATION: "primary-median-run"
+        run: bash .github/workflows/scripts/perfgate_store_baseline.sh
+
+      - name: Run benchmark CI and optional formal publish
         id: run_benchmark_ci
         env:
           WORKSPACE_ROOT: ${{ github.workspace }}
@@ -948,6 +1191,18 @@ jobs:
           export CURRENT_SUBMISSION_DIR="${SUBMISSION_DIR}"
           export SNAPSHOT_COMMIT_MESSAGE="chore: sync vllm-ascend benchmark snapshots ${RUN_ID}"
           bash .github/workflows/scripts/sync_benchmark_snapshots_to_github.sh
+
+      - name: Cleanup current Ascend benchmark processes
+        if: always()
+        env:
+          # Reuse the member journal written before cancellation so detached
+          # EngineCore processes can be verified by PID and start time.
+          ASCEND_BENCHMARK_CLEANUP_MARKER_FILE: ${{ github.workspace }}/../vllm-ascend-hust-ci-state/runtime/process-markers/ascend-benchmark-server.pid
+        run: bash .github/workflows/scripts/cleanup_ascend_benchmark_processes.sh current
+
+      - name: Capture post-cleanup Ascend NPU diagnostics
+        if: always()
+        run: bash .github/workflows/scripts/capture_ascend_benchmark_diagnostics.sh post-benchmark-cleanup
 
       - name: Release Ascend hardware lock
         if: always()
@@ -1266,6 +1521,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Enforce Plugin perfgate producer result
+        if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.perfgate-producer.outputs.status != 'success' }}
+        run: |
+          echo "Dedicated Plugin perfgate producer did not complete successfully" >&2
+          exit 1
+
       - name: Update PR benchmark comment
         if: ${{ always() && ((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'issue_comment' && needs.issue-comment-command.outputs.should_run == '1')) }}
         continue-on-error: true
@@ -1313,92 +1574,74 @@ jobs:
               api_call('POST', f'{api_url}/repos/{owner}/{repo}/issues/{issue_number}/comments', {'body': body})
               print('Created benchmark PR comment')
           PY
-
-  store-main-perfgate-baseline:
-    name: Store main perfgate baseline
-    if: >-
-      ${{
-        always() &&
-        needs.ascend-benchmark.result == 'success' &&
-        (
-          (
-            github.event_name == 'push' &&
-            github.ref == 'refs/heads/main' &&
-            vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIOS == ''
-          ) ||
-          (
-            github.event_name == 'workflow_dispatch' &&
-            inputs.benchmark_scenarios == 'perfgate-bootstrap' &&
-            inputs.ascend_hust_target == format('{0}@main', github.repository)
-          )
-        )
-      }}
+  cleanup-ascend-benchmark:
+    name: Cleanup timed-out Ascend benchmark
     needs: ascend-benchmark
-    runs-on: ubuntu-latest
+    if: ${{ always() && needs.ascend-benchmark.result != 'skipped' }}
+    runs-on:
+      - self-hosted
+      - ascend
+      - 910b
+      - docker
+      - vllm-ascend-0-21-0rc1
+      - ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_RUNNER_LABEL || 'linux-aarch64-a2b3-npu0' }}
+    timeout-minutes: 10
     permissions:
-      contents: write
-      actions: read
+      contents: read
+    env:
+      BENCHMARK_CHECKOUT_USE_SSH_443: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY != '' && '1' || '0' }}
     steps:
-      - name: Checkout target repo
+      - name: Verify cleanup runner identity
+        shell: bash
+        env:
+          ASCEND_BENCHMARK_CLEANUP_EXPECTED_RUNNER_NAME: ${{ needs.ascend-benchmark.outputs.runner_name }}
+        run: |
+          set -euo pipefail
+          expected_runner="${ASCEND_BENCHMARK_CLEANUP_EXPECTED_RUNNER_NAME:-}"
+          if [[ -z "$expected_runner" ]]; then
+            echo "Benchmark runner identity is unavailable; refusing host-local cleanup." >&2
+            exit 2
+          fi
+          if [[ "${RUNNER_NAME:-}" != "$expected_runner" ]]; then
+            echo "Cleanup runner mismatch: expected $expected_runner, got ${RUNNER_NAME:-unset}." >&2
+            exit 2
+          fi
+
+      - name: Configure GitHub SSH over 443
+        if: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 == '1' }}
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          cat > "$HOME/.ssh/config" <<'EOF'
+          Host github.com
+            HostName ssh.github.com
+            Port 443
+            User git
+            HostKeyAlias github.com
+            IdentitiesOnly yes
+          EOF
+          chmod 600 "$HOME/.ssh/config"
+
+      - name: Checkout cleanup scripts
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-          ref: ${{ needs.ascend-benchmark.outputs.target_sha }}
+          fetch-depth: 1
+          ssh-key: ${{ secrets.VLLM_ASCEND_HUST_BENCHMARK_SSH_KEY }}
+          ssh-strict: ${{ env.BENCHMARK_CHECKOUT_USE_SSH_443 != '1' }}
+          persist-credentials: false
 
-      - name: Checkout benchmark repo
-        shell: bash
+      - name: Cleanup benchmark job processes
         env:
-          BENCHMARK_REPO_URL: https://github.com/vLLM-HUST/vllm-hust-benchmark.git
-          VLLM_HUST_BENCHMARK_REF: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_REF || vars.VLLM_HUST_BENCHMARK_REF || 'main' }}
-        run: |
-          set -euo pipefail
-          git clone --depth 1 "$BENCHMARK_REPO_URL" vllm-hust-benchmark
-          if ! git -C vllm-hust-benchmark rev-parse --verify --quiet "$VLLM_HUST_BENCHMARK_REF^{commit}" >/dev/null; then
-            git -C vllm-hust-benchmark fetch --depth 1 origin "$VLLM_HUST_BENCHMARK_REF"
-            git -C vllm-hust-benchmark checkout --force FETCH_HEAD
-          else
-            git -C vllm-hust-benchmark checkout --force "$VLLM_HUST_BENCHMARK_REF"
-          fi
+          ASCEND_BENCHMARK_CLEANUP_TARGET_JOB: ascend-benchmark
+          ASCEND_BENCHMARK_CLEANUP_TARGET_RUN_ID: ${{ github.run_id }}
+          ASCEND_BENCHMARK_CLEANUP_TARGET_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ASCEND_BENCHMARK_CLEANUP_EXPECTED_RUNNER_NAME: ${{ needs.ascend-benchmark.outputs.runner_name }}
+          ASCEND_BENCHMARK_CLEANUP_MARKER_FILE: ${{ github.workspace }}/../vllm-ascend-hust-ci-state/runtime/process-markers/ascend-benchmark-server.pid
+          ASCEND_BENCHMARK_USE_SUDO: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_USE_SUDO || 'auto' }}
+          ASCEND_BENCHMARK_ROOT_HELPER: ${{ vars.VLLM_ASCEND_HUST_BENCHMARK_ROOT_HELPER || '' }}
+        run: bash .github/workflows/scripts/cleanup_ascend_benchmark_processes.sh current
 
-      - name: Download benchmark artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: ascend-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .benchmarks/ci
-
-      - name: Store perfgate baseline
-        shell: bash
-        env:
-          PYTHON_BIN: python3
-          BASELINE_TARGET_SHA: ${{ needs.ascend-benchmark.outputs.target_sha }}
-          PERFGATE_SPEC_FILE: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_SPEC_FILE || '' }}
-          PERFGATE_BASELINE_BRANCH: ${{ vars.VLLM_ASCEND_HUST_PERFGATE_BASELINE_BRANCH || 'benchmark-baselines' }}
-          MAIN_BENCH_SCENARIO: ${{ vars.VLLM_ASCEND_HUST_MAIN_BENCHMARK_SCENARIO || 'random-online' }}
-          HARDWARE_CHIP_MODEL: 910B2
-        run: |
-          set -euo pipefail
-          target_sha_short="$(printf '%s' "$BASELINE_TARGET_SHA" | cut -c1-8)"
-          run_id="ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${target_sha_short}"
-          perfgate_spec_file="${PERFGATE_SPEC_FILE:-}"
-          if [[ -z "$perfgate_spec_file" ]]; then
-            export PYTHONPATH="${GITHUB_WORKSPACE}/vllm-hust-benchmark/src${PYTHONPATH:+:$PYTHONPATH}"
-            perfgate_spec_file="$(python3 -m vllm_hust_benchmark.perfgate_specs resolve \
-              --scenario "${MAIN_BENCH_SCENARIO}" \
-              --hardware-chip-model "${HARDWARE_CHIP_MODEL}" \
-              --repo-root "${GITHUB_WORKSPACE}/vllm-hust-benchmark")"
-          fi
-          if [[ "$perfgate_spec_file" = /* ]]; then
-            same_spec_spec_file="$perfgate_spec_file"
-          else
-            same_spec_spec_file="${GITHUB_WORKSPACE}/vllm-hust-benchmark/${perfgate_spec_file}"
-          fi
-          {
-            echo "RUN_ID=$run_id"
-            echo "RESULT_ROOT=${GITHUB_WORKSPACE}/.benchmarks/ci/$run_id"
-            echo "SAME_SPEC_SPEC_FILE=${same_spec_spec_file}"
-          } >> "$GITHUB_ENV"
-          RUN_ID="$run_id" \
-            RESULT_ROOT="${GITHUB_WORKSPACE}/.benchmarks/ci/$run_id" \
-            SAME_SPEC_SPEC_FILE="${same_spec_spec_file}" \
-            GITHUB_SHA="$BASELINE_TARGET_SHA" \
-            bash .github/workflows/scripts/perfgate_store_baseline.sh
+      - name: Capture post-cleanup Ascend NPU diagnostics
+        if: always()
+        run: bash .github/workflows/scripts/capture_ascend_benchmark_diagnostics.sh post-timeout-cleanup

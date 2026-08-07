@@ -53,6 +53,7 @@ from vllm_ascend.ops.fused_moe.fused_moe import (
     setup_moe_comm_method,
     shared_expert_dp_enabled,
     shared_experts_calculation_stream,
+    should_force_load_balance,
     tensor_model_parallel_all_reduce,
     torch,
     torch_npu,
@@ -429,7 +430,10 @@ class AscendFusedMoE(FusedMoE):
         # Load balancing for token distribution among experts in dummy_run
         # TODO: The community only considers load balancing when DP > 1.
         # This approach may overlook some extreme scenarios.
-        enable_force_load_balance = _EXTRA_CTX.in_profile_run
+        # ``in_profile_run`` is Python-side context and is not a model input.
+        # Never specialize a reusable compiled graph on the profile-only
+        # synthetic routing branch.
+        enable_force_load_balance = should_force_load_balance(_EXTRA_CTX.in_profile_run)
 
         forward_context = get_forward_context()
         if self.multistream_overlap_gate:
