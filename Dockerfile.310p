@@ -59,8 +59,8 @@ COPY . /vllm-workspace/vllm-ascend/
 RUN export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pypi" && \
     source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
     source /usr/local/Ascend/nnal/atb/set_env.sh && \
-    export PYTHONPATH="$(python3 -c 'import site; print(site.getsitepackages()[0])'):$PYTHONPATH" && \
     python3 -m pip install regex numpy && \
+    python3 -m pip install --target=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages --upgrade numpy regex && \
     python3 -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
     python3 -m pip uninstall -y triton-ascend triton && \
     python3 -m pip cache purge
