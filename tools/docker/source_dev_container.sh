@@ -41,6 +41,7 @@ ASCEND_REPO=$(cd -- "$ASCEND_REPO_INPUT" && pwd) || \
 NPU_DEVICES=${NPU_DEVICES:-0}
 IMAGE=${IMAGE:-quay.io/ascend/vllm-ascend:v0.21.0rc1-openeuler}
 SHM_SIZE=${SHM_SIZE:-4g}
+PRIVILEGED=${PRIVILEGED:-1}
 
 VLLM_REMOTE=${VLLM_REMOTE:-https://github.com/vLLM-HUST/vllm-hust.git}
 VLLM_REF=${VLLM_REF:-main}
@@ -264,6 +265,9 @@ start() {
             die "NPU device does not exist: /dev/davinci$device_id"
         device_args+=(--device="/dev/davinci${device_id}")
     done
+    if [[ $PRIVILEGED == 1 ]]; then
+        device_args+=(--privileged)
+    fi
     for device_path in /dev/davinci_manager /dev/devmm_svm /dev/hisi_hdc; do
         [[ -e $device_path ]] || die "required Ascend device does not exist: $device_path"
     done
@@ -410,6 +414,7 @@ Environment overrides:
   VLLM_CACHE_DIR    managed checkout location below XDG_CACHE_HOME
   VLLM_ASCEND_REPO  live vllm-ascend checkout (default: this repository)
   SHM_SIZE          container /dev/shm size (default: 4g)
+  PRIVILEGED        1 to run the container privileged (default: 1)
 EOF
 }
 
