@@ -43,8 +43,10 @@ RUN apt-get update -y && \
     rm -rf /var/lib/apt/lists/*
 
 # Install modelscope (for fast download) and ray (for multinode)
+# regex is needed by csrc/cmake/scripts during custom-op build (before pip
+# installs vllm-ascend's own dependencies).
 RUN pip config set global.index-url ${PIP_INDEX_URL} && \
-    python3 -m pip install modelscope 'ray>=2.47.1,<=2.48.0' 'protobuf>3.20.0' && \
+    python3 -m pip install modelscope 'ray>=2.47.1,<=2.48.0' 'protobuf>3.20.0' regex && \
     python3 -m pip cache purge
 
 # Install vLLM
