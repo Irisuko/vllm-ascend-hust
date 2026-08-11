@@ -538,12 +538,29 @@ class cmake_build_ext(build_ext):
         # add CMAKE_INSTALL_PATH
         cmake_args += [f"-DCMAKE_INSTALL_PREFIX={install_path}"]
 
+        torch_cmake_prefix_output = ""
+        # Try 1: direct import in the current process (avoids PYTHONHOME issues).
         try:
-            torch_cmake_prefix_output = subprocess.check_output(
-                [python_executable, "-c", "import torch; print(torch.utils.cmake_prefix_path)"],
-            ).decode()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to locate torch CMake prefix path: {e}")
+            import torch
+            torch_cmake_prefix_output = str(torch.utils.cmake_prefix_path)
+        except (ImportError, AttributeError):
+            pass
+        # Try 2: subprocess with and without PYTHONHOME cleared.
+        if not torch_cmake_prefix_output:
+            for clear_pythonhome in (False, True):
+                env = os.environ.copy()
+                if clear_pythonhome:
+                    env.pop("PYTHONHOME", None)
+                try:
+                    torch_cmake_prefix_output = subprocess.check_output(
+                        [python_executable, "-c", "import torch; print(torch.utils.cmake_prefix_path)"],
+                        env=env,
+                    ).decode()
+                    break
+                except subprocess.CalledProcessError:
+                    continue
+        if not torch_cmake_prefix_output:
+            raise RuntimeError("Failed to locate torch CMake prefix path via import or subprocess.")
 
         torch_cmake_prefix_path = next(
             (
