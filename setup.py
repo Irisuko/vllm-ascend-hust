@@ -559,8 +559,23 @@ class cmake_build_ext(build_ext):
                     break
                 except subprocess.CalledProcessError:
                     continue
+        # Try 3: filesystem search for TorchConfig.cmake in known site-packages.
         if not torch_cmake_prefix_output:
-            raise RuntimeError("Failed to locate torch CMake prefix path via import or subprocess.")
+            import glob
+            search_patterns = [
+                "/usr/local/python3.12.13/lib/python3.12/site-packages/torch/share/cmake",
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch/share/cmake",
+                "/usr/local/Ascend/cann-*/python/site-packages/torch/share/cmake",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch/share/cmake",
+                "/usr/local/lib/python3.*/site-packages/torch/share/cmake",
+            ]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    torch_cmake_prefix_output = matches[0]
+                    break
+        if not torch_cmake_prefix_output:
+            raise RuntimeError("Failed to locate torch CMake prefix path via import, subprocess, or filesystem search.")
 
         torch_cmake_prefix_path = next(
             (
