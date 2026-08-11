@@ -84,7 +84,7 @@ RUN export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pyp
     # via PYTHONPATH because the build invokes python with -S (no site-packages).
     export PATH=/usr/local/python3.12.13/bin:$PATH && \
     export PYTHONPATH="$(python3 -c 'import site; print(site.getsitepackages()[0])'):$PYTHONPATH" && \
-    python3 -m pip install regex numpy pybind11 && /usr/local/python3.12.13/bin/python3 -m pip install pybind11 && \
+    python3 -m pip install regex numpy pybind11 && PYTHONHOME= /usr/local/python3.12.13/bin/python3 -m pip install pybind11 && \
     python3 -m pip install --target=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages --upgrade numpy regex decorator attrs psutil sympy pyyaml cloudpickle scipy pybind11 && \
     python3 -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
     python3 -m pip uninstall -y triton triton-ascend && \
