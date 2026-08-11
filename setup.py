@@ -491,8 +491,15 @@ class cmake_build_ext(build_ext):
 
         try:
             # if pybind11 is installed via pip
+            # Clear PYTHONHOME so the system Python subprocess can find pip-installed
+            # pybind11. CANN's set_env.sh exports PYTHONHOME which breaks module
+            # resolution in the subprocess invoked by CMake.
+            env = os.environ.copy()
+            env.pop("PYTHONHOME", None)
             pybind11_cmake_path = (
-                subprocess.check_output([python_executable, "-m", "pybind11", "--cmakedir"]).decode().strip()
+                subprocess.check_output(
+                    [python_executable, "-m", "pybind11", "--cmakedir"], env=env
+                ).decode().strip()
             )
         except subprocess.CalledProcessError as e:
             # else specify pybind11 path installed from source code on CI container
