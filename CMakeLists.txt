@@ -39,8 +39,8 @@ endif()
 set(VLLM_ASCEND_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}")
 
 # check torch version is 2.10.0 (use version from find_package, not Python import)
-if(NOT ${Torch_VERSION} VERSION_EQUAL "2.10.0")
-  message(FATAL_ERROR "Expected PyTorch version 2.10.0, but found ${Torch_VERSION}")
+if(${Torch_VERSION} VERSION_LESS "2.10.0")
+  message(FATAL_ERROR "PyTorch version >= 2.10.0 required, but found ${Torch_VERSION}")
 endif()
 
 set(RUN_MODE "npu" CACHE STRING "cpu/sim/npu")
