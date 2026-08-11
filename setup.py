@@ -626,12 +626,23 @@ class cmake_build_ext(build_ext):
                 torch_npu_path = torch_npu_location + "/torch_npu"
         except subprocess.CalledProcessError:
             pass
-        # Try 2: filesystem search in known site-packages locations.
+        # Try 2: search PYTHONPATH directories (set by Dockerfile, includes
+        # the actual site-packages where pip installed torch_npu).
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            for p in os.environ.get("PYTHONPATH", "").split(":"):
+                if not p:
+                    continue
+                candidate = os.path.join(p, "torch_npu")
+                if os.path.isdir(candidate):
+                    torch_npu_path = candidate
+                    break
+        # Try 3: filesystem search in known site-packages locations.
         if not torch_npu_path or not os.path.isdir(torch_npu_path):
             import glob
             search_patterns = [
                 "/usr/local/python3.12.13/lib/python3.12/site-packages/torch_npu",
                 "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch_npu",
+                "/usr/local/Ascend/ascend-toolkit/latest/python/lib/python3.12/site-packages/torch_npu",
                 "/usr/local/Ascend/cann-*/python/site-packages/torch_npu",
                 "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch_npu",
                 "/usr/local/lib/python3.*/site-packages/torch_npu",
@@ -643,7 +654,8 @@ class cmake_build_ext(build_ext):
                     break
         if not torch_npu_path or not os.path.isdir(torch_npu_path):
             raise RuntimeError(
-                "Failed to locate torch_npu path via pip show or filesystem search."
+                "Failed to locate torch_npu path via pip show, PYTHONPATH search, "
+                "or filesystem search."
             )
 
         # add TORCH_NPU_PATH
