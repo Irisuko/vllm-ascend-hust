@@ -615,14 +615,36 @@ class cmake_build_ext(build_ext):
         cmake_env = os.environ.copy()
         cmake_env.pop("PYTHONHOME", None)
 
+        torch_npu_path = ""
+        # Try 1: use pip show (may fail if python3.12 lacks pip without PYTHONHOME).
         torch_npu_command = f"{sys.executable} -m pip show torch-npu | grep '^Location:' | awk '{{print $2}}'"
         try:
-            torch_npu_path = subprocess.check_output(
+            torch_npu_location = subprocess.check_output(
                 torch_npu_command, shell=True, env=cmake_env
             ).decode().strip()
-            torch_npu_path += "/torch_npu"
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Retrieve torch version version failed: {e}")
+            if torch_npu_location:
+                torch_npu_path = torch_npu_location + "/torch_npu"
+        except subprocess.CalledProcessError:
+            pass
+        # Try 2: filesystem search in known site-packages locations.
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            import glob
+            search_patterns = [
+                "/usr/local/python3.12.13/lib/python3.12/site-packages/torch_npu",
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch_npu",
+                "/usr/local/Ascend/cann-*/python/site-packages/torch_npu",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch_npu",
+                "/usr/local/lib/python3.*/site-packages/torch_npu",
+            ]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    torch_npu_path = matches[0]
+                    break
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            raise RuntimeError(
+                "Failed to locate torch_npu path via pip show or filesystem search."
+            )
 
         # add TORCH_NPU_PATH
         cmake_args += [f"-DTORCH_NPU_PATH={torch_npu_path}"]
