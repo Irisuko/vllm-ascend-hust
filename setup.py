@@ -607,9 +607,19 @@ class cmake_build_ext(build_ext):
         fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
         cmake_args += ["-DFETCHCONTENT_BASE_DIR={}".format(fc_base_dir)]
 
+        # CANN's set_env.sh exports PYTHONHOME which makes the toolchain
+        # python3.12 look in CANN's python path for site-packages, breaking
+        # `import torch` / `import pybind11` inside cmake/utils.cmake run_python
+        # and `python -m pip` for torch_npu lookup.  Clear PYTHONHOME for all
+        # remaining subprocesses so they use python3.12's own site-packages.
+        cmake_env = os.environ.copy()
+        cmake_env.pop("PYTHONHOME", None)
+
         torch_npu_command = f"{sys.executable} -m pip show torch-npu | grep '^Location:' | awk '{{print $2}}'"
         try:
-            torch_npu_path = subprocess.check_output(torch_npu_command, shell=True).decode().strip()
+            torch_npu_path = subprocess.check_output(
+                torch_npu_command, shell=True, env=cmake_env
+            ).decode().strip()
             torch_npu_path += "/torch_npu"
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Retrieve torch version version failed: {e}")
@@ -630,7 +640,7 @@ class cmake_build_ext(build_ext):
 
         cmake_args += [source_dir]
         logging.info("cmake config command: %s", cmake_args)
-        proc = subprocess.Popen(cmake_args, cwd=self.build_temp, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmake_args, cwd=self.build_temp, stderr=subprocess.PIPE, text=True, env=cmake_env)
         # Forward CMake stderr to the real stderr in real time while also
         # accumulating it so the full error is visible on failure.
         stderr_lines: list[str] = []
@@ -650,6 +660,7 @@ class cmake_build_ext(build_ext):
         subprocess.check_call(
             ["cmake", ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp,
+            env=cmake_env,
         )
 
     def build_extensions(self) -> None:
