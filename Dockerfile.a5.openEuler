@@ -65,6 +65,13 @@ COPY . /vllm-workspace/vllm-ascend/
 RUN export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pypi" && \
     source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
     source /usr/local/Ascend/nnal/atb/set_env.sh && \
+    # The CANN/aclnn custom-op build resolves python via PATH/find_package(Python3).
+    # The toolchain python 3.12 is where regex lives; the bare `python3` is system
+    # 3.11 which lacks regex (and whose ABI cannot load the cpython-312 _regex ext).
+    # Pin PATH to 3.12 so the build subprocess uses it, and expose its site-packages
+    # via PYTHONPATH because the build invokes python with -S (no site-packages).
+    export PATH=/usr/local/python3.12.13/bin:$PATH && \
+    export PYTHONPATH="$(python3 -c 'import site; print(site.getsitepackages()[0])'):$PYTHONPATH" && \
     python3 -m pip install regex numpy pybind11 && /usr/local/python3.12.13/bin/python3 -m pip install pybind11 && \
     python3 -m pip install --target=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages --upgrade numpy regex decorator attrs psutil sympy pyyaml cloudpickle scipy pybind11 && \
     python3 -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
