@@ -491,19 +491,21 @@ class cmake_build_ext(build_ext):
 
         try:
             # if pybind11 is installed via pip
-            # Clear PYTHONHOME so the system Python subprocess can find pip-installed
-            # pybind11. CANN's set_env.sh exports PYTHONHOME which breaks module
-            # resolution in the subprocess invoked by CMake.
-            env = os.environ.copy()
-            env.pop("PYTHONHOME", None)
-            pybind11_cmake_path = (
-                subprocess.check_output(
-                    [python_executable, "-m", "pybind11", "--cmakedir"], env=env
-                ).decode().strip()
-            )
-        except subprocess.CalledProcessError as e:
-            # else specify pybind11 path installed from source code on CI container
-            raise RuntimeError(f"CMake configuration failed: {e}")
+            # Import pybind11 directly in the current process. CANN's set_env.sh
+            # sets PYTHONHOME which breaks subprocess module resolution, so a
+            # direct import is more reliable than spawning a subprocess.
+            import pybind11
+            pybind11_cmake_path = pybind11.get_cmake_dir()
+        except (ImportError, AttributeError):
+            # Fallback to subprocess if direct import fails
+            try:
+                pybind11_cmake_path = (
+                    subprocess.check_output(
+                        [python_executable, "-m", "pybind11", "--cmakedir"]
+                    ).decode().strip()
+                )
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"CMake configuration failed: {e}")
 
         install_path = os.path.join(ROOT_DIR, self.build_lib)
         if isinstance(self.distribution.get_command_obj("develop"), develop):
