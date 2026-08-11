@@ -489,23 +489,48 @@ class cmake_build_ext(build_ext):
 
         # ccache and ninja can not be applied at ascendc kernels now
 
+        pybind11_cmake_path = ""
+        # Try 1: direct import in the current process.
         try:
-            # if pybind11 is installed via pip
-            # Import pybind11 directly in the current process. CANN's set_env.sh
-            # sets PYTHONHOME which breaks subprocess module resolution, so a
-            # direct import is more reliable than spawning a subprocess.
             import pybind11
-            pybind11_cmake_path = pybind11.get_cmake_dir()
+            pybind11_cmake_path = pybind11.get_cmake_dir() or ""
         except (ImportError, AttributeError):
-            # Fallback to subprocess if direct import fails
-            try:
-                pybind11_cmake_path = (
-                    subprocess.check_output(
-                        [python_executable, "-m", "pybind11", "--cmakedir"]
-                    ).decode().strip()
-                )
-            except subprocess.CalledProcessError as e:
-                raise RuntimeError(f"CMake configuration failed: {e}")
+            pass
+        # Try 2: subprocess (CANN set_env.sh may set PYTHONHOME which breaks
+        # module resolution, so also try with PYTHONHOME cleared).
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            for clear_pythonhome in (False, True):
+                env = os.environ.copy()
+                if clear_pythonhome:
+                    env.pop("PYTHONHOME", None)
+                try:
+                    pybind11_cmake_path = (
+                        subprocess.check_output(
+                            [python_executable, "-m", "pybind11", "--cmakedir"], env=env
+                        ).decode().strip()
+                    )
+                    break
+                except subprocess.CalledProcessError:
+                    continue
+        # Try 3: filesystem search in known CANN / system site-packages.
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            import glob
+            search_patterns = [
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/pybind11/share/cmake/pybind11",
+                "/usr/local/Ascend/cann-*/python/site-packages/pybind11/share/cmake/pybind11",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/pybind11/share/cmake/pybind11",
+                "/usr/local/python3.12.13/lib/python3.12/site-packages/pybind11/share/cmake/pybind11",
+            ]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    pybind11_cmake_path = matches[0]
+                    break
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            raise RuntimeError(
+                "CMake configuration failed: could not locate pybind11 cmake directory "
+                "via import, subprocess, or filesystem search."
+            )
 
         install_path = os.path.join(ROOT_DIR, self.build_lib)
         if isinstance(self.distribution.get_command_obj("develop"), develop):
