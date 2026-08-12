@@ -63,7 +63,7 @@ ENV SOC_VERSION=$SOC_VERSION \
 COPY . /vllm-workspace/vllm-ascend/
 
 RUN DEFAULT_PY=$(which python3) && \
-    DEFAULT_PY_SITE=$($DEFAULT_PY -c "import site; print(site.getsitepackages()[0])") && \
+    DEFAULT_PY_SITE=$(dirname $(dirname $DEFAULT_PY))/lib/python3.12/site-packages && \
     export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pypi" && \
     source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
     source /usr/local/Ascend/nnal/atb/set_env.sh && \
