@@ -675,7 +675,6 @@
   optional: false
   source_file_dependencies:
     - tools/
-    - .github/workflows/scripts/
   tests:
     - tests/ut/_tools
     - tests/ut/test_cleanup_ascend_benchmark_processes.py
@@ -862,6 +861,5 @@ partition:
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-
 
 
