@@ -607,16 +607,13 @@ class cmake_build_ext(build_ext):
         fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
         cmake_args += ["-DFETCHCONTENT_BASE_DIR={}".format(fc_base_dir)]
 
-        # CANN's set_env.sh overrides PYTHONHOME with the CANN toolkit path.
-        # The CANN Python build at /usr/local/python3.12.13 relies on PYTHONHOME
-        # to locate its site-packages (compiled-in default prefix is wrong).
-        # The Dockerfile captures sys.prefix before sourcing set_env.sh and
-        # exports it as PYTHONHOME for the pip install, so os.environ already
-        # has the correct value.  Set it explicitly on cmake_env so CMake
-        # subprocesses and `python -m pip` for torch_npu lookup use the same
-        # PYTHONHOME and can locate all installed packages.
+        # CANN's set_env.sh sets PYTHONHOME to the CANN toolkit path.
+        # The Dockerfile adds the default Python site-packages to PYTHONPATH
+        # so both CANN packages (torch_npu) and default packages (torch,
+        # pybind11) are visible regardless of PYTHONHOME.  Keep PYTHONHOME
+        # intact because some CANN Python builds have a broken compiled-in
+        # default prefix and rely on PYTHONHOME to locate their stdlib.
         cmake_env = os.environ.copy()
-        cmake_env["PYTHONHOME"] = sys.prefix
 
         torch_npu_path = ""
         # Try 1: use pip show (may fail if python3.12 lacks pip without PYTHONHOME).

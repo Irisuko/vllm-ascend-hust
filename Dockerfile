@@ -75,16 +75,17 @@ ENV SOC_VERSION=$SOC_VERSION \
 COPY . /vllm-workspace/vllm-ascend/
 
 RUN DEFAULT_PY=$(which python3) && \
-    DEFAULT_PY_HOME=$(dirname $(dirname $DEFAULT_PY)) && \
+    DEFAULT_PY_SITE=$($DEFAULT_PY -c "import site; print(site.getsitepackages()[0])") && \
     export PIP_EXTRA_INDEX_URL="https://mirrors.huaweicloud.com/ascend/repos/pypi" && \
     export VLLM_BATCH_INVARIANT=1 && \
     source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
     source /usr/local/Ascend/nnal/atb/set_env.sh && \
+    export PYTHONPATH="$DEFAULT_PY_SITE:$PYTHONPATH" && \
     python3 -m pip install --target=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages --upgrade numpy regex decorator attrs psutil sympy pyyaml cloudpickle scipy pybind11 && \
-    PYTHONHOME=$DEFAULT_PY_HOME $DEFAULT_PY -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
-    PYTHONHOME=$DEFAULT_PY_HOME $DEFAULT_PY -m pip uninstall -y triton triton-ascend && \
-    PYTHONHOME=$DEFAULT_PY_HOME $DEFAULT_PY -m pip install triton-ascend==3.2.1 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
-    PYTHONHOME=$DEFAULT_PY_HOME $DEFAULT_PY -m pip cache purge
+    $DEFAULT_PY -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
+    $DEFAULT_PY -m pip uninstall -y triton triton-ascend && \
+    $DEFAULT_PY -m pip install triton-ascend==3.2.1 --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
+    $DEFAULT_PY -m pip cache purge
 
 # Append `libascend_hal.so` path (devlib) to LD_LIBRARY_PATH
 RUN echo "export LD_PRELOAD=/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2:$LD_PRELOAD" >> ~/.bashrc
