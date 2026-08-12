@@ -61,7 +61,7 @@ RUN DEFAULT_PY=$(which python3) && \
     source /usr/local/Ascend/nnal/atb/set_env.sh && \
     export PYTHONPATH="$DEFAULT_PY_SITE:$PYTHONPATH" && \
     python3 -m pip install --target=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages --upgrade numpy regex decorator attrs psutil sympy pyyaml cloudpickle scipy pybind11 && \
-    $DEFAULT_PY -m pip install torch-npu --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
+    $DEFAULT_PY -m pip install torch-npu --no-deps --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi && \
     $DEFAULT_PY -m pip install -e /vllm-workspace/vllm-ascend/ --extra-index https://download.pytorch.org/whl/cpu/ && \
     $DEFAULT_PY -m pip uninstall -y triton-ascend triton && \
     $DEFAULT_PY -m pip cache purge
