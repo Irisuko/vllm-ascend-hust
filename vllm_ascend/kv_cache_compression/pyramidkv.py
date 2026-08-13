@@ -70,6 +70,7 @@ class PyramidKVAscendConfig:
     """Validated provider-owned algorithm configuration."""
 
     max_capacity_prompt: int = 512
+    min_compression_prompt_tokens: int = 4096
     window_size: int = 8
     kernel_size: int = 7
     pooling: str = "maxpool"
@@ -91,6 +92,7 @@ class PyramidKVAscendConfig:
     def _validate(self) -> None:
         integer_fields = {
             "max_capacity_prompt": self.max_capacity_prompt,
+            "min_compression_prompt_tokens": self.min_compression_prompt_tokens,
             "window_size": self.window_size,
             "kernel_size": self.kernel_size,
             "beta": self.beta,
@@ -102,6 +104,13 @@ class PyramidKVAscendConfig:
             raise ValueError(
                 "max_capacity_prompt must be greater than window_size, got "
                 f"{self.max_capacity_prompt} and {self.window_size}"
+            )
+        if self.min_compression_prompt_tokens < self.max_capacity_prompt:
+            raise ValueError(
+                "min_compression_prompt_tokens must be greater than or equal "
+                "to max_capacity_prompt, got "
+                f"{self.min_compression_prompt_tokens} and "
+                f"{self.max_capacity_prompt}"
             )
         if self.kernel_size % 2 == 0:
             raise ValueError(f"kernel_size must be odd to preserve score length, got {self.kernel_size}")
@@ -131,7 +140,7 @@ class PyramidKVAscendConfig:
             raise ValueError(f"num_hidden_layers must be greater than one, got {num_hidden_layers}")
         if not 0 <= layer_index < num_hidden_layers:
             raise ValueError(f"layer_index {layer_index} is outside [0, {num_hidden_layers})")
-        if prompt_tokens < self.max_capacity_prompt:
+        if prompt_tokens <= self.min_compression_prompt_tokens:
             return prompt_tokens
 
         past_budget = self.max_capacity_prompt - self.window_size
@@ -1408,7 +1417,14 @@ class PyramidKVAscendProvider:
         context: PyramidKVCapabilityContext,
         provider_factory: str,
     ) -> KVCacheCompressionCompatibility:
-        reasons = self._compatibility_reasons(context)
+        reasons = list(self._compatibility_reasons(context))
+        if context.max_model_len <= self.config.min_compression_prompt_tokens:
+            reasons.append(
+                "max_model_len must be greater than "
+                "min_compression_prompt_tokens for PyramidKV to admit any "
+                f"request, got {context.max_model_len} and "
+                f"{self.config.min_compression_prompt_tokens}"
+            )
         runtime_spec = None
         if not reasons:
             max_physical_num_tokens = max(
@@ -1423,7 +1439,7 @@ class PyramidKVAscendProvider:
                 schema_version=core_config.schema_version,
                 provider=core_config.provider,
                 requires_private_destination=True,
-                compression_threshold_tokens=(self.config.max_capacity_prompt),
+                compression_threshold_tokens=(self.config.min_compression_prompt_tokens),
                 required_recompute_tokens=self.config.window_size,
                 max_physical_num_tokens=max_physical_num_tokens,
             )
@@ -1431,7 +1447,7 @@ class PyramidKVAscendProvider:
             schema_version=core_config.schema_version,
             provider=core_config.provider,
             supported=not reasons,
-            reasons=reasons,
+            reasons=tuple(reasons),
             platform=context.platform,
             provider_factory=provider_factory,
             backend=context.backend,

@@ -76,6 +76,7 @@ vllm serve /workspace/models/Qwen2.5-14B-Instruct \
     "provider": "pyramidkv_ascend",
     "provider_config": {
       "max_capacity_prompt": 512,
+      "min_compression_prompt_tokens": 4096,
       "window_size": 8,
       "kernel_size": 7,
       "pooling": "maxpool",
@@ -120,10 +121,14 @@ buffers: 32 rows for Llama-3-8B and 48 for Qwen2.5-14B. Each layer uses its own
 row during replay, while padding rows use an invalid slot and cannot write a
 real KV block.
 
-`max_capacity_prompt` must be greater than `window_size`; `kernel_size` must be
-positive and odd; `beta` must be positive. The other fields are fixed to the
-values shown above in the first release. Unknown fields and invalid values are
-errors.
+`max_capacity_prompt` must be greater than `window_size`;
+`min_compression_prompt_tokens` must be greater than or equal to
+`max_capacity_prompt`; `kernel_size` must be positive and odd; and `beta` must
+be positive. The other fields are fixed to the values shown above in the first
+release. Unknown fields and invalid values are errors.
+`--max-model-len` must be greater than `min_compression_prompt_tokens`;
+otherwise no request can enter the supported compression region and startup
+fails closed.
 
 The equivalent Python configuration uses the same typed object:
 
@@ -137,6 +142,7 @@ engine_args = EngineArgs(
         provider="pyramidkv_ascend",
         provider_config={
             "max_capacity_prompt": 512,
+            "min_compression_prompt_tokens": 4096,
             "window_size": 8,
             "kernel_size": 7,
             "pooling": "maxpool",
@@ -187,10 +193,13 @@ device-memory savings by summing theoretical per-layer capacities, and do not
 assume a performance or quality improvement without workload-specific
 measurements.
 
-With the default provider configuration, prompts longer than 512 tokens are
-compressed, at least the final 8 query tokens are recomputed, and the largest
-physical length for an 8192-token prompt is 991 tokens for both validated
-profiles. The scheduler consequently reserves at most 8 extra 128-token
+With the default provider configuration, prompts of 4096 tokens or fewer stay
+on the original uncompressed path. Prompts longer than 4096 tokens are admitted
+to compression, at least the final 8 query tokens are recomputed, and the
+largest physical length for an 8192-token prompt is 991 tokens for both
+validated profiles. The 4096-token admission threshold is independent of the
+512-token compressed capacity and protects short requests from the compression
+hot-path cost. The scheduler consequently reserves at most 8 extra 128-token
 destination blocks per compressing request. These blocks are temporary before
 commit and remain request-private while the compressed request is active. They
 never receive a prefix hash and cannot be reused as a semantic prefix.

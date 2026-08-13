@@ -54,12 +54,16 @@ def test_valid_provider_is_imported_only_when_resolved() -> None:
     sys.modules.pop(PROVIDER_MODULE, None)
     config = KVCacheCompressionConfig(
         provider="pyramidkv_ascend",
-        provider_config={"max_capacity_prompt": 512},
+        provider_config={
+            "max_capacity_prompt": 512,
+            "min_compression_prompt_tokens": 4096,
+        },
     )
 
     provider = registry.get_kv_cache_compression_provider(config)
 
     assert provider.config.max_capacity_prompt == 512
+    assert provider.config.min_compression_prompt_tokens == 4096
     assert PROVIDER_MODULE in sys.modules
 
 

@@ -33,6 +33,7 @@ QWEN_LAYER_NAMES = tuple(f"model.layers.{index}.self_attn.attn" for index in ran
 def _config(**updates) -> PyramidKVAscendConfig:
     values = {
         "max_capacity_prompt": 12,
+        "min_compression_prompt_tokens": 12,
         "window_size": 4,
         "kernel_size": 1,
         "pooling": "maxpool",
@@ -107,6 +108,7 @@ def _core_config() -> KVCacheCompressionConfig:
         provider="pyramidkv_ascend",
         provider_config={
             "max_capacity_prompt": 12,
+            "min_compression_prompt_tokens": 12,
             "window_size": 4,
             "kernel_size": 1,
             "pooling": "maxpool",
@@ -122,6 +124,11 @@ def _core_config() -> KVCacheCompressionConfig:
     ("updates", "error_match"),
     [
         ({"max_capacity_prompt": 4}, "greater than window_size"),
+        ({"min_compression_prompt_tokens": True}, "positive integer"),
+        (
+            {"min_compression_prompt_tokens": 11},
+            "greater than or equal to max_capacity_prompt",
+        ),
         ({"window_size": True}, "positive integer"),
         ({"kernel_size": 2}, "must be odd"),
         ({"pooling": "avgpool"}, "maxpool"),
@@ -145,6 +152,19 @@ def test_layer_capacity_schedule_and_thresholds() -> None:
     assert config.retained_tokens(15, 1, 2) == 12
     assert config.retained_tokens(20, 0, 2) == 16
     assert config.retained_tokens(20, 1, 2) == 8
+
+
+@pytest.mark.parametrize(
+    ("prompt_tokens", "compressed"),
+    [(11, False), (12, False), (13, True)],
+)
+def test_compression_admission_boundary(
+    prompt_tokens: int,
+    compressed: bool,
+) -> None:
+    config = _config()
+
+    assert (config.retained_tokens(prompt_tokens, 1, 2) < prompt_tokens) is compressed
 
 
 def _independent_selection(
@@ -216,6 +236,7 @@ def test_qwen_40_to_8_gqa_selection_matches_cpu_oracle() -> None:
     value = torch.randn(1, 8, 1024, 8, generator=generator)
     config = _config(
         max_capacity_prompt=512,
+        min_compression_prompt_tokens=512,
         window_size=8,
         kernel_size=1,
         beta=20,
@@ -277,6 +298,7 @@ def _run_chunked_prefill(
     provider = PyramidKVAscendProvider(
         _config(
             max_capacity_prompt=128,
+            min_compression_prompt_tokens=128,
             window_size=8,
             kernel_size=7,
             beta=20,
@@ -501,6 +523,7 @@ def test_prefix_cached_prefill_materializes_private_destination_without_source_m
     provider = PyramidKVAscendProvider(
         _config(
             max_capacity_prompt=128,
+            min_compression_prompt_tokens=128,
             window_size=8,
             kernel_size=7,
             beta=20,
@@ -666,6 +689,7 @@ def test_npu_bf16_private_materialization_preserves_source_and_decodes() -> None
     provider = PyramidKVAscendProvider(
         _config(
             max_capacity_prompt=128,
+            min_compression_prompt_tokens=128,
             window_size=8,
             kernel_size=7,
             beta=20,
@@ -819,7 +843,7 @@ def test_npu_bf16_private_materialization_preserves_source_and_decodes() -> None
 
 
 def test_prefix_hit_view_initializes_at_aligned_offset_and_requires_destination() -> None:
-    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({"min_compression_prompt_tokens": 512}))
     provider.prefix_caching = True
     common = {
         "request_ids": ("request",),
@@ -862,7 +886,7 @@ def test_prefix_hit_view_rejects_invalid_cached_or_destination_state(
     destination: tuple[int, ...],
     error_match: str,
 ) -> None:
-    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({"min_compression_prompt_tokens": 512}))
     provider.prefix_caching = True
 
     with pytest.raises(RuntimeError, match=error_match):
@@ -879,6 +903,64 @@ def test_prefix_hit_view_rejects_invalid_cached_or_destination_state(
         )
 
 
+@pytest.mark.parametrize("prompt_tokens", [4095, 4096])
+def test_default_admission_guard_keeps_short_prefill_uncompressed(
+    prompt_tokens: int,
+) -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    view = provider.build_attention_batch_view(
+        request_ids=("request",),
+        query_lengths=(prompt_tokens,),
+        semantic_num_tokens=(prompt_tokens,),
+        num_computed_tokens=(0,),
+        num_prompt_tokens=(prompt_tokens,),
+        block_ids=((tuple(range(math.ceil(prompt_tokens / 128))),),),
+        layer_names=LAYER_NAMES,
+        block_size=128,
+    )
+
+    assert not view.requests[0].compress
+    with pytest.raises(KeyError):
+        provider.get_request_state("request")
+
+
+def test_default_admission_guard_rejects_short_prefill_destination() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+
+    with pytest.raises(
+        RuntimeError,
+        match="destination table outside a compressing prefill",
+    ):
+        provider.build_attention_batch_view(
+            request_ids=("request",),
+            query_lengths=(4096,),
+            semantic_num_tokens=(4096,),
+            num_computed_tokens=(0,),
+            num_prompt_tokens=(4096,),
+            block_ids=((tuple(range(32)),),),
+            layer_names=LAYER_NAMES,
+            block_size=128,
+            destination_block_ids={"request": (tuple(range(32, 40)),)},
+        )
+
+
+def test_default_admission_guard_starts_long_prefill_compression() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    view = provider.build_attention_batch_view(
+        request_ids=("request",),
+        query_lengths=(4097,),
+        semantic_num_tokens=(4097,),
+        num_computed_tokens=(0,),
+        num_prompt_tokens=(4097,),
+        block_ids=((tuple(range(33)),),),
+        layer_names=LAYER_NAMES,
+        block_size=128,
+    )
+
+    assert view.requests[0].compress
+    assert provider.get_request_state("request").semantic_num_tokens == 4097
+
+
 @pytest.mark.parametrize("prompt_tokens", [256, 4096, 7168])
 def test_planned_prompt_lengths_produce_valid_compact_shapes(
     prompt_tokens: int,
@@ -887,7 +969,10 @@ def test_planned_prompt_lengths_produce_valid_compact_shapes(
     query = torch.randn(1, 4, prompt_tokens, 8, generator=generator)
     key = torch.randn(1, 2, prompt_tokens, 8, generator=generator)
     value = torch.randn(1, 2, prompt_tokens, 8, generator=generator)
-    config = _config(max_capacity_prompt=128)
+    config = _config(
+        max_capacity_prompt=128,
+        min_compression_prompt_tokens=128,
+    )
 
     selection = select_pyramid_kv(
         query,
@@ -1070,10 +1155,31 @@ def test_default_runtime_spec_reserves_eight_private_blocks() -> None:
 
     assert report.supported
     assert report.runtime_spec is not None
-    assert report.runtime_spec.compression_threshold_tokens == 512
+    assert report.runtime_spec.compression_threshold_tokens == 4096
     assert report.runtime_spec.required_recompute_tokens == 8
     assert report.runtime_spec.max_physical_num_tokens == 991
     assert math.ceil(report.runtime_spec.max_physical_num_tokens / 128) == 8
+
+
+def test_model_length_must_cross_compression_admission_threshold() -> None:
+    provider = PyramidKVAscendProvider(PyramidKVAscendConfig.from_dict({}))
+    core_config = KVCacheCompressionConfig(
+        provider="pyramidkv_ascend",
+        provider_config={},
+    )
+
+    report = provider.compatibility_report(
+        core_config,
+        _context(max_model_len=4096),
+        "registry:get",
+    )
+
+    assert not report.supported
+    assert report.runtime_spec is None
+    assert report.reasons == (
+        "max_model_len must be greater than min_compression_prompt_tokens "
+        "for PyramidKV to admit any request, got 4096 and 4096",
+    )
 
 
 def test_cann_9_capability_is_supported() -> None:

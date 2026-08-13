@@ -24,6 +24,7 @@ PROVIDER_CONFIG = json.dumps(
         "provider": "pyramidkv_ascend",
         "provider_config": {
             "max_capacity_prompt": 128,
+            "min_compression_prompt_tokens": 128,
             "window_size": 8,
             "kernel_size": 7,
             "pooling": "maxpool",

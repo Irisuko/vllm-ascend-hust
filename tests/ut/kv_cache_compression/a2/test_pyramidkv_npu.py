@@ -43,6 +43,7 @@ def _core_config() -> KVCacheCompressionConfig:
         provider="pyramidkv_ascend",
         provider_config={
             "max_capacity_prompt": 128,
+            "min_compression_prompt_tokens": 128,
             "window_size": 64,
             "kernel_size": 7,
             "pooling": "maxpool",
