@@ -66,6 +66,7 @@
     - vllm_ascend/attention/attention_mask.py
     - vllm_ascend/attention/utils.py
     - vllm_ascend/attention/kvcomp_attn/
+    - vllm_ascend/attention/path_probe.py
   tests:
     - tests/ut/attention/
     - tests/e2e/pull_request/one_card/test_qwen3_0_6b.py
@@ -245,9 +246,14 @@
   optional: false
   source_file_dependencies:
     - vllm_ascend/kv_offload
+    - vllm_ascend/custom_op_package.py
   tests:
     - tests/ut/kv_offload
     - tests/e2e/pull_request/one_card/test_cpu_offloading.py
+    - tests/e2e/pull_request/one_card/test_experimental_mapped_offload.py
+    - tests/e2e/pull_request/one_card/test_kv_cache_block_gather.py
+    - tests/e2e/pull_request/one_card/test_mapped_host_pool_registration.py
+    - tests/e2e/pull_request/two_card/test_kv_cache_block_gather_devices.py
 
 - name: kv_cache_compression
   optional: true
@@ -687,6 +693,10 @@
     - tools/
   tests:
     - tests/ut/_tools
+    - tests/ut/test_cleanup_ascend_benchmark_processes.py
+    - tests/ut/test_custom_op_package.py
+    - tests/ut/test_perfgate_store_baseline.py
+    - tests/ut/test_prepare_plugin_perfgate_artifact.py
     - tests/ut/test_ascend_benchmark_perfgate_workflow_static.py
     - tests/ut/test_parse_ascend_comment_command.py
     - tests/ut/test_perfgate_fail_fast_scripts.py
@@ -743,7 +753,10 @@ estimated_times:
   tests/e2e/pull_request/one_card/test_camem.py: 150
   tests/e2e/pull_request/one_card/test_completion_with_prompt_embeds.py: 130
   tests/e2e/pull_request/one_card/test_cpu_offloading.py: 30
+  tests/e2e/pull_request/one_card/test_experimental_mapped_offload.py: 30
+  tests/e2e/pull_request/one_card/test_kv_cache_block_gather.py: 30
   tests/e2e/pull_request/one_card/test_cpu_weight_offload.py: 790
+  tests/e2e/pull_request/one_card/test_mapped_host_pool_registration.py: 30
   tests/e2e/pull_request/one_card/test_guided_decoding.py: 840
   tests/e2e/pull_request/one_card/test_minicpm.py: 240
   tests/e2e/pull_request/one_card/test_multi_instance.py: 140
@@ -767,6 +780,7 @@ estimated_times:
   tests/e2e/pull_request/two_card/test_external_launcher.py: 1090
   tests/e2e/pull_request/two_card/test_flashcomm_distributed.py: 20
   tests/e2e/pull_request/two_card/test_gpt_oss_distributed.py: 150
+  tests/e2e/pull_request/two_card/test_kv_cache_block_gather_devices.py: 30
   tests/e2e/pull_request/two_card/test_moe_routing_replay.py: 460
   tests/e2e/pull_request/two_card/test_offline_weight_load.py: 20
   tests/e2e/pull_request/two_card/test_prefix_caching.py: 410
@@ -813,6 +827,7 @@ estimated_times:
   tests/ut/kv_offload/a2/test_remote_decode_lifecycle.py: 30
   tests/ut/kv_offload/a2/test_remote_prefill_lifecycle.py: 30
   tests/ut/ops/a2/test_gdn_chunk_meta.py: 30
+  tests/ut/ops/a2/test_torch_binding_meta.py: 30
   tests/ut/ops/a2/test_token_dispatcher.py: 30
   tests/ut/ops/a2/test_weight_prefetch.py: 30
   tests/ut/ops/a3_2/test_activation.py: 20
@@ -864,6 +879,3 @@ partition:
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-
-
-
