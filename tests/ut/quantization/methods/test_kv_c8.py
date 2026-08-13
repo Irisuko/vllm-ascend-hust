@@ -587,6 +587,169 @@ class TestAscendC8AttentionBackendImplScales(TestBase):
         layer.v_cache_offset = nn.Parameter(torch.zeros(shape, dtype=self.original_dtype), requires_grad=False)
         return layer
 
+    def test_record_c8_dispatch_forwards_receipt_fields(self):
+        impl = self._make_impl()
+        impl._record_python_dispatch = MagicMock()
+        layer = Mock(layer_name="model.layers.0.self_attn")
+        query = torch.empty(1, 4, 8)
+        attn_metadata = Mock()
+
+        impl._record_c8_dispatch(
+            dispatch_path="decode_fia_bnsd_paged_int8",
+            layer=layer,
+            query=query,
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=torch.int8,
+        )
+
+        impl._record_python_dispatch.assert_called_once_with(
+            layer_id="model.layers.0.self_attn",
+            operator_id="decode_fia_bnsd_paged_int8",
+            query=query,
+            attn_metadata=attn_metadata,
+            is_c8=True,
+            pooling=False,
+            actual_cache_dtype=torch.int8,
+            fallback_reason="none",
+        )
+
+        impl._record_python_dispatch.reset_mock()
+        impl._record_c8_dispatch(
+            dispatch_path="prefill_cache_hit_fia_tnd_dequantized_cache",
+            layer=layer,
+            query=query,
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=torch.int8,
+            fallback_reason="fia_tnd_requires_dense_kv",
+        )
+        impl._record_python_dispatch.assert_called_once_with(
+            layer_id="model.layers.0.self_attn",
+            operator_id="prefill_cache_hit_fia_tnd_dequantized_cache",
+            query=query,
+            attn_metadata=attn_metadata,
+            is_c8=True,
+            pooling=False,
+            actual_cache_dtype=torch.int8,
+            fallback_reason="fia_tnd_requires_dense_kv",
+        )
+
+    def test_pooling_records_explicit_unsupported_receipt(self):
+        impl = self._make_impl()
+        impl._use_layer_aware_fia_graph_replay = False
+        impl.vllm_config = Mock(kv_transfer_config=None)
+        impl._prepare_c8_scales = MagicMock()
+        impl._forward_encoder_attention = MagicMock()
+        impl._record_c8_dispatch = MagicMock()
+        query = torch.zeros(2, 4, 8)
+        key = torch.zeros_like(query)
+        value = torch.zeros_like(query)
+        output = torch.zeros_like(query)
+        impl._forward_encoder_attention.return_value = output
+        impl._quantize_kv_to_int8 = MagicMock(return_value=(key.to(torch.int8), value.to(torch.int8)))
+        impl._reshape_and_cache = MagicMock(return_value=(query, key, value, output))
+        impl.key_cache = torch.zeros(1, dtype=torch.int8)
+        layer = Mock(layer_name="model.layers.0.self_attn")
+        attn_metadata = Mock(
+            model_runner_type="pooling",
+            num_actual_tokens=2,
+            attn_state=Mock(),
+        )
+
+        impl.forward(layer, query, key, value, (), attn_metadata, output)
+
+        impl._record_c8_dispatch.assert_called_once_with(
+            dispatch_path="pooling_encoder_attention",
+            layer=layer,
+            query=query,
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=torch.int8,
+            fallback_reason="c8_pooling_uses_encoder_attention",
+            pooling=True,
+        )
+
+    def test_kv_transfer_producer_records_base_attention_fallback(self):
+        impl = self._make_impl()
+        impl._use_layer_aware_fia_graph_replay = False
+        impl.vllm_config = Mock(kv_transfer_config=Mock())
+        impl.is_kv_producer = True
+        impl.key_cache = torch.zeros(1, dtype=torch.float16)
+        impl._prepare_c8_scales = MagicMock()
+        impl._record_c8_dispatch = MagicMock()
+        impl.forward_impl = MagicMock()
+        query = torch.zeros(2, 4, 8)
+        output = torch.zeros_like(query)
+        impl.forward_impl.return_value = output
+        layer = Mock(layer_name="model.layers.0.self_attn")
+        attn_metadata = Mock(
+            model_runner_type="generate",
+            num_actual_tokens=2,
+            attn_state=Mock(),
+        )
+
+        impl.forward(layer, query, None, None, (), attn_metadata, output)
+
+        impl._record_c8_dispatch.assert_called_once_with(
+            dispatch_path="kv_transfer_producer_base_attention",
+            layer=layer,
+            query=query,
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=torch.float16,
+            fallback_reason="kv_transfer_producer_uses_base_attention",
+        )
+
+    @patch("vllm_ascend.attention.attention_v1.torch_npu.npu_fused_infer_attention_score")
+    def test_decode_receipt_counts_only_dispatched_queries(self, mock_fia):
+        num_kv_heads, head_size, block_size = 2, 32, 32
+        impl = self._make_impl(num_kv_heads, head_size)
+        impl.key_cache = torch.zeros(2, block_size, num_kv_heads, head_size, dtype=torch.int8)
+        impl.value_cache = torch.zeros_like(impl.key_cache)
+        impl._record_c8_dispatch = MagicMock()
+        query = torch.zeros(4, num_kv_heads, head_size)
+        output = torch.empty_like(query)
+        layer = Mock(layer_name="model.layers.0.self_attn")
+        layer._c8_k_aq_scale_nz_bnsd = torch.ones(num_kv_heads, 1, head_size)
+        layer._c8_v_aq_scale_nz_bnsd = torch.ones(num_kv_heads, 1, head_size)
+        attn_metadata = Mock(seq_lens_list=[16, 32], block_tables=torch.tensor([[0], [1]]))
+        mock_fia.return_value = (torch.zeros(2, num_kv_heads, 1, head_size), None)
+
+        impl._forward_c8_decode(query, attn_metadata, output, layer)
+
+        recorded_query = impl._record_c8_dispatch.call_args.kwargs["query"]
+        self.assertEqual(recorded_query.shape[0], 2)
+
+    @patch("vllm_ascend.attention.attention_v1.torch_npu.npu_fused_infer_attention_score")
+    def test_chunked_receipts_split_decode_and_prefill_queries(self, mock_fia):
+        num_kv_heads, head_size, block_size = 2, 32, 32
+        impl = self._make_impl(num_kv_heads, head_size)
+        impl.key_cache = torch.zeros(3, block_size, num_kv_heads, head_size, dtype=torch.int8)
+        impl.value_cache = torch.zeros_like(impl.key_cache)
+        impl._record_c8_dispatch = MagicMock()
+        query = torch.zeros(5, num_kv_heads, head_size)
+        float_key = torch.zeros_like(query)
+        float_value = torch.zeros_like(query)
+        output = torch.empty_like(query)
+        layer = Mock(layer_name="model.layers.0.self_attn")
+        layer._c8_k_aq_scale_nz_bnsd = torch.ones(num_kv_heads, 1, head_size)
+        layer._c8_v_aq_scale_nz_bnsd = torch.ones(num_kv_heads, 1, head_size)
+        attn_metadata = Mock(
+            num_decode_tokens=2,
+            num_decodes=2,
+            num_prefills=1,
+            actual_seq_lengths_q=[1, 2, 5],
+            seq_lens_list=[1, 1, 3],
+            block_tables=torch.tensor([[0], [1], [2]]),
+            attn_mask=None,
+        )
+        mock_fia.side_effect = [
+            (torch.zeros(2, num_kv_heads, 1, head_size), None),
+            (torch.zeros(3, num_kv_heads, head_size), None),
+        ]
+
+        impl._forward_c8_chunked_prefill(query, float_key, float_value, attn_metadata, output, layer)
+
+        recorded_queries = [call.kwargs["query"] for call in impl._record_c8_dispatch.call_args_list]
+        self.assertEqual([item.shape[0] for item in recorded_queries], [2, 3])
+
     @patch("vllm_ascend.attention.attention_v1.get_tensor_model_parallel_rank", return_value=0)
     @patch("vllm_ascend.attention.attention_v1.get_tensor_model_parallel_world_size", return_value=1)
     def test_prepare_c8_scales_runs_once(self, mock_tp_size, mock_tp_rank):
