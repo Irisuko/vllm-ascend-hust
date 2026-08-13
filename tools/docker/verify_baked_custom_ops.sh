@@ -81,7 +81,18 @@ fi
 [[ -f $cann_version_file ]] || die "cannot locate CANN version metadata"
 cann_version=$(sed -n 's/^Version=//p' "$cann_version_file")
 [[ -n $cann_version ]] || die "CANN version is missing from $cann_version_file"
-[[ $custom_version == "$cann_version" ]] || die \
+
+# Normalize versions before comparing: strip whitespace, lowercase, and
+# drop a trailing .rc* suffix so a release build matches an RC toolkit.
+normalize_version() {
+    local v=${1//[[:space:]]/}
+    v=${v,,}
+    v=${v%.rc*}
+    echo "$v"
+}
+custom_version_norm=$(normalize_version "$custom_version")
+cann_version_norm=$(normalize_version "$cann_version")
+[[ $custom_version_norm == "$cann_version_norm" ]] || die \
     "custom-op compiler version $custom_version does not match CANN $cann_version"
 
 version_sha256=$(sha256sum "$custom_version_file" | awk '{print $1}')

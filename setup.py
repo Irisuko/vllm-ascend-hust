@@ -43,6 +43,31 @@ def load_module_from_path(module_name, path):
     return module
 
 
+def _default_site_packages() -> list[str]:
+    """Return candidate site-packages directories for the current Python.
+
+    Replaces hardcoded paths so the build works across Python installs.
+    """
+    import sysconfig
+
+    paths: list[str] = []
+    seen: set[str] = set()
+    purelib = sysconfig.get_path("purelib")
+    if purelib and purelib not in seen:
+        paths.append(purelib)
+        seen.add(purelib)
+    try:
+        import site as _site
+
+        for _sp in _site.getsitepackages():
+            if _sp not in seen:
+                paths.append(_sp)
+                seen.add(_sp)
+    except Exception:
+        pass
+    return paths
+
+
 ROOT_DIR = str(Path(__file__).resolve().parent)
 UPSTREAM_METADATA_FILE = os.path.join(ROOT_DIR, "upstream_version.json")
 DISTRIBUTION_NAME = "vllm-ascend-hust"
@@ -519,7 +544,9 @@ class cmake_build_ext(build_ext):
                 "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/pybind11/share/cmake/pybind11",
                 "/usr/local/Ascend/cann-*/python/site-packages/pybind11/share/cmake/pybind11",
                 "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/pybind11/share/cmake/pybind11",
-                "/usr/local/python3.12.13/lib/python3.12/site-packages/pybind11/share/cmake/pybind11",
+            ]
+            search_patterns += [
+                os.path.join(sp, "pybind11", "share", "cmake", "pybind11") for sp in _default_site_packages()
             ]
             for pattern in search_patterns:
                 matches = glob.glob(pattern)
@@ -563,12 +590,12 @@ class cmake_build_ext(build_ext):
         if not torch_cmake_prefix_output:
             import glob
             search_patterns = [
-                "/usr/local/python3.12.13/lib/python3.12/site-packages/torch/share/cmake",
                 "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch/share/cmake",
                 "/usr/local/Ascend/cann-*/python/site-packages/torch/share/cmake",
                 "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch/share/cmake",
                 "/usr/local/lib/python3.*/site-packages/torch/share/cmake",
             ]
+            search_patterns += [os.path.join(sp, "torch", "share", "cmake") for sp in _default_site_packages()]
             for pattern in search_patterns:
                 matches = glob.glob(pattern)
                 if matches and os.path.isdir(matches[0]):
@@ -640,13 +667,13 @@ class cmake_build_ext(build_ext):
         if not torch_npu_path or not os.path.isdir(torch_npu_path):
             import glob
             search_patterns = [
-                "/usr/local/python3.12.13/lib/python3.12/site-packages/torch_npu",
                 "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch_npu",
                 "/usr/local/Ascend/ascend-toolkit/latest/python/lib/python3.12/site-packages/torch_npu",
                 "/usr/local/Ascend/cann-*/python/site-packages/torch_npu",
                 "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch_npu",
                 "/usr/local/lib/python3.*/site-packages/torch_npu",
             ]
+            search_patterns += [os.path.join(sp, "torch_npu") for sp in _default_site_packages()]
             for pattern in search_patterns:
                 matches = glob.glob(pattern)
                 if matches and os.path.isdir(matches[0]):
