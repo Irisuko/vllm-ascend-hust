@@ -20,7 +20,7 @@ from vllm.logger import logger
 
 from vllm_ascend import envs
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EVENT_SEMANTICS = "python_dispatch_or_capture_event_not_graph_replay_execution"
 _DEFAULT_EVERY_N_DISPATCHES = 64
 _DEFAULT_MAX_RECORDS = 2048
@@ -36,7 +36,7 @@ def classify_dispatch_coverage(*, capturing: bool, is_c8: bool, pooling: bool) -
     if pooling:
         return "unsupported_pooling"
     if is_c8:
-        return "unsupported_c8_capture" if capturing else "unsupported_c8_eager"
+        return "c8_capture_dispatch_only_no_replay" if capturing else "c8_eager_dispatch"
     if capturing:
         return "capture_dispatch_only_no_replay"
     return "eager_dispatch"
@@ -290,6 +290,8 @@ class AttentionPathProbe:
         query: Any,
         attn_metadata: Any,
         sliding_window: int | None,
+        actual_cache_dtype: str | None = None,
+        fallback_reason: str | None = None,
     ) -> None:
         if self._disabled or self._closed:
             return
@@ -329,6 +331,10 @@ class AttentionPathProbe:
                     "seq_lens_head": [int(value) for value in seq_lens[:8]],
                     "sliding_window": sliding_window,
                 }
+                if actual_cache_dtype is not None:
+                    record["actual_cache_dtype"] = actual_cache_dtype
+                if fallback_reason is not None:
+                    record["fallback_reason"] = fallback_reason
                 line = json.dumps(record, sort_keys=True) + "\n"
                 line_bytes = len(line.encode())
                 if self._accepted_bytes + line_bytes > self._max_bytes:

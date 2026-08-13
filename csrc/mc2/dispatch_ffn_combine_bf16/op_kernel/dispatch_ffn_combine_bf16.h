@@ -159,11 +159,19 @@ __aicore__ inline void DispatchFFNCombineBF16<TemplateMMA2ACFunc>::Init(GM_ADDR 
     initRoutingQuantTilingKey = tilingData.cocTiling.initRoutingQuantTilingKey;
 
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    #if DISPATCH_FFN_COMBINE_BF16_A2
+    __gm__ HcclA2CombineOpParam *WinContext_{nullptr};
+    WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+
+    rank = WinContext_->rankId;
+    rankSize = WinContext_->rankNum;
+    #else
     __gm__ HcclOpResParamCustom *WinContext_{nullptr};
     WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
 
     rank = WinContext_->localUsrRankId;
     rankSize = WinContext_->rankSize;
+    #endif
 }
 
 template <TemplateMMA2AClass>
