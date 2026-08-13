@@ -47,6 +47,8 @@ def _record(
     operator_id: str = "paged_attention",
     coverage: str = "eager_dispatch",
     sliding_window=None,
+    actual_cache_dtype: str | None = None,
+    fallback_reason: str | None = None,
 ) -> None:
     probe.record_dispatch(
         operator_id=operator_id,
@@ -55,6 +57,8 @@ def _record(
         query=SimpleNamespace(shape=(2, 8, 128)),
         attn_metadata=_metadata(),
         sliding_window=sliding_window,
+        actual_cache_dtype=actual_cache_dtype,
+        fallback_reason=fallback_reason,
     )
 
 
@@ -93,7 +97,7 @@ def test_from_env_uses_single_owner_and_join_schema(monkeypatch, tmp_path):
 
     assert ".run-128.rank-0.pid-" in probe.output_path.name
     for row in (dispatch, summary):
-        assert row["schema_version"] == 1
+        assert row["schema_version"] == 2
         assert row["run_id"] == "run-128"
         assert row["rank"] == 0
         assert row["world_size"] == 2
@@ -214,8 +218,10 @@ def test_cadence_uses_monotonic_dispatch_steps(tmp_path):
 def test_coverage_labels_do_not_claim_graph_replay_or_unsupported_paths():
     assert classify_dispatch_coverage(capturing=False, is_c8=False, pooling=False) == "eager_dispatch"
     assert classify_dispatch_coverage(capturing=True, is_c8=False, pooling=False) == "capture_dispatch_only_no_replay"
-    assert classify_dispatch_coverage(capturing=False, is_c8=True, pooling=False) == "unsupported_c8_eager"
-    assert classify_dispatch_coverage(capturing=True, is_c8=True, pooling=False) == "unsupported_c8_capture"
+    assert classify_dispatch_coverage(capturing=False, is_c8=True, pooling=False) == "c8_eager_dispatch"
+    assert classify_dispatch_coverage(capturing=True, is_c8=True, pooling=False) == (
+        "c8_capture_dispatch_only_no_replay"
+    )
     assert classify_dispatch_coverage(capturing=False, is_c8=False, pooling=True) == "unsupported_pooling"
 
 
@@ -253,12 +259,30 @@ def test_constructor_rejects_ambiguous_provenance(tmp_path):
         _probe(tmp_path / "bad-rank", rank=2, world_size=2)
 
 
+def test_c8_dispatch_records_actual_dtype_and_fallback_reason(tmp_path):
+    probe = _probe(tmp_path / "c8-dispatch")
+    _record(
+        probe,
+        operator_id="prefill_cache_hit_fia_tnd_dequantized_cache",
+        coverage="c8_eager_dispatch",
+        actual_cache_dtype="torch.int8",
+        fallback_reason="fia_tnd_requires_dense_kv",
+    )
+
+    dispatch, _ = _rows(probe)
+
+    assert dispatch["actual_cache_dtype"] == "torch.int8"
+    assert dispatch["fallback_reason"] == "fia_tnd_requires_dense_kv"
+    assert dispatch["schema_version"] == 2
+
+
 def test_runtime_integration_records_base_and_c8_and_flushes_on_shutdown():
     root = Path(__file__).resolve().parents[3]
     attention_source = (root / "vllm_ascend/attention/attention_v1.py").read_text()
     worker_source = (root / "vllm_ascend/worker/worker.py").read_text()
 
     assert attention_source.count("self._record_python_dispatch(") >= 2
-    assert 'operator_id="c8_attention_dispatch"' in attention_source
+    assert 'dispatch_path="decode_fia_bnsd_paged_int8"' in attention_source
+    assert 'fallback_reason="fia_tnd_requires_dense_kv"' in attention_source
     assert "capture_dispatch_only_no_replay" not in attention_source
     assert "shutdown_attention_path_probe()" in worker_source

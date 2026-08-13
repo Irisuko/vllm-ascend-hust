@@ -23,6 +23,12 @@ constexpr uint16_t RECV_SYNC_EVENT_ID = 10;
 constexpr uint32_t SELF_STATE_OFFSET = 256 * 1024;
 constexpr uint32_t STATE_OFFSET = 512;
 
+#ifdef HCCL_COMM
+#ifndef DISPATCH_FFN_COMBINE_BF16_A2
+#error "DISPATCH_FFN_COMBINE_BF16_A2 must be set by the target build"
+#endif
+#endif
+
 FORCE_INLINE_AICORE void AicSyncAll() {
     AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(8);
     AscendC::CrossCoreWaitFlag<0x0>(8);
@@ -84,16 +90,25 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
 class HcclShmem {
 public:
     #ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
+        #if DISPATCH_FFN_COMBINE_BF16_A2
+        __gm__ HcclA2CombineOpParam *WinContext_{nullptr};
+        #else
         __gm__ HcclOpResParamCustom *WinContext_{nullptr};
+        #endif
         Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
         AscendC::LocalTensor<int32_t> ub;
         FORCE_INLINE_AICORE
         HcclShmem(){
             auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+            #if DISPATCH_FFN_COMBINE_BF16_A2
+            WinContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
+            m_rank = WinContext_->rankId;
+            m_rankSize = WinContext_->rankNum;
+            #else
             WinContext_ = (__gm__ HcclOpResParamCustom *)contextGM0;
-
             m_rank = WinContext_->localUsrRankId;
             m_rankSize = WinContext_->rankSize;
+            #endif
             m_segmentSize = WinContext_->winSize;
         }
     #else
@@ -112,7 +127,11 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR operator() () const {   // No parameters: return pointer to local peermem
         #ifdef HCCL_COMM
+            #if DISPATCH_FFN_COMBINE_BF16_A2
+            return (GM_ADDR)WinContext_->windowsIn[m_rank];
+            #else
             return (GM_ADDR)(WinContext_->localWindowsIn);
+            #endif
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
         #endif
@@ -121,8 +140,12 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR operator() (int32_t index) const {  // With index parameter: return pointer to the base address of remote peermem
         #ifdef HCCL_COMM
+            #if DISPATCH_FFN_COMBINE_BF16_A2
+            return (GM_ADDR)WinContext_->windowsIn[index];
+            #else
             return (GM_ADDR)((index == m_rank) ? WinContext_->localWindowsIn :
                                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
+            #endif
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
         #endif
@@ -137,8 +160,12 @@ public:
             if (rankId < 0 || rankId >= m_rankSize) {
                 return nullptr;
             }
+            #if DISPATCH_FFN_COMBINE_BF16_A2
+            return (GM_ADDR)WinContext_->windowsIn[rankId] + offset;
+            #else
             return (GM_ADDR)((rankId == m_rank) ? WinContext_->localWindowsIn :
                                     ((HcclRankRelationResV2Custom *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
+            #endif
         #else
             return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
         #endif
