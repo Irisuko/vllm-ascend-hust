@@ -256,7 +256,7 @@ jobs:
 
   validate-hust-dual-editable:
     needs: lint-and-select-tests
-    if: ${{ needs.lint-and-select-tests.outputs.packaging_changed == 'true' && contains(github.event.pull_request.labels.*.name, 'e2e') }}
+    if: ${{ (needs.lint-and-select-tests.outputs.packaging_changed == 'true' || contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression')) && contains(github.event.pull_request.labels.*.name, 'e2e') }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
     env:

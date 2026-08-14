@@ -21,6 +21,12 @@ def test_pyramidkv_uses_pinned_hust_core_in_selected_ci() -> None:
     assert "run-pyramidkv-selected-tests:" in pr_workflow
     assert "vllm_repository: vLLM-HUST/vllm-hust" in pr_workflow
     assert "vllm-hust-pyramidkv.commit" in pr_workflow
+    assert "validate-hust-dual-editable:" in pr_workflow
+    assert (
+        "needs.lint-and-select-tests.outputs.packaging_changed == 'true' || "
+        "contains(needs.lint-and-select-tests.outputs.matched_modules, "
+        "'kv_cache_compression')"
+    ) in pr_workflow
 
 
 def test_pyramidkv_selective_test_module_is_complete() -> None:
