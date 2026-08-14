@@ -118,13 +118,6 @@ jobs:
       - run: echo "::add-matcher::$RUNNER_TEMP/markdownlint.json"
       - run: echo "::add-matcher::$RUNNER_TEMP/mypy.json"
 
-      - name: Checkout vllm-project/vllm repo
-        uses: actions/checkout@v7
-        with:
-          repository: vLLM-HUST/vllm-hust
-          path: ./vllm-empty
-          ref: ${{ steps.vllm.outputs.pyramidkv_core_commit }}
-
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -190,18 +183,6 @@ jobs:
           printf '  %s\n' "${changed_files[@]}"
           pre-commit run --files "${changed_files[@]}" --hook-stage manual --show-diff-on-failure
 
-      - name: Run mypy
-        if: steps.filter.outputs.python_src == 'true'
-        run: |
-          PYTHONPATH="$PYTHONPATH:$(pwd)/vllm-empty"
-          export PYTHONPATH
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          for python_version in "3.10" "3.11" "3.12"; do
-            echo "============================"
-            tools/mypy.sh 1 "$python_version"
-            echo "============================"
-          done
-
       - name: Validate test coverage config
         if: steps.selection-filter.outputs.test_selection == 'true' || steps.selection-filter.outputs.root_cmake == 'true'
         run: |
@@ -227,6 +208,60 @@ jobs:
             echo "test_groups=[]"
             echo "matched_modules="
           } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout verified vLLM for mypy
+        if: steps.filter.outputs.python_src == 'true' && !contains(steps.scope.outputs.matched_modules, 'kv_cache_compression')
+        uses: actions/checkout@v7
+        with:
+          repository: vllm-project/vllm
+          path: ./vllm-empty
+          ref: ${{ steps.vllm.outputs.main_commit }}
+
+      - name: Checkout paired vLLM-HUST for PyramidKV mypy
+        if: steps.filter.outputs.python_src == 'true' && contains(steps.scope.outputs.matched_modules, 'kv_cache_compression')
+        uses: actions/checkout@v7
+        with:
+          repository: vLLM-HUST/vllm-hust
+          path: ./vllm-empty
+          ref: ${{ steps.vllm.outputs.pyramidkv_core_commit }}
+
+      - name: Run mypy
+        if: steps.filter.outputs.python_src == 'true' && !contains(steps.scope.outputs.matched_modules, 'kv_cache_compression')
+        run: |
+          PYTHONPATH="$PYTHONPATH:$(pwd)/vllm-empty"
+          export PYTHONPATH
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          for python_version in "3.10" "3.11" "3.12"; do
+            echo "============================"
+            tools/mypy.sh 1 "$python_version"
+            echo "============================"
+          done
+
+      - name: Run paired-Core mypy for PyramidKV changes
+        if: steps.filter.outputs.python_src == 'true' && contains(steps.scope.outputs.matched_modules, 'kv_cache_compression')
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch origin ${{ github.base_ref }}
+          mapfile -t changed_python_files < <(
+            git diff --name-only --diff-filter=ACMRT \
+              origin/${{ github.base_ref }}...HEAD -- \
+              ':(glob)vllm_ascend/**/*.py'
+          )
+          if (( ${#changed_python_files[@]} == 0 )); then
+            echo "No changed vllm_ascend Python files to type-check."
+            exit 0
+          fi
+          printf 'Type-checking paired-Core files:\n'
+          printf '  %s\n' "${changed_python_files[@]}"
+          PYTHONPATH="$PYTHONPATH:$(pwd)/vllm-empty"
+          export PYTHONPATH
+          for python_version in "3.10" "3.11" "3.12"; do
+            echo "============================"
+            mypy --follow-imports skip --check-untyped-defs \
+              --python-version "$python_version" \
+              "${changed_python_files[@]}"
+            echo "============================"
+          done
 
   run-selected-tests:
     needs: lint-and-select-tests

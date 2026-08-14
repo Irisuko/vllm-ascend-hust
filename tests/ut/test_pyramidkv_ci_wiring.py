@@ -21,6 +21,14 @@ def test_pyramidkv_uses_pinned_hust_core_in_selected_ci() -> None:
     assert "run-pyramidkv-selected-tests:" in pr_workflow
     assert "vllm_repository: vLLM-HUST/vllm-hust" in pr_workflow
     assert "vllm-hust-pyramidkv.commit" in pr_workflow
+    assert "Checkout verified vLLM for mypy" in pr_workflow
+    assert "repository: vllm-project/vllm" in pr_workflow
+    assert "Checkout paired vLLM-HUST for PyramidKV mypy" in pr_workflow
+    assert "Run paired-Core mypy for PyramidKV changes" in pr_workflow
+    assert "changed_python_files" in pr_workflow
+    assert pr_workflow.index("Select tests based on changed files") < pr_workflow.index(
+        "Checkout paired vLLM-HUST for PyramidKV mypy"
+    )
     assert "validate-hust-dual-editable:" in pr_workflow
     assert (
         "needs.lint-and-select-tests.outputs.packaging_changed == 'true' || "
