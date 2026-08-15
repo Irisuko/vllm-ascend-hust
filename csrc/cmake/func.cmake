@@ -232,6 +232,8 @@ function(add_ops_info_target)
         set(OPS_INFO_JSON ${ASCEND_AUTOGEN_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)
     endif()
     set(CUSTOM_OPS_INFO_DIR ${CUSTOM_DIR}/op_impl/ai_core/tbe/config/${OPINFO_COMPUTE_UNIT})
+    # opc only recognizes the conventional name when loading custom OPP metadata.
+    set(CUSTOM_OPS_INFO_JSON ${CUSTOM_OPS_INFO_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)
 
     set(OPS_INFO_INI          ${base_aclnn_binary_dir}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.ini)
     set(OPS_INFO_INNER_INI    ${base_aclnn_binary_dir}/inner/aic-${OPINFO_COMPUTE_UNIT}-ops-info.ini)
@@ -243,12 +245,16 @@ function(add_ops_info_target)
             ${OPS_INFO_INNER_INI}
             ${OPS_INFO_EXCLUDE_INI}
             ${OPS_INFO_JSON}
-            COMMAND mkdir -p ${CUSTOM_OPS_INFO_DIR}
-            COMMAND cp -f ${OPS_INFO_JSON} ${CUSTOM_OPS_INFO_DIR}
+    )
+
+    add_custom_command(OUTPUT ${CUSTOM_OPS_INFO_JSON}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${CUSTOM_OPS_INFO_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OPS_INFO_JSON} ${CUSTOM_OPS_INFO_JSON}
+            DEPENDS ${OPS_INFO_JSON}
     )
 
     add_custom_target(${OPS_INFO_TARGET} ALL
-            DEPENDS ${OPS_INFO_JSON}
+            DEPENDS ${CUSTOM_OPS_INFO_JSON}
     )
 
     add_dependencies(${OPS_INFO_TARGET} opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
