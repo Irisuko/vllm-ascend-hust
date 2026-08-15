@@ -21,7 +21,7 @@ using namespace AscendC;
 using std::map;
 using std::string;
 namespace optiling {
-ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
+ge::graphStatus LightningIndexerVllmInfoParser::CheckRequiredInOutExistence() const
 {
     OPS_ERR_IF(opParamInfo_.query.shape == nullptr, OPS_LOG_E(opName_, "Shape of tensor query is nullptr"),
                return ge::GRAPH_FAILED);
@@ -43,7 +43,7 @@ ge::graphStatus LIInfoParser::CheckRequiredInOutExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::CheckRequiredAttrExistence() const
+ge::graphStatus LightningIndexerVllmInfoParser::CheckRequiredAttrExistence() const
 {
     OPS_ERR_IF(opParamInfo_.layOut == nullptr, OPS_LOG_E(opName_, "attr layout_query is nullptr"),
                return ge::GRAPH_FAILED);
@@ -60,7 +60,7 @@ ge::graphStatus LIInfoParser::CheckRequiredAttrExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::CheckRequiredParaExistence() const
+ge::graphStatus LightningIndexerVllmInfoParser::CheckRequiredParaExistence() const
 {
     if (CheckRequiredInOutExistence() != ge::GRAPH_SUCCESS || CheckRequiredAttrExistence() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -69,7 +69,7 @@ ge::graphStatus LIInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetOpName()
+ge::graphStatus LightningIndexerVllmInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
         OPS_LOG_E("LightningIndexer", "opName got from TilingContext is nullptr");
@@ -79,7 +79,7 @@ ge::graphStatus LIInfoParser::GetOpName()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetNpuInfo()
+ge::graphStatus LightningIndexerVllmInfoParser::GetNpuInfo()
 {
     platformInfo_ = context_->GetPlatformInfo();
     OPS_ERR_IF(platformInfo_ == nullptr, OPS_LOG_E(opName_, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
@@ -104,7 +104,7 @@ ge::graphStatus LIInfoParser::GetNpuInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void LIInfoParser::GetOptionalInputParaInfo()
+void LightningIndexerVllmInfoParser::GetOptionalInputParaInfo()
 {
     opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
     opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
@@ -114,7 +114,7 @@ void LIInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.blockTable.desc = context_->GetOptionalInputDesc(BLOCK_TABLE_INDEX);
 }
 
-void LIInfoParser::GetInputParaInfo()
+void LightningIndexerVllmInfoParser::GetInputParaInfo()
 {
     opParamInfo_.query.desc = context_->GetInputDesc(QUERY_INDEX);
     opParamInfo_.query.shape = context_->GetInputShape(QUERY_INDEX);
@@ -125,13 +125,13 @@ void LIInfoParser::GetInputParaInfo()
     GetOptionalInputParaInfo();
 }
 
-void LIInfoParser::GetOutputParaInfo()
+void LightningIndexerVllmInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attenOut.desc = context_->GetOutputDesc(LIGHTNING_INDEXER);
     opParamInfo_.attenOut.shape = context_->GetOutputShape(LIGHTNING_INDEXER);
 }
 
-ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
+ge::graphStatus LightningIndexerVllmInfoParser::GetAndCheckAttrParaInfo()
 {
     auto attrs = context_->GetAttrs();
     OPS_ERR_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
@@ -176,7 +176,7 @@ ge::graphStatus LIInfoParser::GetAndCheckAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetOpParaInfo()
+ge::graphStatus LightningIndexerVllmInfoParser::GetOpParaInfo()
 {
     GetInputParaInfo();
     GetOutputParaInfo();
@@ -186,7 +186,7 @@ ge::graphStatus LIInfoParser::GetOpParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
+ge::graphStatus LightningIndexerVllmInfoParser::GetAndCheckInOutDataType()
 {
     inputQType_ = opParamInfo_.query.desc->GetDataType();
     inputKType_ = opParamInfo_.key.desc->GetDataType();
@@ -209,12 +209,12 @@ ge::graphStatus LIInfoParser::GetAndCheckInOutDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetQueryKeyAndOutLayout()
+ge::graphStatus LightningIndexerVllmInfoParser::GetQueryKeyAndOutLayout()
 {
-    const map<string, DataLayout> layoutMap = {
-        {"BSND", DataLayout::BSND},
-        {"TND", DataLayout::TND},
-        {"PA_BSND", DataLayout::BnBsND}
+    const map<string, LightningIndexerVllmDataLayout> layoutMap = {
+        {"BSND", LightningIndexerVllmDataLayout::BSND},
+        {"TND", LightningIndexerVllmDataLayout::TND},
+        {"PA_BSND", LightningIndexerVllmDataLayout::BnBsND}
     };
 
     std::string layout(opParamInfo_.layOut);
@@ -232,9 +232,9 @@ ge::graphStatus LIInfoParser::GetQueryKeyAndOutLayout()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
+ge::graphStatus LightningIndexerVllmInfoParser::GetAndCheckOptionalInput()
 {
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == LightningIndexerVllmDataLayout::BnBsND) {
         OPS_ERR_IF(opParamInfo_.blockTable.tensor == nullptr,
                    OPS_LOG_E(opName_, "key layout only supported PA_BSND, input block_table must not be null"),
                    return ge::GRAPH_FAILED);
@@ -244,7 +244,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
             return ge::GRAPH_FAILED);
         OPS_ERR_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                    OPS_LOG_E(opName_, "input block_table data type only support int32"), return ge::GRAPH_FAILED);
-    } else if (kLayout_ == DataLayout::TND) {
+    } else if (kLayout_ == LightningIndexerVllmDataLayout::TND) {
         OPS_ERR_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
                    OPS_LOG_E(opName_, "when layout_key is TND, input actual_seq_lengths_key must not be null"),
                    return ge::GRAPH_FAILED);
@@ -257,7 +257,7 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                    opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32,
                OPS_LOG_E(opName_, "input actual_seq_lengths_key data type only support int32"),
                return ge::GRAPH_FAILED);
-    if (qLayout_ == DataLayout::TND) {
+    if (qLayout_ == LightningIndexerVllmDataLayout::TND) {
         OPS_ERR_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
                    OPS_LOG_E(opName_, "when layout_query is TND, input actual_seq_lengths_query must not be null"),
                    return ge::GRAPH_FAILED);
@@ -266,13 +266,13 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                    opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32,
                OPS_LOG_E(opName_, "input actual_seq_lengths_query data type only support int32"),
                return ge::GRAPH_FAILED);
-    OPS_ERR_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
+    OPS_ERR_IF(kLayout_ != LightningIndexerVllmDataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
                    OPS_LOG_E(opName_, "when key layout is not PA_BSND, input block_table must be null"),
                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::CheckShapeDim()
+ge::graphStatus LightningIndexerVllmInfoParser::CheckShapeDim()
 {
     OPS_ERR_IF((opParamInfo_.blockTable.tensor != nullptr) &&
                    (opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum() != DIM_NUM_TWO),
@@ -284,10 +284,10 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
     uint32_t outShapeDim = opParamInfo_.attenOut.shape->GetStorageShape().GetDimNum();
     uint32_t qExpectShapeDim = DIM_NUM_FOUR;
     uint32_t kExpectShapeDim = DIM_NUM_FOUR;
-    if (qLayout_ == DataLayout::TND) {
+    if (qLayout_ == LightningIndexerVllmDataLayout::TND) {
         qExpectShapeDim = DIM_NUM_THREE;
     }
-    if (kLayout_ == DataLayout::TND) {
+    if (kLayout_ == LightningIndexerVllmDataLayout::TND) {
         kExpectShapeDim = DIM_NUM_THREE;
     }
     OPS_ERR_IF(kShapeDim != kExpectShapeDim,
@@ -309,9 +309,9 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetN1Size()
+ge::graphStatus LightningIndexerVllmInfoParser::GetN1Size()
 {
-    if (qLayout_ == DataLayout::BSND) {
+    if (qLayout_ == LightningIndexerVllmDataLayout::BSND) {
         n1Size_ = static_cast<uint32_t>(opParamInfo_.query.shape->GetStorageShape().GetDim(DIM_IDX_TWO));
     } else {
         // TND
@@ -321,7 +321,7 @@ ge::graphStatus LIInfoParser::GetN1Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
+ge::graphStatus LightningIndexerVllmInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Tensor *tensor,
                                                   const std::string &actualSeqLenName)
 {
     size = static_cast<uint32_t>(tensor->GetShapeSize());
@@ -332,9 +332,9 @@ ge::graphStatus LIInfoParser::GetActualSeqLenSize(uint32_t &size, const gert::Te
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetAndCheckN2Size()
+ge::graphStatus LightningIndexerVllmInfoParser::GetAndCheckN2Size()
 {
-    uint32_t n2Index = (kLayout_ == DataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
+    uint32_t n2Index = (kLayout_ == LightningIndexerVllmDataLayout::TND) ? DIM_IDX_ONE : DIM_IDX_TWO;
     n2Size_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(n2Index));
     OPS_LOG_I(context_->GetNodeName(), "n2Size_ is %d", n2Size_);
     OPS_ERR_IF(n2Size_ != 1, OPS_LOG_E(opName_, "key shape[%u] is numhead, only support 1.", n2Index),
@@ -342,7 +342,7 @@ ge::graphStatus LIInfoParser::GetAndCheckN2Size()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetGSize()
+ge::graphStatus LightningIndexerVllmInfoParser::GetGSize()
 {
     if (n1Size_ % n2Size_ != 0) {
         OPS_LOG_E(opName_, "input query's head_num %u can not be a multiple of key's head_num %u.", n1Size_, n2Size_);
@@ -355,9 +355,9 @@ ge::graphStatus LIInfoParser::GetGSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetBatchSize()
+ge::graphStatus LightningIndexerVllmInfoParser::GetBatchSize()
 {
-    if ((qLayout_ == DataLayout::TND)) {
+    if ((qLayout_ == LightningIndexerVllmDataLayout::TND)) {
         return GetActualSeqLenSize(bSize_, opParamInfo_.actualSeqLengthsQ.tensor, "input actual_seq_lengths_query");
     } else { // BSND
         bSize_ = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
@@ -365,15 +365,15 @@ ge::graphStatus LIInfoParser::GetBatchSize()
     }
 }
 
-ge::graphStatus LIInfoParser::GetHeadDim()
+ge::graphStatus LightningIndexerVllmInfoParser::GetHeadDim()
 {
     uint32_t dIndex = DIM_IDX_TWO;
     switch (qLayout_) {
-        case DataLayout::TND:
+        case LightningIndexerVllmDataLayout::TND:
             // TND: [Total, N, D] -> D is the 2nd dimension
             dIndex = DIM_IDX_TWO;
             break;
-        case DataLayout::BSND:
+        case LightningIndexerVllmDataLayout::BSND:
             // BSND: [Batch, SeqLen, N, D] -> D is the 3rd dimension
             dIndex = DIM_IDX_THREE;
             break;
@@ -388,15 +388,15 @@ ge::graphStatus LIInfoParser::GetHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetS1Size()
+ge::graphStatus LightningIndexerVllmInfoParser::GetS1Size()
 {
-    if (qLayout_ == DataLayout::BSND) {
+    if (qLayout_ == LightningIndexerVllmDataLayout::BSND) {
         s1Size_ = opParamInfo_.query.shape->GetStorageShape().GetDim(1);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
+ge::graphStatus LightningIndexerVllmInfoParser::GetAndCheckBlockSize()
 {
     blockSize_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(1));
     OPS_LOG_I(context_->GetNodeName(), "blockSize_ is %d", blockSize_);
@@ -408,7 +408,7 @@ ge::graphStatus LIInfoParser::GetAndCheckBlockSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::CheckBlockCount()
+ge::graphStatus LightningIndexerVllmInfoParser::CheckBlockCount()
 {
     int32_t blockCount_ = static_cast<uint32_t>(opParamInfo_.key.shape->GetStorageShape().GetDim(0));
     OPS_ERR_IF((blockCount_ == 0),
@@ -417,7 +417,7 @@ ge::graphStatus LIInfoParser::CheckBlockCount()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetS2SizeForPageAttention()
+ge::graphStatus LightningIndexerVllmInfoParser::GetS2SizeForPageAttention()
 {
     if (GetAndCheckBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -432,22 +432,22 @@ ge::graphStatus LIInfoParser::GetS2SizeForPageAttention()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::GetS2Size()
+ge::graphStatus LightningIndexerVllmInfoParser::GetS2Size()
 {
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == LightningIndexerVllmDataLayout::BnBsND) {
         return GetS2SizeForPageAttention();
-    } else if (kLayout_ == DataLayout::TND) {
+    } else if (kLayout_ == LightningIndexerVllmDataLayout::TND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
-    } else if (kLayout_ == DataLayout::BSND) {
+    } else if (kLayout_ == LightningIndexerVllmDataLayout::BSND) {
         s2Size_ = opParamInfo_.key.shape->GetStorageShape().GetDim(1);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::ValidateInputShapesMatchQTnd()
+ge::graphStatus LightningIndexerVllmInfoParser::ValidateInputShapesMatchQTnd()
 {
     // -----------------------check BatchSize-------------------
-    if (kLayout_ == DataLayout::TND) {
+    if (kLayout_ == LightningIndexerVllmDataLayout::TND) {
         OPS_ERR_IF(
         (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_),
             OPS_LOG_E(opName_,
@@ -476,17 +476,17 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQTnd()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::ValidateInputShapesMatchQBsnd()
+ge::graphStatus LightningIndexerVllmInfoParser::ValidateInputShapesMatchQBsnd()
 {
     // -----------------------check BatchSize-------------------
-    if (kLayout_ == DataLayout::BnBsND) {
+    if (kLayout_ == LightningIndexerVllmDataLayout::BnBsND) {
         OPS_ERR_IF((opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_),
                 OPS_LOG_E(opName_, "BSND case input query, actual_seq_lengths_key, block_table dim 0 are %u, %ld, %ld respectively, they must be same.",
                     bSize_, opParamInfo_.actualSeqLengths.tensor->GetShapeSize(),
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
                 return ge::GRAPH_FAILED);
-    } else if (kLayout_ == DataLayout::BSND) {
+    } else if (kLayout_ == LightningIndexerVllmDataLayout::BSND) {
         OPS_ERR_IF(opParamInfo_.key.shape->GetStorageShape().GetDim(0) != bSize_,
                 OPS_LOG_E(opName_, "BSND case input query, key dim 0 are %u, %ld respectively, they must be same.",
                     bSize_, opParamInfo_.key.shape->GetStorageShape().GetDim(0)),
@@ -518,11 +518,11 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQBsnd()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
+ge::graphStatus LightningIndexerVllmInfoParser::ValidateInputShapesMatch()
 {
     uint32_t queryWeightsN1Dim = 1;
     uint32_t outN2Dim = 1;
-    if (qLayout_ == DataLayout::TND) {
+    if (qLayout_ == LightningIndexerVllmDataLayout::TND) {
         if (ValidateInputShapesMatchQTnd() != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -537,7 +537,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     OPS_ERR_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
                OPS_LOG_E(opName_, "input query, weight shape dim N1 must be same."), return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
-    uint32_t keyDDim = kLayout_ == DataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
+    uint32_t keyDDim = kLayout_ == LightningIndexerVllmDataLayout::TND ? DIM_IDX_TWO : DIM_IDX_THREE;
     OPS_ERR_IF((opParamInfo_.key.shape->GetStorageShape().GetDim(keyDDim) != headDim_),
                OPS_LOG_E(opName_, "input query, key shape last dim must be same."), return ge::GRAPH_FAILED);
     // -----------------------check N2-------------------
@@ -552,7 +552,7 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatch()
     return ge::GRAPH_SUCCESS;
 }
 
-void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
+void LightningIndexerVllmInfoParser::GenerateInfo(LightningIndexerVllmTilingInfo &liInfo)
 {
     liInfo.opName = opName_;
     liInfo.platformInfo = platformInfo_;
@@ -582,7 +582,7 @@ void LIInfoParser::GenerateInfo(LITilingInfo &liInfo)
     liInfo.inputKLayout = kLayout_;
 }
 
-ge::graphStatus LIInfoParser::ParseAndCheck(LITilingInfo &liInfo)
+ge::graphStatus LightningIndexerVllmInfoParser::ParseAndCheck(LightningIndexerVllmTilingInfo &liInfo)
 {
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
         ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
@@ -617,7 +617,7 @@ static ge::graphStatus TilingPrepareForLightningIndexer(gert::TilingParseContext
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
+ge::graphStatus LightningIndexerVllmTiling::DoTiling(LightningIndexerVllmTilingInfo *tilingInfo)
 {
     // -------------set blockdim-----------------
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(tilingInfo->platformInfo);
@@ -674,21 +674,21 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingForLightningIndexer(gert::TilingContext *context)
+ge::graphStatus TilingForLightningIndexerVllm(gert::TilingContext *context)
 {
     OPS_ERR_IF(context == nullptr, OPS_REPORT_VECTOR_INNER_ERR("LightningIndexer", "Tiling context is null."),
                return ge::GRAPH_FAILED);
-    LITilingInfo liInfo;
-    LIInfoParser LIInfoParser(context);
-    if (LIInfoParser.ParseAndCheck(liInfo) != ge::GRAPH_SUCCESS) {
+    LightningIndexerVllmTilingInfo liInfo;
+    LightningIndexerVllmInfoParser infoParser(context);
+    if (infoParser.ParseAndCheck(liInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    LightningIndexerTiling liTiling(context);
+    LightningIndexerVllmTiling liTiling(context);
     return liTiling.DoTiling(&liInfo);
 }
 
 IMPL_OP_OPTILING(LightningIndexerVllm)
-    .Tiling(TilingForLightningIndexer)
-    .TilingParse<LICompileInfo>(TilingPrepareForLightningIndexer);
+    .Tiling(TilingForLightningIndexerVllm)
+    .TilingParse<LightningIndexerVllmCompileInfo>(TilingPrepareForLightningIndexer);
 
 } // namespace optiling
