@@ -77,6 +77,7 @@ jobs:
       env:
         VLLM_LOGGING_LEVEL: ERROR
         VLLM_USE_MODELSCOPE: True
+        VLLM_HUST_BENCHMARK_TEST_REPO: ${{ github.workspace }}/vllm-hust-benchmark
         HF_HUB_OFFLINE: 1
         ASCEND_RT_VISIBLE_DEVICES: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '0' || '' }}
         MAX_JOBS: 4
@@ -94,6 +95,15 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
           submodules: recursive
+
+      - name: Checkout benchmark admission contract
+        if: ${{ contains(matrix.group.tests, 'test_ascend_benchmark_perfgate_workflow_static.py') }}
+        uses: actions/checkout@v6.0.1
+        with:
+          repository: vLLM-HUST/vllm-hust-benchmark
+          ref: main
+          path: vllm-hust-benchmark
+          persist-credentials: false
 
       - name: Validate Ascend container runtime
         if: ${{ matrix.group.npu_type != 'cpu' }}
@@ -139,16 +149,16 @@ jobs:
         run: |
           CSRC_HASH=$(find ./csrc ./setup.py ./CMakeLists.txt ./cmake \
             -type f -not -path '*/.*' | sort | xargs sha256sum | sha256sum | awk '{print $1}')
-          echo "CSRC_HASH=$CSRC_HASH" >> $GITHUB_OUTPUT
+          echo "CSRC_HASH=$CSRC_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Get architecture
         id: get_arch
         run: |
           ARCH=$(uname -m)
           case "$ARCH" in
-            x86_64) echo "arch=X64" >> $GITHUB_OUTPUT ;;
-            aarch64) echo "arch=ARM64" >> $GITHUB_OUTPUT ;;
-            *) echo "arch=$ARCH" >> $GITHUB_OUTPUT ;;
+            x86_64) echo "arch=X64" >> "$GITHUB_OUTPUT" ;;
+            aarch64) echo "arch=ARM64" >> "$GITHUB_OUTPUT" ;;
+            *) echo "arch=$ARCH" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - uses: dorny/paths-filter@v4

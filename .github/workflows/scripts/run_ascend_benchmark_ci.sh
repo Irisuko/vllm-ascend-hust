@@ -62,6 +62,7 @@ PUBLISH_TO_HF=${PUBLISH_TO_HF:-0}
 PUBLISH_TO_BENCHMARK_REPO=${PUBLISH_TO_BENCHMARK_REPO:-0}
 HF_REPO_ID=${HF_REPO_ID:-}
 VLLM_HUST_BENCHMARK_REF=${VLLM_HUST_BENCHMARK_REF:-}
+VLLM_HUST_REF=${VLLM_HUST_REF:?VLLM_HUST_REF must be set}
 ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE=${ASCEND_BENCHMARK_CLEANUP_VALIDATION_MODE:-normal}
 ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES=${ASCEND_BENCHMARK_CLEANUP_VALIDATION_TIMEOUT_MINUTES:-60}
 
@@ -190,12 +191,12 @@ DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER=${DEFAULT_SYSTEM_ASCEND_BENCHMARK_RO
 REPO_ASCEND_BENCHMARK_ROOT_HELPER=$VLLM_ASCEND_HUST_REPO/.github/workflows/scripts/run_ascend_benchmark_root_helper.sh
 REPO_ASCEND_BENCHMARK_ROOT_HELPER_INSTALL_SCRIPT=$VLLM_ASCEND_HUST_REPO/scripts/install_ascend_benchmark_root_helper.sh
 BENCHMARK_DIAGNOSTICS_FILE=${BENCHMARK_DIAGNOSTICS_FILE:-$RESULT_ROOT/benchmark_diagnostics.md}
-if [[ -n "${ASCEND_BENCHMARK_ROOT_HELPER:-}" ]]; then
-  ASCEND_BENCHMARK_ROOT_HELPER=$ASCEND_BENCHMARK_ROOT_HELPER
-elif [[ -x "$DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER" ]]; then
-  ASCEND_BENCHMARK_ROOT_HELPER=$DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER
-else
-  ASCEND_BENCHMARK_ROOT_HELPER=$REPO_ASCEND_BENCHMARK_ROOT_HELPER
+if [[ -z "${ASCEND_BENCHMARK_ROOT_HELPER:-}" ]]; then
+  if [[ -x "$DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER" ]]; then
+    ASCEND_BENCHMARK_ROOT_HELPER=$DEFAULT_SYSTEM_ASCEND_BENCHMARK_ROOT_HELPER
+  else
+    ASCEND_BENCHMARK_ROOT_HELPER=$REPO_ASCEND_BENCHMARK_ROOT_HELPER
+  fi
 fi
 
 if [[ "$ASCEND_BENCHMARK_USE_SUDO" == "auto" ]]; then
@@ -389,7 +390,7 @@ export_sudo_preserved_env_vars() {
 
   for var_name in "${SUDO_PRESERVE_ENV_VARS[@]}"; do
     if [[ -n "${!var_name+x}" ]]; then
-      export "$var_name"
+      export "${var_name?}"
     fi
   done
 }
@@ -1076,6 +1077,7 @@ PY
 
 sync_benchmark_publication_to_github() {
   local publisher_script=${BENCHMARK_PUBLICATION_SYNC_SCRIPT:-$VLLM_ASCEND_HUST_REPO/.github/workflows/scripts/sync_benchmark_snapshots_to_github.sh}
+  local current_run_id=$RUN_ID
 
   if [[ "$PUBLISH_TO_BENCHMARK_REPO" != "1" ]]; then
     return 0
@@ -1095,9 +1097,69 @@ sync_benchmark_publication_to_github() {
   BENCHMARK_REPO_SLUG="${BENCHMARK_REPO_SLUG:-vLLM-HUST/vllm-hust-benchmark}" \
   BENCHMARK_REPO_GH_TOKEN="${BENCHMARK_REPO_GH_TOKEN:-}" \
   BENCHMARK_REPO_SSH_KEY="${BENCHMARK_REPO_SSH_KEY:-}" \
-  SNAPSHOT_COMMIT_MESSAGE="chore(data): sync vllm-ascend benchmark publication $RUN_ID" \
-  RUN_ID="$RUN_ID" \
+  SNAPSHOT_COMMIT_MESSAGE="chore(data): sync vllm-ascend benchmark publication $current_run_id" \
+  RUN_ID="$current_run_id" \
   "$publisher_script"
+}
+
+finalize_submission_artifact() {
+  local collector_script="$VLLM_HUST_BENCHMARK_REPO/scripts/collect-run-artifact.sh"
+  local validator_script="$VLLM_HUST_BENCHMARK_REPO/scripts/validate-run-artifact.sh"
+  local current_vllm_hust_commit
+  local current_plugin_commit
+  local submission_raw_result="$SUBMISSION_DIR/raw_benchmark_result.json"
+  local required_file
+  local validation_status
+
+  rm -f "$SUBMISSION_DIR/STATUS" "$SUBMISSION_DIR/checksums.sha256"
+
+  if [[ ! -f "$collector_script" ]]; then
+    echo "submission evidence collector is missing: $collector_script" >&2
+    return 2
+  fi
+  if [[ ! -f "$validator_script" ]]; then
+    echo "submission evidence validator is missing: $validator_script" >&2
+    return 2
+  fi
+  if [[ ! -f "$RAW_RESULT_FILE" ]]; then
+    echo "submission raw benchmark evidence is missing: $RAW_RESULT_FILE" >&2
+    return 2
+  fi
+
+  cp "$RAW_RESULT_FILE" "$submission_raw_result" || return $?
+
+  current_vllm_hust_commit=$(git -C "$VLLM_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+  current_plugin_commit=$(git -C "$VLLM_ASCEND_HUST_REPO" rev-parse HEAD 2>/dev/null || true)
+
+  CURRENT_RUNTIME_PYTHON="$PYTHON_BIN" \
+  CURRENT_VLLM_HUST_REPO="$VLLM_HUST_REPO" \
+  CURRENT_VLLM_ASCEND_HUST_REPO="$VLLM_ASCEND_HUST_REPO" \
+  CURRENT_GIT_COMMIT="$current_vllm_hust_commit" \
+  CURRENT_PLUGIN_GIT_COMMIT="$current_plugin_commit" \
+    bash "$collector_script" "$SUBMISSION_DIR" || return $?
+
+  for required_file in \
+    leaderboard_manifest.json \
+    run_leaderboard.json \
+    raw_benchmark_result.json \
+    env-manifest.json \
+    pip-packages.json \
+    checksums.sha256 \
+    STATUS; do
+    if [[ ! -f "$SUBMISSION_DIR/$required_file" ]]; then
+      echo "submission evidence collector did not produce $required_file: $SUBMISSION_DIR" >&2
+      printf 'FAILED: incomplete submission evidence\n' >"$SUBMISSION_DIR/STATUS"
+      return 2
+    fi
+  done
+
+  if bash "$validator_script" "$SUBMISSION_DIR"; then
+    return 0
+  else
+    validation_status=$?
+    printf 'FAILED: submission admission validation failed\n' >"$SUBMISSION_DIR/STATUS"
+    return "$validation_status"
+  fi
 }
 
 allocate_local_port() {
@@ -1689,7 +1751,11 @@ PY
     --submissions-dir "$SUBMISSIONS_ROOT"
 fi
 
-printf 'OK\n' > "$SUBMISSION_DIR/STATUS"
+finalize_submission_artifact
+if [[ ! -f "$SUBMISSION_DIR/STATUS" ]] || [[ "$(cat "$SUBMISSION_DIR/STATUS")" != "OK" ]]; then
+  echo "submission evidence collector did not finalize STATUS=OK: $SUBMISSION_DIR" >&2
+  exit 2
+fi
 
 if [[ "$PUBLISH_TO_BENCHMARK_REPO" == "1" ]]; then
   sync_benchmark_publication_to_github
