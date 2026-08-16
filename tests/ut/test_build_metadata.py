@@ -32,8 +32,7 @@ def test_custom_op_metadata_uses_opc_discovery_filename():
     build_functions = (root / "csrc/cmake/func.cmake").read_text()
 
     assert (
-        "set(CUSTOM_OPS_INFO_JSON "
-        "${CUSTOM_OPS_INFO_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)" in build_functions
+        "set(CUSTOM_OPS_INFO_JSON ${CUSTOM_OPS_INFO_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)" in build_functions
     )
     assert "copy_if_different ${OPS_INFO_JSON} ${CUSTOM_OPS_INFO_JSON}" in build_functions
     assert "DEPENDS ${CUSTOM_OPS_INFO_JSON}" in build_functions
