@@ -11,6 +11,7 @@ that repository's Hugging Face patches, CUDA, Triton, or custom kernels.
 from __future__ import annotations
 
 import math
+import time
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -23,6 +24,12 @@ from vllm.v1.kv_cache_compression import (
     KVCacheCompressionCompatibility,
     KVCacheCompressionPlan,
     KVCacheCompressionRuntimeSpec,
+)
+
+from vllm_ascend.kv_cache_compression.lmcache_compat import (
+    KV_TRANSFER_NONE,
+    LMCache_LOCAL_BLEND,
+    classify_lmcache_compatibility,
 )
 
 if TYPE_CHECKING:
@@ -187,7 +194,11 @@ class PyramidKVCapabilityContext:
     chunked_prefill: bool
     sliding_window: bool
     speculative_decoding: bool
-    kv_transfer: bool
+    kv_transfer_mode: str
+    kv_connector: str | None
+    kv_role: str | None
+    lmcache_use_layerwise: bool
+    lmcache_enable_blending: bool
     kv_offload: bool
     cache_dtype: str
     tensor_parallel_size: int
@@ -1297,7 +1308,9 @@ class PyramidKVAscendProvider:
                         f"{tuple(sorted(completed))}, expected all "
                         f"{expected_layer_count} layers"
                     )
+        compression_started = time.perf_counter()
         self._compact_deferred_prefills(view)
+        compression_ms = (time.perf_counter() - compression_started) * 1000
 
         plans: list[KVCacheCompressionPlan] = []
         for request in view.requests:
@@ -1315,7 +1328,14 @@ class PyramidKVAscendProvider:
                     }
                     state.prefill_query_tail = None
                     state.prefill_query_tail_length = 0
-                    plans.append(self.finalize_plan(request.request_id, layer_names, schema_version))
+                    plans.append(
+                        self.finalize_plan(
+                            request.request_id,
+                            layer_names,
+                            schema_version,
+                            compression_ms=compression_ms,
+                        )
+                    )
                     logger.info(
                         "Finalized PyramidKV prefill compression: request_id=%s "
                         "semantic_tokens=%d physical_tokens=%d "
@@ -1467,6 +1487,19 @@ class PyramidKVAscendProvider:
         """Inspect the initialized worker without allocating a KV tensor."""
         context = _capability_context_from_worker(worker)
         report = self.compatibility_report(core_config, context, provider_factory)
+        logger.info(
+            "PyramidKV compatibility: connector=%s role=%s "
+            "use_layerwise=%s enable_blending=%s kv_transfer_mode=%s "
+            "provider_config=%s supported=%s reasons=%s",
+            context.kv_connector,
+            context.kv_role,
+            context.lmcache_use_layerwise,
+            context.lmcache_enable_blending,
+            context.kv_transfer_mode,
+            self.config,
+            report.supported,
+            report.reasons,
+        )
         if report.supported:
             self.prefix_caching = context.prefix_caching
             model_profile = _SUPPORTED_MODEL_PROFILES[context.model_architecture]
@@ -1596,7 +1629,11 @@ class PyramidKVAscendProvider:
             "sliding window/chunked attention is unsupported",
         )
         require(not context.speculative_decoding, "speculative decoding is unsupported")
-        require(not context.kv_transfer, "KV transfer is unsupported")
+        require(
+            context.kv_transfer_mode in {KV_TRANSFER_NONE, LMCache_LOCAL_BLEND},
+            "KV transfer mode is unsupported; only local LMCache CacheBlend "
+            f"is allowed, got {context.kv_transfer_mode!r}",
+        )
         require(not context.kv_offload, "KV offload is unsupported")
         require(
             context.cache_dtype in {"auto", "bfloat16", "torch.bfloat16"},
@@ -1671,6 +1708,7 @@ class PyramidKVAscendProvider:
         request_id: str,
         expected_layer_names: tuple[str, ...],
         schema_version: int,
+        compression_ms: float = 0.0,
     ) -> KVCacheCompressionPlan:
         state = self._requests[request_id]
         if state.plan_emitted:
@@ -1689,6 +1727,7 @@ class PyramidKVAscendProvider:
             physical_num_tokens=max(length for _, length in per_layer),
             per_layer_physical_num_tokens=per_layer,
             expected_block_ids=state.expected_block_ids,
+            compression_ms=compression_ms,
         )
         state.plan_emitted = True
         return plan
@@ -1809,6 +1848,7 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
     compilation_config = worker.vllm_config.compilation_config
     configured_cudagraph_mode = getattr(compilation_config, "cudagraph_mode", "")
     cudagraph_mode = str(getattr(configured_cudagraph_mode, "name", configured_cudagraph_mode))
+    lmcache_compatibility = classify_lmcache_compatibility(worker.vllm_config)
 
     return PyramidKVCapabilityContext(
         platform=worker.current_platform.device_type,
@@ -1836,7 +1876,11 @@ def _capability_context_from_worker(worker: Any) -> PyramidKVCapabilityContext:
         chunked_prefill=bool(scheduler_config.enable_chunked_prefill),
         sliding_window=sliding_window,
         speculative_decoding=worker.vllm_config.speculative_config is not None,
-        kv_transfer=worker.vllm_config.kv_transfer_config is not None,
+        kv_transfer_mode=lmcache_compatibility.mode,
+        kv_connector=lmcache_compatibility.connector,
+        kv_role=lmcache_compatibility.role,
+        lmcache_use_layerwise=lmcache_compatibility.use_layerwise,
+        lmcache_enable_blending=lmcache_compatibility.enable_blending,
         kv_offload=getattr(cache_config, "kv_offloading_size", None) is not None,
         cache_dtype=str(worker.cache_dtype),
         tensor_parallel_size=parallel_config.tensor_parallel_size,

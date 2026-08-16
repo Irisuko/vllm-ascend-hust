@@ -68,6 +68,9 @@ from vllm_ascend.cpu_binding import bind_cpus
 from vllm_ascend.device_allocator.camem import CaMemAllocator
 from vllm_ascend.device_allocator.sleep_mem_optimized import SleepWakeupManager
 from vllm_ascend.distributed.parallel_state import init_ascend_model_parallel
+from vllm_ascend.kv_cache_compression.lmcache_compat import (
+    register_lmcache_blend_model,
+)
 from vllm_ascend.ops.triton.triton_utils import init_device_properties_triton
 from vllm_ascend.profiler.torch_npu_profiler import TorchNPUProfilerWrapper
 from vllm_ascend.utils import (
@@ -944,6 +947,11 @@ class NPUWorker(WorkerBase):
 
         with context, set_current_vllm_config(self.vllm_config):
             self.model_runner.load_model()
+
+        register_lmcache_blend_model(
+            self.vllm_config,
+            self.model_runner.get_model(),
+        )
 
         if self.vllm_config.weight_transfer_config is not None:
             from vllm.distributed.weight_transfer.factory import (

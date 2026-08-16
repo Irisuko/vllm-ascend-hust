@@ -73,7 +73,11 @@ def _context(**updates) -> PyramidKVCapabilityContext:
         "chunked_prefill": False,
         "sliding_window": False,
         "speculative_decoding": False,
-        "kv_transfer": False,
+        "kv_transfer_mode": "none",
+        "kv_connector": None,
+        "kv_role": None,
+        "lmcache_use_layerwise": False,
+        "lmcache_enable_blending": False,
         "kv_offload": False,
         "cache_dtype": "auto",
         "tensor_parallel_size": 1,
@@ -1104,6 +1108,35 @@ def test_async_scheduling_is_supported_without_relaxing_other_guards() -> None:
     assert supported.reasons == ()
     assert not rejected.supported
     assert rejected.reasons == ("balance scheduling is unsupported",)
+
+
+def test_local_lmcache_cacheblend_is_the_only_supported_transfer_mode() -> None:
+    provider = PyramidKVAscendProvider(_config())
+
+    local_blend = provider.compatibility_report(
+        _core_config(),
+        _context(
+            kv_transfer_mode="lmcache_local_blend",
+            kv_connector="LMCacheAscendConnectorV1Dynamic",
+            kv_role="kv_both",
+            lmcache_use_layerwise=True,
+            lmcache_enable_blending=True,
+        ),
+        "registry:get",
+    )
+    unsupported = provider.compatibility_report(
+        _core_config(),
+        _context(
+            kv_transfer_mode="unsupported",
+            kv_connector="OtherConnector",
+            kv_role="kv_consumer",
+        ),
+        "registry:get",
+    )
+
+    assert local_blend.supported
+    assert not unsupported.supported
+    assert "only local LMCache CacheBlend" in unsupported.reasons[0]
 
 
 def test_prefix_caching_requires_matching_128_token_hash_blocks() -> None:
