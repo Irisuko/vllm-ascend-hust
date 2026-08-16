@@ -12,6 +12,7 @@ from vllm_ascend.ascend_forward_context import MoECommType, override_mrv2_in_pro
 from vllm_ascend.platform import (
     NPUPlatform,
     _ensure_ascend_compilation_config_dict,
+    _resolve_npu_alloc_conf,
     _sync_npugraph_ex_to_additional_config,
 )
 from vllm_ascend.utils import (
@@ -949,3 +950,54 @@ class TestNPUPlatform(TestBase):
             self.platform.get_static_graph_wrapper_cls(),
             "vllm_ascend.compilation.acl_graph.ACLGraphWrapper",
         )
+
+
+class TestResolveNpuAllocConf:
+    """Direct unit tests for the expandable_segments / KV-transfer logic."""
+
+    @staticmethod
+    def _kv_config(kv_connector: str | None):
+        cfg = MagicMock()
+        cfg.kv_connector = kv_connector
+        return cfg
+
+    def test_no_env_no_kv_transfer_defaults_true(self, monkeypatch):
+        monkeypatch.delenv("PYTORCH_NPU_ALLOC_CONF", raising=False)
+        assert _resolve_npu_alloc_conf(None) == "expandable_segments:True"
+
+    def test_no_env_no_kv_transfer_empty_connector_defaults_true(self, monkeypatch):
+        monkeypatch.delenv("PYTORCH_NPU_ALLOC_CONF", raising=False)
+        assert _resolve_npu_alloc_conf(self._kv_config(None)) == "expandable_segments:True"
+
+    def test_user_config_no_kv_transfer_appends_true(self, monkeypatch):
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "page_size:1g")
+        assert _resolve_npu_alloc_conf(None) == "page_size:1g,expandable_segments:True"
+
+    def test_user_config_explicit_true_not_duplicated(self, monkeypatch):
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "expandable_segments:True")
+        assert _resolve_npu_alloc_conf(None) == "expandable_segments:True"
+
+    def test_user_config_max_split_size_mb_does_not_append_true(self, monkeypatch):
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "max_split_size_mb:512")
+        assert _resolve_npu_alloc_conf(None) == "max_split_size_mb:512"
+
+    def test_no_env_kv_transfer_defaults_false(self, monkeypatch):
+        monkeypatch.delenv("PYTORCH_NPU_ALLOC_CONF", raising=False)
+        assert _resolve_npu_alloc_conf(self._kv_config("MooncakeConnector")) == "expandable_segments:False"
+
+    def test_user_config_kv_transfer_appends_false(self, monkeypatch):
+        """Regression: user-set keys must still force-expandable_segments:False
+        when KV transfer is enabled (previously only the fully-unset default
+        was honored)."""
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "page_size:1g")
+        assert _resolve_npu_alloc_conf(self._kv_config("MooncakeConnector")) == "page_size:1g,expandable_segments:False"
+
+    def test_user_config_explicit_false_kv_transfer_not_duplicated(self, monkeypatch):
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "expandable_segments:False")
+        assert _resolve_npu_alloc_conf(self._kv_config("MooncakeConnector")) == "expandable_segments:False"
+
+    def test_user_config_explicit_true_kv_transfer_respected(self, monkeypatch):
+        """User's explicit True wins (they take responsibility for the
+        HCCL IPC export failure)."""
+        monkeypatch.setenv("PYTORCH_NPU_ALLOC_CONF", "expandable_segments:True")
+        assert _resolve_npu_alloc_conf(self._kv_config("MooncakeConnector")) == "expandable_segments:True"

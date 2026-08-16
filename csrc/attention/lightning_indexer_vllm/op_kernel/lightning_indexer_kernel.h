@@ -56,7 +56,7 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                const LITilingData *__restrict tiling, TPipe *tPipe);
+                                const LightningIndexerVllmTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     using Q_T = typename LIT::queryType;
@@ -117,7 +117,7 @@ protected:
     LICommon::SplitCoreInfo splitCoreInfo{};
 
     // ================================Init functions==================================
-    __aicore__ inline void InitTilingData(const LITilingData *__restrict tilingData);
+    __aicore__ inline void InitTilingData(const LightningIndexerVllmTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths);
     // ================================Split Core================================
@@ -141,7 +141,7 @@ protected:
 };
 
 template <typename LIT>
-__aicore__ inline void LIPreload<LIT>::InitTilingData(const LITilingData *__restrict tilingData)
+__aicore__ inline void LIPreload<LIT>::InitTilingData(const LightningIndexerVllmTilingData *__restrict tilingData)
 {
     usedCoreNum = tilingData->usedCoreNum;
     constInfo.batchSize = tilingData->bSize;
@@ -364,7 +364,7 @@ template <typename LIT>
 __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                             __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
                                             __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices,
-                                            __gm__ uint8_t *workspace, const LITilingData *__restrict tiling,
+                                            __gm__ uint8_t *workspace, const LightningIndexerVllmTilingData *__restrict tiling,
                                             TPipe *tPipe)
 {
     if ASCEND_IS_AIV {

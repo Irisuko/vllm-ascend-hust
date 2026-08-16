@@ -19,7 +19,25 @@ BENCHMARK_REPO_SLUG=${BENCHMARK_REPO_SLUG:-vLLM-HUST/vllm-hust-benchmark}
 BENCHMARK_REPO_GH_TOKEN=${BENCHMARK_REPO_GH_TOKEN:-}
 BENCHMARK_REPO_SSH_KEY=${BENCHMARK_REPO_SSH_KEY:-}
 
-required_submission_files=(leaderboard_manifest.json run_leaderboard.json STATUS)
+required_submission_files=(
+  leaderboard_manifest.json
+  run_leaderboard.json
+  raw_benchmark_result.json
+  env-manifest.json
+  pip-packages.json
+  checksums.sha256
+  STATUS
+)
+optional_submission_files=(
+  measurement.json
+  perfgate-provenance.json
+)
+submission_files=("${required_submission_files[@]}")
+for file_name in "${optional_submission_files[@]}"; do
+  if [[ -f "$CURRENT_SUBMISSION_DIR/$file_name" ]]; then
+    submission_files+=("$file_name")
+  fi
+done
 required_snapshot_files=(
   leaderboard_single.json
   leaderboard_multi.json
@@ -97,9 +115,9 @@ publication_staging_dir=$(mktemp -d "$BENCHMARK_REPO_DIR/.snapshot-publication.X
 staged_submission_dir="$publication_staging_dir/submissions"
 staged_snapshot_dir="$publication_staging_dir/snapshots"
 
+# Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2329
 cleanup_publication_staging() {
-  # Invoked indirectly by the EXIT trap below.
-  # shellcheck disable=SC2317
   rm -rf "$publication_staging_dir"
 }
 trap cleanup_publication_staging EXIT
@@ -124,7 +142,7 @@ prepare_publication_commit() {
   mkdir -p "$staged_submission_dir" || return $?
   cp -a "$BENCHMARK_REPO_DIR/submissions/." "$staged_submission_dir/" || return $?
   mkdir -p "$staged_submission_dir/$run_id" || return $?
-  for file_name in "${required_submission_files[@]}"; do
+  for file_name in "${submission_files[@]}"; do
     cp "$CURRENT_SUBMISSION_DIR/$file_name" "$staged_submission_dir/$run_id/$file_name" || return $?
   done
 
@@ -153,7 +171,7 @@ prepare_publication_commit() {
   fi
 
   mkdir -p "$target_submission_dir" "$SNAPSHOT_OUTPUT_DIR" || return $?
-  for file_name in "${required_submission_files[@]}"; do
+  for file_name in "${submission_files[@]}"; do
     cp "$CURRENT_SUBMISSION_DIR/$file_name" "$target_submission_dir/$file_name" || return $?
   done
   for file_name in "${required_snapshot_files[@]}"; do
@@ -192,7 +210,7 @@ verify_published_benchmark_repo_state() {
     return 1
   fi
 
-  for file_name in "${required_submission_files[@]}"; do
+  for file_name in "${submission_files[@]}"; do
     if ! git -C "$BENCHMARK_REPO_DIR" cat-file -e \
       "$verified_commit:$relative_submission_dir/$file_name"; then
       echo "benchmark publication verification failed: missing $relative_submission_dir/$file_name" >&2

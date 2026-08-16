@@ -162,6 +162,7 @@ from vllm_ascend.utils import (
     should_skip_allreduce_across_dp_group,
     vllm_version_is,
 )
+from vllm_ascend.worker.kv_recovery import observe_first_compute_if_supported
 from vllm_ascend.worker.npu_input_batch import NPUInputBatch
 from vllm_ascend.worker.pcp_utils import PCPManager
 from vllm_ascend.worker.utils import AscendKVBlockZeroer
@@ -2718,6 +2719,12 @@ class NPUModelRunner(GPUModelRunner):
                 ),
             ) as kv_connector_output,
         ):
+            # KV-recovery: observe the exact scheduled roster immediately
+            # before model forward so admitted recovered requests close the
+            # seven-stage chain (preempt -> restore_start -> restore_done ->
+            # scheduler_wakeup -> admission -> first_prefill_or_decode).
+            # Mirrors vllm.v1.worker.gpu_model_runner.execute_model.
+            observe_first_compute_if_supported(self, scheduler_output)
             if self.cache_config.mamba_cache_mode == "align":
                 mamba_utils.do_mamba_copy_block(preprocess_bufs)
             try:

@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef LIGHTNING_INDEXER_TILING_H_
-#define LIGHTNING_INDEXER_TILING_H_
+#ifndef LIGHTNING_INDEXER_VLLM_TILING_H_
+#define LIGHTNING_INDEXER_VLLM_TILING_H_
 
 #include "exe_graph/runtime/tiling_context.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -26,17 +26,17 @@
 
 namespace optiling {
 
-struct TilingRequiredParaInfo {
+struct LightningIndexerVllmTilingRequiredParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::StorageShape *shape;
 };
 
-struct TilingOptionalParaInfo {
+struct LightningIndexerVllmTilingOptionalParaInfo {
     const gert::CompileTimeTensorDesc *desc;
     const gert::Tensor *tensor;
 };
 
-enum class DataLayout : uint32_t {
+enum class LightningIndexerVllmDataLayout : uint32_t {
     BSND = 0,
     TND = 1,
     BnBsND = 2
@@ -68,7 +68,7 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
 
-BEGIN_TILING_DATA_DEF(LITilingData)
+BEGIN_TILING_DATA_DEF(LightningIndexerVllmTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
 TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
@@ -80,18 +80,18 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(LightningIndexerVllm, LITilingData)
+REGISTER_TILING_DATA_CLASS(LightningIndexerVllm, LightningIndexerVllmTilingData)
 
-struct LICompileInfo {};
+struct LightningIndexerVllmCompileInfo {};
 
-struct LiParaInfo {
-    TilingRequiredParaInfo query = {nullptr, nullptr};
-    TilingRequiredParaInfo key = {nullptr, nullptr};
-    TilingRequiredParaInfo weights = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
-    TilingOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
-    TilingOptionalParaInfo blockTable = {nullptr, nullptr};
-    TilingRequiredParaInfo attenOut = {nullptr, nullptr};
+struct LightningIndexerVllmParaInfo {
+    LightningIndexerVllmTilingRequiredParaInfo query = {nullptr, nullptr};
+    LightningIndexerVllmTilingRequiredParaInfo key = {nullptr, nullptr};
+    LightningIndexerVllmTilingRequiredParaInfo weights = {nullptr, nullptr};
+    LightningIndexerVllmTilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
+    LightningIndexerVllmTilingOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
+    LightningIndexerVllmTilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    LightningIndexerVllmTilingRequiredParaInfo attenOut = {nullptr, nullptr};
 
     const char *layOut = nullptr;
     const char *layOutKey = nullptr;
@@ -100,11 +100,11 @@ struct LiParaInfo {
     const int32_t *sparseCount = nullptr;
 };
 
-class LITilingInfo {
+class LightningIndexerVllmTilingInfo {
 public:
     const char *opName = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
-    LiParaInfo opParamInfo;
+    LightningIndexerVllmParaInfo opParamInfo;
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
@@ -127,16 +127,16 @@ public:
     ge::DataType inputKType = ge::DT_FLOAT16;
     ge::DataType outputType = ge::DT_INT32;
     // Layout
-    DataLayout inputQLayout = DataLayout::BSND;
-    DataLayout inputKLayout = DataLayout::BnBsND;
+    LightningIndexerVllmDataLayout inputQLayout = LightningIndexerVllmDataLayout::BSND;
+    LightningIndexerVllmDataLayout inputKLayout = LightningIndexerVllmDataLayout::BnBsND;
 };
 
-class LIInfoParser {
+class LightningIndexerVllmInfoParser {
 public:
-    explicit LIInfoParser(gert::TilingContext *context) : context_(context)
+    explicit LightningIndexerVllmInfoParser(gert::TilingContext *context) : context_(context)
     {
     }
-    ~LIInfoParser() = default;
+    ~LightningIndexerVllmInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
@@ -169,14 +169,14 @@ public:
     ge::graphStatus GetGSize();
     ge::graphStatus GetAttenMaskInfo();
     ge::graphStatus GetActualSeqInfo();
-    void GenerateInfo(LITilingInfo &liInfo);
-    ge::graphStatus ParseAndCheck(LITilingInfo &liInfo);
+    void GenerateInfo(LightningIndexerVllmTilingInfo &liInfo);
+    ge::graphStatus ParseAndCheck(LightningIndexerVllmTilingInfo &liInfo);
 
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
-    LiParaInfo opParamInfo_;
+    LightningIndexerVllmParaInfo opParamInfo_;
 
     // BaseParams
     uint32_t bSize_ = 0;
@@ -187,8 +187,8 @@ public:
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
     // Layout
-    DataLayout qLayout_ = DataLayout::BSND;
-    DataLayout kLayout_ = DataLayout::BnBsND;
+    LightningIndexerVllmDataLayout qLayout_ = LightningIndexerVllmDataLayout::BSND;
+    LightningIndexerVllmDataLayout kLayout_ = LightningIndexerVllmDataLayout::BnBsND;
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
@@ -201,15 +201,15 @@ public:
     ge::DataType outputType_ = ge::DT_FLOAT16;
 };
 
-class LightningIndexerTiling {
+class LightningIndexerVllmTiling {
 public:
-    explicit LightningIndexerTiling(gert::TilingContext *context) : context_(context){};
-    ge::graphStatus DoTiling(LITilingInfo *tilingInfo);
+    explicit LightningIndexerVllmTiling(gert::TilingContext *context) : context_(context){};
+    ge::graphStatus DoTiling(LightningIndexerVllmTilingInfo *tilingInfo);
 
 private:
     gert::TilingContext *context_ = nullptr;
-    LITilingData tilingData_;
+    LightningIndexerVllmTilingData tilingData_;
 };
 
 } // namespace optiling
-#endif // LIGHTNING_INDEXER_TILING_H_
+#endif // LIGHTNING_INDEXER_VLLM_TILING_H_

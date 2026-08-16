@@ -27,6 +27,18 @@ def test_build_requirements_only_contain_setup_dependencies():
     assert package_names.isdisjoint(runtime_only_packages)
 
 
+def test_custom_op_metadata_uses_opc_discovery_filename():
+    root = Path(__file__).resolve().parents[2]
+    build_functions = (root / "csrc/cmake/func.cmake").read_text()
+
+    assert (
+        "set(CUSTOM_OPS_INFO_JSON "
+        "${CUSTOM_OPS_INFO_DIR}/aic-${OPINFO_COMPUTE_UNIT}-ops-info.json)" in build_functions
+    )
+    assert "copy_if_different ${OPS_INFO_JSON} ${CUSTOM_OPS_INFO_JSON}" in build_functions
+    assert "DEPENDS ${CUSTOM_OPS_INFO_JSON}" in build_functions
+
+
 def test_paired_editable_workflow_uses_empty_target_dependency_sets():
     root = Path(__file__).resolve().parents[2]
     workflow = (root / ".github/workflows/pr_test.yaml").read_text()
