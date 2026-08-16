@@ -620,10 +620,12 @@
   source_file_dependencies:
     - csrc/torch_binding.cpp
     - csrc/torch_binding_meta.cpp
+    - csrc/mc2/matmul_allreduce_add_rmsnorm/op_host/CMakeLists.txt
     - cmake/
     - CMakeLists.txt
   tests:
     - tests/ut/
+    - tests/ut/test_matmul_allreduce_add_rmsnorm_cmake.py
 # Single File
 - name: misc
   optional: false
