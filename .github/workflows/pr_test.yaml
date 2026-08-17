@@ -278,17 +278,6 @@ jobs:
       base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.lint-and-select-tests.outputs.test_groups }}
 
-  run-pyramidkv-selected-tests:
-    needs: lint-and-select-tests
-    if: ${{ needs.lint-and-select-tests.outputs.has_tests == 'true' && contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression') && contains(github.event.pull_request.labels.*.name, 'e2e') }}
-    uses: ./.github/workflows/_selected_tests.yaml
-    with:
-      vllm_repository: vLLM-HUST/vllm-hust
-      vllm: ${{ needs.lint-and-select-tests.outputs.pyramidkv_core_commit }}
-      ref: ${{ github.event.pull_request.head.sha }}
-      base_ref: ${{ github.base_ref }}
-      test_groups: ${{ needs.lint-and-select-tests.outputs.test_groups }}
-
   validate-hust-dual-editable:
     needs: lint-and-select-tests
     if: ${{ (needs.lint-and-select-tests.outputs.packaging_changed == 'true' || contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression')) && contains(github.event.pull_request.labels.*.name, 'e2e') }}

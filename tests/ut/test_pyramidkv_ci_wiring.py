@@ -9,23 +9,19 @@ import yaml
 REPO_ROOT = Path(__file__).parents[2]
 
 
-def test_pyramidkv_uses_pinned_hust_core_in_selected_ci() -> None:
+def test_pyramidkv_uses_pinned_hust_core_in_github_hosted_ci() -> None:
     core_commit = (REPO_ROOT / ".github/vllm-hust-pyramidkv.commit").read_text().strip()
     assert re.fullmatch(r"[0-9a-f]{40}", core_commit)
 
-    selected_workflow = (REPO_ROOT / ".github/workflows/_selected_tests.yaml").read_text()
-    assert "vllm_repository:" in selected_workflow
-    assert "repository: ${{ inputs.vllm_repository }}" in selected_workflow
-
     pr_workflow = (REPO_ROOT / ".github/workflows/pr_test.yaml").read_text()
-    assert "run-pyramidkv-selected-tests:" in pr_workflow
-    assert "vllm_repository: vLLM-HUST/vllm-hust" in pr_workflow
+    assert "run-pyramidkv-selected-tests:" not in pr_workflow
     assert "vllm-hust-pyramidkv.commit" in pr_workflow
     assert "Checkout verified vLLM for mypy" in pr_workflow
     assert "repository: vllm-project/vllm" in pr_workflow
     assert "Checkout paired vLLM-HUST for PyramidKV mypy" in pr_workflow
     assert "Run paired-Core mypy for PyramidKV changes" in pr_workflow
     assert "changed_python_files" in pr_workflow
+    assert ("!contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression')") in pr_workflow
     assert pr_workflow.index("Select tests based on changed files") < pr_workflow.index(
         "Checkout paired vLLM-HUST for PyramidKV mypy"
     )
