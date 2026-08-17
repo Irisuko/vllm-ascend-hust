@@ -1101,6 +1101,9 @@ def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
     assert "sha256sum" in install_script
     assert '"huggingface_hub>=0.20"' in install_script
     assert '"jsonschema>=4"' in install_script
+    assert '"datasets==3.3.0"' in install_script
+    assert '"xxhash==3.6.0"' in install_script
+    assert "2026-08-17-frozen-benchmark-deps-v2" in install_script
     assert "HUST_DEV_HUB_SKIP_ASCEND_SYSTEM_APPLY=1" not in install_script
     assert 'bash "$VLLM_HUST_DEV_HUB_REPO/scripts/quickstart.sh"' not in install_script
 
