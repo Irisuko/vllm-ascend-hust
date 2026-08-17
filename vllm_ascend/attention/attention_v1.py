@@ -474,15 +474,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
             fallback_reason=fallback_reason,
         )
 
-    def _selected_operator_id(self, query: torch.Tensor, attn_metadata: AscendMetadata) -> str:
-        if (
-            attn_metadata.attn_state == AscendAttentionState.DecodeOnly
-            and using_paged_attention(query.shape[0], self.vllm_config)
-            and self.sliding_window is None
-        ):
-            return "paged_attention"
-        return "fused_infer_attention"
-
     def _graph_metadata_layer_name(self, layer: AttentionLayer | None = None) -> str | None:
         layer_name = layer.layer_name if layer is not None else self._layer_name
         # KV-sharing layers replay with the target layer's metadata instead of
@@ -1494,7 +1485,11 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
-        if self._selected_operator_id(query, attn_metadata) == "paged_attention":
+        if (
+            attn_metadata.attn_state == AscendAttentionState.DecodeOnly
+            and using_paged_attention(query.shape[0], self.vllm_config)
+            and self.sliding_window is None
+        ):
             output = self.forward_paged_attention(query, attn_metadata, output)
         else:
             output = self.forward_fused_infer_attention(query, key, value, attn_metadata, output, kv_cache)
@@ -1537,16 +1532,6 @@ class AscendAttentionBackendImpl(AttentionImpl):
         num_tokens = query.shape[0]
         if attn_metadata is None:
             return output.fill_(0)
-
-        if get_attention_path_probe() is not None:
-            is_pooling = attn_metadata.model_runner_type == "pooling" and not attn_metadata.causal
-            self._record_python_dispatch(
-                layer_id=layer.layer_name,
-                operator_id=("encoder_attention" if is_pooling else self._selected_operator_id(query, attn_metadata)),
-                query=query,
-                attn_metadata=attn_metadata,
-                pooling=is_pooling,
-            )
 
         # Initialize key_cache and value_cache from kv_cache if not already set.
         # This is needed for DecodeOnly mode where key/value are None but we still
