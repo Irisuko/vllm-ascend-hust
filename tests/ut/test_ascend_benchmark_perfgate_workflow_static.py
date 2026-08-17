@@ -31,6 +31,19 @@ PERFGATE_VALIDATE_REQUIRED_SCRIPT = SCRIPT_DIR / "perfgate_validate_required.sh"
 PROCESS_CLEANUP_SCRIPT = SCRIPT_DIR / "cleanup_ascend_benchmark_processes.sh"
 
 
+def test_benchmark_workflow_submits_only_registered_requests_to_112() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "self-hosted" not in workflow
+    assert "docker run" not in workflow
+    assert "evaluation-request.yml@main" in workflow
+    assert "target_registry_version: 1.3.5" in workflow
+    assert "repeat_count: 3" in workflow
+    assert "EVALUATION_API_TOKEN" in workflow
+    assert "CENTRAL_BASELINE_WRITER_TOKEN" not in workflow
+    assert "BENCHMARK_REPO_GH_TOKEN" not in workflow
+
+
 def test_perfgate_scripts_are_present() -> None:
     for script_name in (
         "perfgate_fetch_baseline.sh",
@@ -51,6 +64,7 @@ def test_perfgate_scripts_are_present() -> None:
         assert (SCRIPT_DIR / script_name).is_file()
 
 
+@pytest.mark.skip(reason="hardware ownership moved from Actions to the 112 worker")
 def test_engine_core_cleanup_is_scoped_and_runs_before_hardware_unlock() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -158,6 +172,7 @@ def test_cleanup_wrapper_fails_closed_on_runner_mismatch() -> None:
     assert "Cleanup runner mismatch: expected" in cleanup_wrapper
 
 
+@pytest.mark.skip(reason="perfgate execution moved from Actions to the 112 adapter")
 def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -408,6 +423,7 @@ def test_required_perfgate_validator_accepts_complete_gate(tmp_path: Path) -> No
     assert "completed successfully" in result.stdout
 
 
+@pytest.mark.skip(reason="scheduled execution moved to registered 112 requests")
 def test_schedule_runs_registered_multi_scenario_benchmark_publish() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -485,6 +501,7 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert "print_same_spec_server_log_tail" in validation_failure_block
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_formal_main_and_perfgate_producer_keep_separate_workload_sizes() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -523,6 +540,7 @@ def test_formal_main_and_perfgate_producer_keep_separate_workload_sizes() -> Non
     assert 'BENCH_RANDOM_OUTPUT_LEN: "16"' in producer
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_main_perfgate_producer_is_reachable_and_pins_dependencies() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -815,6 +833,7 @@ def test_pull_request_trigger_preserves_ready_labels_on_updates() -> None:
     assert "github.event.label.name" not in workflow
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_plugin_producer_preserves_measurement_and_provenance_evidence() -> None:
     runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
     store = (SCRIPT_DIR / "perfgate_store_baseline.sh").read_text(encoding="utf-8")
@@ -853,6 +872,7 @@ def test_plugin_producer_preserves_measurement_and_provenance_evidence() -> None
     assert "cleanup_ascend_ci_processes.sh" not in workflow
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_plugin_scheme_c_is_producer_only() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -878,6 +898,7 @@ def test_plugin_scheme_c_is_producer_only() -> None:
     assert 'secondary_sort_key == "run_index"' in store
 
 
+@pytest.mark.skip(reason="runtime environment moved from Actions to the 112 adapter")
 def test_benchmark_disables_huggingface_xet_download_path() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -887,6 +908,7 @@ def test_benchmark_disables_huggingface_xet_download_path() -> None:
     assert "TRANSFORMERS_CACHE:" in workflow
 
 
+@pytest.mark.skip(reason="runtime installation moved from Actions to the 112 adapter")
 def test_local_ascend_manager_fallback_bootstraps_pip() -> None:
     helper = MANAGER_HELPER.read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -936,6 +958,7 @@ def test_local_plugin_editable_install_bootstraps_build_metadata_deps() -> None:
     assert 'hust_run_pip install -e "${PLUGIN_REPO}" --no-build-isolation --no-deps' in install_script
 
 
+@pytest.mark.skip(reason="runtime installation moved from Actions to the 112 adapter")
 def test_benchmark_prepare_preserves_torch_npu_stack() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     prepare_step = workflow[workflow.index("Prepare Ascend runtime and install repos") :]
@@ -971,6 +994,7 @@ def test_benchmark_bootstrap_supports_container_native_python() -> None:
     assert 'marker_root="${CI_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/ascend-benchmark"' in install_script
 
 
+@pytest.mark.skip(reason="runtime verification moved from Actions to the 112 adapter")
 def test_benchmark_verify_uses_resolved_python_not_conda_lookup() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     verify_step = workflow[workflow.index("Verify installation") :]
@@ -999,6 +1023,7 @@ def test_benchmark_runner_auto_disables_sudo_when_unavailable() -> None:
     assert "command not found" in runner_script[runner_script.index("runtime_ready_log_indicates_sudo_auth_failure") :]
 
 
+@pytest.mark.skip(reason="runtime configuration moved from Actions to registered targets")
 def test_benchmark_server_uses_inferred_max_model_len_by_default() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -1014,6 +1039,7 @@ def test_benchmark_server_uses_inferred_max_model_len_by_default() -> None:
     assert "MAX_MODEL_LEN must be set" not in root_helper
 
 
+@pytest.mark.skip(reason="runtime configuration moved from Actions to registered targets")
 def test_benchmark_server_uses_configurable_eager_and_completions_smoke() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -1101,10 +1127,14 @@ def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
     assert "sha256sum" in install_script
     assert '"huggingface_hub>=0.20"' in install_script
     assert '"jsonschema>=4"' in install_script
+    assert '"datasets==3.3.0"' in install_script
+    assert '"xxhash==3.6.0"' in install_script
+    assert "2026-08-17-frozen-benchmark-deps-v2" in install_script
     assert "HUST_DEV_HUB_SKIP_ASCEND_SYSTEM_APPLY=1" not in install_script
     assert 'bash "$VLLM_HUST_DEV_HUB_REPO/scripts/quickstart.sh"' not in install_script
 
 
+@pytest.mark.skip(reason="cross-repository writer credentials were removed from Actions")
 def test_benchmark_workflow_masks_cross_service_credentials() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -1115,6 +1145,7 @@ def test_benchmark_workflow_masks_cross_service_credentials() -> None:
     assert '"BENCHMARK_REPO_SSH_KEY"' in workflow
 
 
+@pytest.mark.skip(reason="publication moved from Actions to the 112 adapter")
 def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
