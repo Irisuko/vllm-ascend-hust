@@ -46,6 +46,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.base import KVConnectorHandsha
 from vllm.distributed.parallel_state import Handle, get_pp_group, get_tp_group
 from vllm.logger import logger
 from vllm.lora.request import LoRARequest
+from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.tasks import SupportedTask
 from vllm.utils.mem_constants import GiB_bytes
@@ -264,7 +265,21 @@ def _get_visible_ascend_device_count() -> int:
     return len(set(logical_map.values()))
 
 
+def _logical_to_visible_device_id(local_rank: int) -> int:
+    mapper = getattr(
+        current_platform,
+        "logical_device_id_to_visible_device_id",
+        None,
+    )
+    if mapper is None:
+        return local_rank
+    return mapper(local_rank)
+
+
 def _maybe_auto_select_idle_ascend_device(local_rank: int, parallel_config) -> int | None:
+    if getattr(parallel_config, "assigned_physical_gpu_ids", None) is not None:
+        return None
+
     if os.environ.get("ASCEND_RT_VISIBLE_DEVICES"):
         return None
 
@@ -621,23 +636,27 @@ class NPUWorker(WorkerBase):
         self.cache_config.num_cpu_blocks = num_cpu_blocks
 
     def _init_device(self):
-        selected_device = _maybe_auto_select_idle_ascend_device(self.local_rank, self.parallel_config)
-        device_index = selected_device if selected_device is not None else self.local_rank
+        default_device_index = _logical_to_visible_device_id(self.local_rank)
+        selected_device = _maybe_auto_select_idle_ascend_device(
+            self.local_rank,
+            self.parallel_config,
+        )
+        device_index = selected_device if selected_device is not None else default_device_index
 
         device = torch.device(f"npu:{device_index}")
         try:
             torch.npu.set_device(device)
         except Exception as exc:
-            if selected_device is None or device_index == self.local_rank:
+            if selected_device is None or device_index == default_device_index:
                 raise
 
             logger.warning(
-                "Failed to initialize auto-selected Ascend device %s (%s); falling back to local_rank %s.",
+                "Failed to initialize auto-selected Ascend device %s (%s); falling back to mapped device %s.",
                 device_index,
                 exc,
-                self.local_rank,
+                default_device_index,
             )
-            device = torch.device(f"npu:{self.local_rank}")
+            device = torch.device(f"npu:{default_device_index}")
             torch.npu.set_device(device)
 
         check_ascend_device_type()

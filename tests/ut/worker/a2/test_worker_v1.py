@@ -249,6 +249,58 @@ class TestNPUWorker(TestBase):
             mock_allocator.wake_up.assert_called_once_with(tags=["test_tag"])
             worker.sleep_wakeup_manager.wakeup.assert_called_once_with(["test_tag"])
 
+    def test_logical_to_visible_device_id_uses_platform_mapping(self):
+        from vllm_ascend.worker.worker import _logical_to_visible_device_id
+
+        platform = MagicMock()
+        platform.logical_device_id_to_visible_device_id.return_value = 1
+
+        with patch("vllm_ascend.worker.worker.current_platform", platform):
+            result = _logical_to_visible_device_id(0)
+
+        self.assertEqual(result, 1)
+        platform.logical_device_id_to_visible_device_id.assert_called_once_with(0)
+
+    def test_logical_to_visible_device_id_falls_back_for_older_vllm(self):
+        from vllm_ascend.worker.worker import _logical_to_visible_device_id
+
+        with patch("vllm_ascend.worker.worker.current_platform", object()):
+            result = _logical_to_visible_device_id(1)
+
+        self.assertEqual(result, 1)
+
+    def test_auto_select_skips_explicit_device_assignment(self):
+        from vllm_ascend.worker.worker import (
+            _maybe_auto_select_idle_ascend_device,
+        )
+
+        parallel_config = MagicMock()
+        parallel_config.assigned_physical_gpu_ids = [4]
+        parallel_config.world_size = 1
+        parallel_config.local_world_size = 1
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"ASCEND_RT_VISIBLE_DEVICES": ""},
+            ),
+            patch(
+                "vllm_ascend.worker.worker._get_visible_ascend_device_count",
+                return_value=2,
+            ) as mock_get_device_count,
+            patch(
+                "vllm_ascend.worker.worker._select_best_idle_ascend_device",
+            ) as mock_select_device,
+        ):
+            result = _maybe_auto_select_idle_ascend_device(
+                0,
+                parallel_config,
+            )
+
+        self.assertIsNone(result)
+        mock_get_device_count.assert_not_called()
+        mock_select_device.assert_not_called()
+
     @patch("vllm_ascend.worker.worker.MemorySnapshot")
     @patch("vllm_ascend.worker.worker.NPUWorker._init_worker_distributed_environment")
     @patch("vllm_ascend.worker.worker.init_device_properties_triton")
@@ -282,10 +334,11 @@ class TestNPUWorker(TestBase):
         # Create worker mock
         with patch.object(NPUWorker, "__init__", lambda x, **kwargs: None):
             worker = NPUWorker()
-            worker.local_rank = 1
+            worker.local_rank = 0
             worker.model_config = MagicMock()
             worker.model_config.seed = 42
             worker.parallel_config = MagicMock()
+            worker.parallel_config.assigned_physical_gpu_ids = [4]
             worker.parallel_config.local_world_size = 0
             worker.parallel_config.data_parallel_size = 1
             worker.vllm_config = MagicMock()
@@ -294,9 +347,15 @@ class TestNPUWorker(TestBase):
             worker.cache_config.gpu_memory_utilization = 0.5
 
             # Test _init_device
-            result = worker._init_device()
+            with patch(
+                "vllm_ascend.worker.worker._logical_to_visible_device_id",
+                return_value=1,
+            ) as mock_logical_to_visible_device_id:
+                result = worker._init_device()
 
             mock_init_dist_env.assert_called_once()
+            mock_logical_to_visible_device_id.assert_called_once_with(0)
+            mock_set_device.assert_called_once_with(torch.device("npu:1"))
             self.assertEqual(str(result), "npu:1")
             self.assertEqual(worker.init_snapshot, mock_snapshot)
             self.assertEqual(worker.requested_memory, 2000 * 0.5)
