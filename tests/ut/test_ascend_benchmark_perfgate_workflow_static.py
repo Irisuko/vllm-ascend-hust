@@ -429,6 +429,22 @@ def test_schedule_runs_registered_multi_scenario_benchmark_publish() -> None:
         assert scenario in workflow
 
 
+def test_schedule_multi_scenario_uses_official_model_specific_specs() -> None:
+    scenario_script = (SCRIPT_DIR / "run_ascend_benchmark_scenario_list.sh").read_text(encoding="utf-8")
+
+    assert 'GITHUB_EVENT_NAME:-}" != "pull_request"' in scenario_script
+    assert 'MODEL_PARAMETERS:-}" == "14B"' in scenario_script
+    for spec_name in (
+        "official-ascend-jan-2026-v0180-random-online-qwen25-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-prefix-repetition-online-qwen25-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-instructcoder-online-qwen25-coder-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-visionarena-online-qwen25-vl-7b-910b2.json",
+    ):
+        assert spec_name in scenario_script
+    assert 'SAME_SPEC_SPEC_FILE="$scenario_spec_file"' in scenario_script
+    assert 'MODEL_NAME="$scenario_model_name"' in scenario_script
+
+
 def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> None:
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
 

@@ -381,6 +381,7 @@ install_benchmark_baseline_stack() {
     "torchvision==0.25.0"
     "torchaudio==2.10.0"
     "triton-ascend==3.2.1"
+    "datasets"
     "huggingface_hub>=0.20"
     "jsonschema>=4"
   )
@@ -410,6 +411,7 @@ install_benchmark_baseline_stack() {
     "compressed_tensors>=0.11.0"
     "arctic-inference==0.1.1"
     "transformers==5.5.4"
+    "datasets"
     "jsonschema>=4"
     "huggingface_hub>=0.20"
   )
