@@ -276,12 +276,13 @@ def test_c8_dispatch_records_actual_dtype_and_fallback_reason(tmp_path):
     assert dispatch["schema_version"] == 2
 
 
-def test_runtime_integration_records_base_and_c8_and_flushes_on_shutdown():
+def test_runtime_integration_records_c8_only_and_flushes_on_shutdown():
     root = Path(__file__).resolve().parents[3]
     attention_source = (root / "vllm_ascend/attention/attention_v1.py").read_text()
     worker_source = (root / "vllm_ascend/worker/worker.py").read_text()
 
-    assert attention_source.count("self._record_python_dispatch(") >= 2
+    assert attention_source.count("self._record_python_dispatch(") == 1
+    assert 'operator_id=("encoder_attention"' not in attention_source
     assert 'dispatch_path="decode_fia_bnsd_paged_int8"' in attention_source
     assert 'fallback_reason="fia_tnd_requires_dense_kv"' in attention_source
     assert "capture_dispatch_only_no_replay" not in attention_source
