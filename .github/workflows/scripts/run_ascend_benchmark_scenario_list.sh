@@ -17,6 +17,33 @@ scenario_slug() {
   printf '%s' "$1" | tr -c '[:alnum:]._-' '-'
 }
 
+resolve_schedule_spec() {
+  local scenario=$1
+  local spec_name
+  case "$scenario" in
+    random-online) spec_name="official-ascend-jan-2026-v0180-random-online-qwen25-14b-910b2.json" ;;
+    sharegpt-online) spec_name="official-ascend-jan-2026-v0180-sharegpt-online-qwen25-14b-910b2.json" ;;
+    prefix-repetition-online) spec_name="official-ascend-jan-2026-v0180-prefix-repetition-online-qwen25-14b-910b2.json" ;;
+    random-latency) spec_name="official-ascend-jan-2026-v0180-random-latency-qwen25-14b-910b2.json" ;;
+    sharegpt-throughput) spec_name="official-ascend-jan-2026-v0180-sharegpt-throughput-qwen25-14b-910b2.json" ;;
+    sonnet-throughput) spec_name="official-ascend-jan-2026-v0180-sonnet-throughput-qwen25-14b-910b2.json" ;;
+    instructcoder-online) spec_name="official-ascend-jan-2026-v0180-instructcoder-online-qwen25-coder-14b-910b2.json" ;;
+    agent-research-online) spec_name="official-ascend-jan-2026-v0180-agent-research-online-qwen25-14b-910b2.json" ;;
+    visionarena-online) spec_name="official-ascend-jan-2026-v0180-visionarena-online-qwen25-vl-7b-910b2.json" ;;
+    *)
+      echo "No official schedule spec is registered for scenario: $scenario" >&2
+      return 2
+      ;;
+  esac
+
+  local spec_path="${VLLM_HUST_BENCHMARK_REPO:?}/docs/official-baselines/$spec_name"
+  if [[ ! -f "$spec_path" ]]; then
+    echo "Official schedule spec not found: $spec_path" >&2
+    return 2
+  fi
+  printf '%s\n' "$spec_path"
+}
+
 write_env() {
   local name=$1
   local value=$2
@@ -60,6 +87,26 @@ for scenario in "${scenarios[@]}"; do
   scenario_submission_dir="${scenario_result_root}/submissions/${scenario_run_id}"
   scenario_raw_result="${scenario_result_root}/raw_benchmark.json"
 
+  scenario_spec_file=""
+  scenario_model_name="${MODEL_NAME:-}"
+  scenario_model_parameters="${MODEL_PARAMETERS:-}"
+  scenario_model_precision="${MODEL_PRECISION:-}"
+  scenario_dtype="${DTYPE:-}"
+  if [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" \
+    && "${GITHUB_EVENT_NAME:-}" != "issue_comment" \
+    && "${MODEL_PARAMETERS:-}" == "14B" ]]; then
+    scenario_spec_file=$(resolve_schedule_spec "$scenario")
+    scenario_model_name=$(jq -r '.model // empty' "$scenario_spec_file")
+    scenario_model_parameters=$(jq -r '.model_parameters // empty' "$scenario_spec_file")
+    scenario_model_precision=$(jq -r '.model_precision // empty' "$scenario_spec_file")
+    case "${scenario_model_precision,,}" in
+      bf16|bfloat16) scenario_dtype="bfloat16" ;;
+      fp16|float16) scenario_dtype="float16" ;;
+    esac
+    echo "Using official schedule spec: $scenario_spec_file"
+    echo "Schedule scenario model: $scenario_model_name ($scenario_model_parameters, $scenario_model_precision)"
+  fi
+
   echo "::group::Ascend benchmark scenario: ${scenario}"
   set +e
   BENCH_SCENARIO="$scenario" \
@@ -74,7 +121,11 @@ for scenario in "${scenarios[@]}"; do
     SERVER_LOG="${scenario_result_root}/server.log" \
     RUNTIME_READY_LOG="${scenario_result_root}/runtime-ready.log" \
     BENCHMARK_DIAGNOSTICS_FILE="${scenario_result_root}/benchmark_diagnostics.md" \
-    SAME_SPEC_SPEC_FILE="" \
+    SAME_SPEC_SPEC_FILE="$scenario_spec_file" \
+    MODEL_NAME="$scenario_model_name" \
+    MODEL_PARAMETERS="$scenario_model_parameters" \
+    MODEL_PRECISION="$scenario_model_precision" \
+    DTYPE="$scenario_dtype" \
     bash .github/workflows/scripts/run_ascend_benchmark_ci.sh
   scenario_exit_code=$?
   set -e
