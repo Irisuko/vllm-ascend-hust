@@ -12,10 +12,13 @@
 # limitations under the License.
 # This file is a part of the vllm-ascend project.
 
+import hashlib
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO_ROOT / ".github/workflows/ascend-benchmark-leaderboard.yml"
@@ -26,6 +29,19 @@ INSTALL_DEV_HUB_SCRIPT = SCRIPT_DIR / "install_ascend_benchmark_with_dev_hub.sh"
 USE_SINGLE_ASCEND_ENV_SCRIPT = REPO_ROOT / "scripts/use_single_ascend_env.sh"
 PERFGATE_VALIDATE_REQUIRED_SCRIPT = SCRIPT_DIR / "perfgate_validate_required.sh"
 PROCESS_CLEANUP_SCRIPT = SCRIPT_DIR / "cleanup_ascend_benchmark_processes.sh"
+
+
+def test_benchmark_workflow_submits_only_registered_requests_to_112() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "self-hosted" not in workflow
+    assert "docker run" not in workflow
+    assert "evaluation-request.yml@main" in workflow
+    assert "target_registry_version: 1.3.5" in workflow
+    assert "repeat_count: 3" in workflow
+    assert "EVALUATION_API_TOKEN" in workflow
+    assert "CENTRAL_BASELINE_WRITER_TOKEN" not in workflow
+    assert "BENCHMARK_REPO_GH_TOKEN" not in workflow
 
 
 def test_perfgate_scripts_are_present() -> None:
@@ -48,6 +64,7 @@ def test_perfgate_scripts_are_present() -> None:
         assert (SCRIPT_DIR / script_name).is_file()
 
 
+@pytest.mark.skip(reason="hardware ownership moved from Actions to the 112 worker")
 def test_engine_core_cleanup_is_scoped_and_runs_before_hardware_unlock() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -155,6 +172,7 @@ def test_cleanup_wrapper_fails_closed_on_runner_mismatch() -> None:
     assert "Cleanup runner mismatch: expected" in cleanup_wrapper
 
 
+@pytest.mark.skip(reason="perfgate execution moved from Actions to the 112 adapter")
 def test_ascend_benchmark_workflow_wires_two_stage_perfgate() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -405,6 +423,7 @@ def test_required_perfgate_validator_accepts_complete_gate(tmp_path: Path) -> No
     assert "completed successfully" in result.stdout
 
 
+@pytest.mark.skip(reason="scheduled execution moved to registered 112 requests")
 def test_schedule_runs_registered_multi_scenario_benchmark_publish() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -424,6 +443,22 @@ def test_schedule_runs_registered_multi_scenario_benchmark_publish() -> None:
         "visionarena-online",
     ):
         assert scenario in workflow
+
+
+def test_schedule_multi_scenario_uses_official_model_specific_specs() -> None:
+    scenario_script = (SCRIPT_DIR / "run_ascend_benchmark_scenario_list.sh").read_text(encoding="utf-8")
+
+    assert 'GITHUB_EVENT_NAME:-}" != "pull_request"' in scenario_script
+    assert 'MODEL_PARAMETERS:-}" == "14B"' in scenario_script
+    for spec_name in (
+        "official-ascend-jan-2026-v0180-random-online-qwen25-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-prefix-repetition-online-qwen25-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-instructcoder-online-qwen25-coder-14b-910b2.json",
+        "official-ascend-jan-2026-v0180-visionarena-online-qwen25-vl-7b-910b2.json",
+    ):
+        assert spec_name in scenario_script
+    assert 'SAME_SPEC_SPEC_FILE="$scenario_spec_file"' in scenario_script
+    assert 'MODEL_NAME="$scenario_model_name"' in scenario_script
 
 
 def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> None:
@@ -466,6 +501,7 @@ def test_benchmark_runner_resolves_same_spec_without_random_online_default() -> 
     assert "print_same_spec_server_log_tail" in validation_failure_block
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_formal_main_and_perfgate_producer_keep_separate_workload_sizes() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -504,6 +540,7 @@ def test_formal_main_and_perfgate_producer_keep_separate_workload_sizes() -> Non
     assert 'BENCH_RANDOM_OUTPUT_LEN: "16"' in producer
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_main_perfgate_producer_is_reachable_and_pins_dependencies() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -548,6 +585,245 @@ def test_main_perfgate_producer_is_reachable_and_pins_dependencies() -> None:
     assert "!(github.event_name == 'push' && github.ref == 'refs/heads/main')" not in snapshot_step
 
 
+def test_formal_submission_evidence_is_complete_before_publication() -> None:
+    runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
+
+    finalizer_start = runner.index("finalize_submission_artifact()")
+    finalizer_end = runner.index("\nallocate_local_port()", finalizer_start)
+    finalizer = runner[finalizer_start:finalizer_end]
+    assert "collect-run-artifact.sh" in finalizer
+    assert "validate-run-artifact.sh" in finalizer
+    for required_file in (
+        "leaderboard_manifest.json",
+        "run_leaderboard.json",
+        "raw_benchmark_result.json",
+        "env-manifest.json",
+        "pip-packages.json",
+        "checksums.sha256",
+        "STATUS",
+    ):
+        assert required_file in finalizer
+    assert 'bash "$collector_script" "$SUBMISSION_DIR" || return $?' in finalizer
+    assert 'if bash "$validator_script" "$SUBMISSION_DIR"; then' in finalizer
+    assert "FAILED: incomplete submission evidence" in finalizer
+    assert "FAILED: submission admission validation failed" in finalizer
+
+    submit_index = runner.index('"${PYTHON_BIN}" -m vllm_hust_benchmark.cli submit')
+    finalizer_call_index = runner.index("\nfinalize_submission_artifact\n", submit_index)
+    status_guard_index = runner.index(
+        "submission evidence collector did not finalize STATUS=OK",
+        finalizer_call_index,
+    )
+    publication_index = runner.index('\nif [[ "$PUBLISH_TO_BENCHMARK_REPO"', status_guard_index)
+    aggregation_index = runner.index(
+        '"${PYTHON_BIN}" -m vllm_hust_benchmark.cli publish-website',
+        status_guard_index,
+    )
+    assert submit_index < finalizer_call_index < status_guard_index
+    assert status_guard_index < publication_index
+    assert status_guard_index < aggregation_index
+
+
+def _run_formal_submission_finalizer(
+    tmp_path: Path, *, omit_pip_checksum: bool = False
+) -> subprocess.CompletedProcess[str]:
+    runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
+    finalizer_start = runner.index("finalize_submission_artifact()")
+    finalizer_end = runner.index("\nallocate_local_port()", finalizer_start)
+    finalizer = runner[finalizer_start:finalizer_end]
+
+    benchmark_repo = tmp_path / "benchmark"
+    scripts_dir = benchmark_repo / "scripts"
+    scripts_dir.mkdir(parents=True)
+    submission_dir = tmp_path / "submission"
+    submission_dir.mkdir()
+    (submission_dir / "leaderboard_manifest.json").write_text("{}\n", encoding="utf-8")
+    (submission_dir / "run_leaderboard.json").write_text("{}\n", encoding="utf-8")
+    raw_result_file = tmp_path / "raw-result.json"
+    raw_result_file.write_text('{"completed": 1}\n', encoding="utf-8")
+
+    (scripts_dir / "collect-run-artifact.sh").write_text(
+        """#!/bin/bash
+set -euo pipefail
+submission_dir=$1
+printf '{"os":"test","python_version":"test","collected_at":"test"}\n' > "$submission_dir/env-manifest.json"
+printf '[]\n' > "$submission_dir/pip-packages.json"
+printf 'OK\n' > "$submission_dir/STATUS"
+checksum_files=(leaderboard_manifest.json run_leaderboard.json raw_benchmark_result.json env-manifest.json)
+if [[ "${OMIT_PIP_CHECKSUM:-0}" != "1" ]]; then
+  checksum_files+=(pip-packages.json)
+fi
+(
+  cd "$submission_dir"
+  for file_name in "${checksum_files[@]}"; do
+    sha256sum "./$file_name"
+  done
+) > "$submission_dir/checksums.sha256"
+""",
+        encoding="utf-8",
+    )
+    (scripts_dir / "validate-run-artifact.sh").write_text(
+        """#!/bin/bash
+set -euo pipefail
+submission_dir=$1
+cd "$submission_dir"
+required_files=(leaderboard_manifest.json run_leaderboard.json raw_benchmark_result.json)
+required_files+=(env-manifest.json pip-packages.json)
+for file_name in "${required_files[@]}"; do
+  grep -Eq "^[0-9a-f]{64}  \\./${file_name}$" checksums.sha256
+done
+sha256sum -c checksums.sha256 >/dev/null
+printf 'validated\n' > "${VALIDATOR_MARKER}"
+""",
+        encoding="utf-8",
+    )
+
+    marker = tmp_path / "validator-marker"
+    env = {
+        **os.environ,
+        "OMIT_PIP_CHECKSUM": "1" if omit_pip_checksum else "0",
+        "PYTHON_BIN": "python3",
+        "RAW_RESULT_FILE": str(raw_result_file),
+        "SUBMISSION_DIR": str(submission_dir),
+        "VALIDATOR_MARKER": str(marker),
+        "VLLM_ASCEND_HUST_REPO": str(tmp_path / "plugin"),
+        "VLLM_HUST_BENCHMARK_REPO": str(benchmark_repo),
+        "VLLM_HUST_REPO": str(tmp_path / "core"),
+    }
+    return subprocess.run(
+        ["bash", "-c", f"set -euo pipefail\n{finalizer}\nfinalize_submission_artifact"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_formal_submission_finalizer_validates_complete_checksum_manifest(
+    tmp_path: Path,
+) -> None:
+    result = _run_formal_submission_finalizer(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "validator-marker").read_text(encoding="utf-8") == "validated\n"
+
+
+def test_formal_submission_finalizer_rejects_incomplete_checksum_manifest(
+    tmp_path: Path,
+) -> None:
+    result = _run_formal_submission_finalizer(tmp_path, omit_pip_checksum=True)
+
+    assert result.returncode != 0
+    assert not (tmp_path / "validator-marker").exists()
+    status = (tmp_path / "submission" / "STATUS").read_text(encoding="utf-8")
+    assert status.startswith("FAILED:")
+
+
+def test_formal_submission_finalizer_passes_real_benchmark_admission(
+    tmp_path: Path,
+) -> None:
+    configured_repo = os.environ.get("VLLM_HUST_BENCHMARK_TEST_REPO")
+    benchmark_repo = Path(configured_repo) if configured_repo else REPO_ROOT.parent / "vllm-hust-benchmark"
+    source_submission = (
+        benchmark_repo
+        / "submissions"
+        / "historical-pr-pr130-head-logprobs-online-logprobs-online-a2ff5cd985-52f923884b"
+    )
+    if not (benchmark_repo / "scripts" / "validate-run-artifact.sh").is_file():
+        if configured_repo:
+            pytest.fail(f"configured benchmark verifier checkout is unavailable: {benchmark_repo}")
+        pytest.skip("real vllm-hust-benchmark checkout is unavailable")
+    if not source_submission.is_dir():
+        if configured_repo:
+            pytest.fail(f"configured benchmark admission fixture is unavailable: {source_submission}")
+        pytest.skip("real benchmark admission fixture is unavailable")
+
+    runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
+    finalizer_start = runner.index("finalize_submission_artifact()")
+    finalizer_end = runner.index("\nallocate_local_port()", finalizer_start)
+    finalizer = runner[finalizer_start:finalizer_end]
+    submission_dir = tmp_path / "submission"
+    submission_dir.mkdir()
+    for file_name in ("leaderboard_manifest.json", "run_leaderboard.json"):
+        shutil.copy2(source_submission / file_name, submission_dir / file_name)
+    raw_result_file = tmp_path / "raw-result.json"
+    raw_result_file.write_text('{"completed": 1}\n', encoding="utf-8")
+    env = {
+        **os.environ,
+        "PYTHON_BIN": "python3",
+        "RAW_RESULT_FILE": str(raw_result_file),
+        "SUBMISSION_DIR": str(submission_dir),
+        "VLLM_ASCEND_HUST_REPO": str(REPO_ROOT),
+        "VLLM_HUST_BENCHMARK_REPO": str(benchmark_repo),
+        "VLLM_HUST_REPO": str(REPO_ROOT),
+    }
+
+    result = subprocess.run(
+        ["bash", "-c", f"set -euo pipefail\n{finalizer}\nfinalize_submission_artifact"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (submission_dir / "raw_benchmark_result.json").read_text(encoding="utf-8") == '{"completed": 1}\n'
+    checksums = (submission_dir / "checksums.sha256").read_text(encoding="utf-8")
+    assert "./raw_benchmark_result.json" in checksums
+
+
+def test_selected_tests_checkout_real_benchmark_admission_contract() -> None:
+    selected_tests_workflow = (REPO_ROOT / ".github/workflows/_selected_tests.yaml").read_text(encoding="utf-8")
+
+    assert "Checkout benchmark admission contract" in selected_tests_workflow
+    assert "repository: vLLM-HUST/vllm-hust-benchmark" in selected_tests_workflow
+    assert "VLLM_HUST_BENCHMARK_TEST_REPO:" in selected_tests_workflow
+    assert "test_ascend_benchmark_perfgate_workflow_static.py" in selected_tests_workflow
+
+
+def test_shellcheck_wrapper_checks_only_passed_files(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    shellcheck_log = tmp_path / "shellcheck.log"
+    fake_shellcheck = fake_bin / "shellcheck"
+    fake_shellcheck.write_text(
+        '#!/bin/bash\nprintf \'%s\\n\' "${!#}" >> "$SHELLCHECK_LOG"\nexit "${FAKE_SHELLCHECK_EXIT:-0}"\n',
+        encoding="utf-8",
+    )
+    fake_shellcheck.chmod(0o755)
+    selected_script = tmp_path / "selected.sh"
+    unselected_script = tmp_path / "unselected.sh"
+    selected_script.write_text("#!/bin/bash\ntrue\n", encoding="utf-8")
+    unselected_script.write_text("#!/bin/bash\nfalse\n", encoding="utf-8")
+
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    env["SHELLCHECK_LOG"] = str(shellcheck_log)
+    result = subprocess.run(
+        ["bash", str(REPO_ROOT / "tools/shellcheck.sh"), str(selected_script)],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert shellcheck_log.read_text(encoding="utf-8").splitlines() == [str(selected_script)]
+    assert str(unselected_script) not in shellcheck_log.read_text(encoding="utf-8")
+
+    env["FAKE_SHELLCHECK_EXIT"] = "7"
+    failed_result = subprocess.run(
+        ["bash", str(REPO_ROOT / "tools/shellcheck.sh"), str(selected_script)],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert failed_result.returncode == 7
+
+
 def test_pull_request_trigger_preserves_ready_labels_on_updates() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -557,6 +833,7 @@ def test_pull_request_trigger_preserves_ready_labels_on_updates() -> None:
     assert "github.event.label.name" not in workflow
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_plugin_producer_preserves_measurement_and_provenance_evidence() -> None:
     runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
     store = (SCRIPT_DIR / "perfgate_store_baseline.sh").read_text(encoding="utf-8")
@@ -595,6 +872,7 @@ def test_plugin_producer_preserves_measurement_and_provenance_evidence() -> None
     assert "cleanup_ascend_ci_processes.sh" not in workflow
 
 
+@pytest.mark.skip(reason="producer execution moved from Actions to the 112 adapter")
 def test_plugin_scheme_c_is_producer_only() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -620,6 +898,7 @@ def test_plugin_scheme_c_is_producer_only() -> None:
     assert 'secondary_sort_key == "run_index"' in store
 
 
+@pytest.mark.skip(reason="runtime environment moved from Actions to the 112 adapter")
 def test_benchmark_disables_huggingface_xet_download_path() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -629,6 +908,7 @@ def test_benchmark_disables_huggingface_xet_download_path() -> None:
     assert "TRANSFORMERS_CACHE:" in workflow
 
 
+@pytest.mark.skip(reason="runtime installation moved from Actions to the 112 adapter")
 def test_local_ascend_manager_fallback_bootstraps_pip() -> None:
     helper = MANAGER_HELPER.read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
@@ -678,6 +958,7 @@ def test_local_plugin_editable_install_bootstraps_build_metadata_deps() -> None:
     assert 'hust_run_pip install -e "${PLUGIN_REPO}" --no-build-isolation --no-deps' in install_script
 
 
+@pytest.mark.skip(reason="runtime installation moved from Actions to the 112 adapter")
 def test_benchmark_prepare_preserves_torch_npu_stack() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     prepare_step = workflow[workflow.index("Prepare Ascend runtime and install repos") :]
@@ -713,6 +994,7 @@ def test_benchmark_bootstrap_supports_container_native_python() -> None:
     assert 'marker_root="${CI_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/ascend-benchmark"' in install_script
 
 
+@pytest.mark.skip(reason="runtime verification moved from Actions to the 112 adapter")
 def test_benchmark_verify_uses_resolved_python_not_conda_lookup() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     verify_step = workflow[workflow.index("Verify installation") :]
@@ -741,6 +1023,7 @@ def test_benchmark_runner_auto_disables_sudo_when_unavailable() -> None:
     assert "command not found" in runner_script[runner_script.index("runtime_ready_log_indicates_sudo_auth_failure") :]
 
 
+@pytest.mark.skip(reason="runtime configuration moved from Actions to registered targets")
 def test_benchmark_server_uses_inferred_max_model_len_by_default() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -756,6 +1039,7 @@ def test_benchmark_server_uses_inferred_max_model_len_by_default() -> None:
     assert "MAX_MODEL_LEN must be set" not in root_helper
 
 
+@pytest.mark.skip(reason="runtime configuration moved from Actions to registered targets")
 def test_benchmark_server_uses_configurable_eager_and_completions_smoke() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -843,10 +1127,14 @@ def test_dev_hub_install_wrapper_centralizes_custom_kernel_policy() -> None:
     assert "sha256sum" in install_script
     assert '"huggingface_hub>=0.20"' in install_script
     assert '"jsonschema>=4"' in install_script
+    assert '"datasets==3.3.0"' in install_script
+    assert '"xxhash==3.6.0"' in install_script
+    assert "2026-08-17-frozen-benchmark-deps-v2" in install_script
     assert "HUST_DEV_HUB_SKIP_ASCEND_SYSTEM_APPLY=1" not in install_script
     assert 'bash "$VLLM_HUST_DEV_HUB_REPO/scripts/quickstart.sh"' not in install_script
 
 
+@pytest.mark.skip(reason="cross-repository writer credentials were removed from Actions")
 def test_benchmark_workflow_masks_cross_service_credentials() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
@@ -857,6 +1145,7 @@ def test_benchmark_workflow_masks_cross_service_credentials() -> None:
     assert '"BENCHMARK_REPO_SSH_KEY"' in workflow
 
 
+@pytest.mark.skip(reason="publication moved from Actions to the 112 adapter")
 def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     runner_script = (SCRIPT_DIR / "run_ascend_benchmark_ci.sh").read_text(encoding="utf-8")
@@ -895,13 +1184,31 @@ def test_benchmark_repo_publish_is_gated_and_reported() -> None:
     assert git_add_index < git_commit_index < git_push_index
     assert git_push_index < verify_index
     assert "write_github_env GITHUB_SNAPSHOT_SYNC_STATUS rejected" in sync_script
-    assert "required_submission_files=(leaderboard_manifest.json run_leaderboard.json STATUS)" in sync_script
+    required_submission_files = sync_script[
+        sync_script.index("required_submission_files=(") : sync_script.index(
+            "\n)", sync_script.index("required_submission_files=(")
+        )
+    ]
+    for required_file in (
+        "leaderboard_manifest.json",
+        "run_leaderboard.json",
+        "raw_benchmark_result.json",
+        "env-manifest.json",
+        "pip-packages.json",
+        "checksums.sha256",
+        "STATUS",
+    ):
+        assert required_file in required_submission_files
     assert "reset_publication_staging()" in sync_script
     assert "reset_publication_staging || return $?" in sync_script
     submit_index = runner_script.index('"${PYTHON_BIN}" -m vllm_hust_benchmark.cli submit')
-    status_index = runner_script.index("printf 'OK\\n' > \"$SUBMISSION_DIR/STATUS\"")
-    sync_index = runner_script.index("sync_benchmark_publication_to_github", status_index)
-    assert submit_index < status_index < sync_index
+    finalizer_index = runner_script.index("\nfinalize_submission_artifact\n", submit_index)
+    status_guard_index = runner_script.index(
+        "submission evidence collector did not finalize STATUS=OK",
+        finalizer_index,
+    )
+    sync_index = runner_script.index("sync_benchmark_publication_to_github", status_guard_index)
+    assert submit_index < finalizer_index < status_guard_index < sync_index
 
 
 def _write_snapshot_sync_test_doubles(tmp_path: Path) -> tuple[Path, Path]:
@@ -964,15 +1271,32 @@ exit 0
     return fake_bin, git_log
 
 
+def _write_complete_submission_evidence(submission_dir: Path) -> None:
+    evidence = {
+        "leaderboard_manifest.json": "{}\n",
+        "run_leaderboard.json": "{}\n",
+        "raw_benchmark_result.json": '{"completed": 1}\n',
+        "env-manifest.json": '{"os":"test","python_version":"test","collected_at":"test"}\n',
+        "pip-packages.json": "[]\n",
+        "measurement.json": '{"strategy":"test"}\n',
+        "perfgate-provenance.json": '{"schema_version":"test"}\n',
+    }
+    for file_name, contents in evidence.items():
+        (submission_dir / file_name).write_text(contents, encoding="utf-8")
+    checksum_lines = [
+        f"{hashlib.sha256(contents.encode()).hexdigest()}  ./{file_name}" for file_name, contents in evidence.items()
+    ]
+    (submission_dir / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+    (submission_dir / "STATUS").write_text("OK\n", encoding="utf-8")
+
+
 def _snapshot_sync_env(tmp_path: Path, fake_bin: Path, git_log: Path) -> tuple[dict[str, str], Path]:
     benchmark_repo = tmp_path / "benchmark-repo"
     (benchmark_repo / ".git").mkdir(parents=True)
     (benchmark_repo / "submissions").mkdir()
     current_submission = tmp_path / "current-submission"
     current_submission.mkdir()
-    (current_submission / "leaderboard_manifest.json").write_text("{}\n", encoding="utf-8")
-    (current_submission / "run_leaderboard.json").write_text("{}\n", encoding="utf-8")
-    (current_submission / "STATUS").write_text("OK\n", encoding="utf-8")
+    _write_complete_submission_evidence(current_submission)
     website_repo = tmp_path / "website-repo"
     (website_repo / "scripts").mkdir(parents=True)
     (website_repo / "scripts" / "aggregate_results.py").write_text("", encoding="utf-8")
@@ -997,6 +1321,29 @@ def _snapshot_sync_env(tmp_path: Path, fake_bin: Path, git_log: Path) -> tuple[d
         },
         benchmark_repo,
     )
+
+
+def test_snapshot_sync_rejects_missing_checksum_before_git_operations(
+    tmp_path: Path,
+) -> None:
+    fake_bin, git_log = _write_snapshot_sync_test_doubles(tmp_path)
+    env, benchmark_repo = _snapshot_sync_env(tmp_path, fake_bin, git_log)
+    current_submission = Path(env["CURRENT_SUBMISSION_DIR"])
+    (current_submission / "checksums.sha256").unlink()
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT_DIR / "sync_benchmark_snapshots_to_github.sh")],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "missing current submission file:" in result.stderr
+    assert "checksums.sha256" in result.stderr
+    assert not git_log.exists()
+    assert not (benchmark_repo / "submissions" / "test-run").exists()
 
 
 def test_snapshot_sync_rejects_invalid_publication_before_git_writes(tmp_path: Path) -> None:
@@ -1084,6 +1431,12 @@ def test_snapshot_sync_publishes_only_after_validating_staged_output(tmp_path: P
     submission_dir = benchmark_repo / "submissions" / "test-run"
     assert (submission_dir / "leaderboard_manifest.json").read_text(encoding="utf-8") == "{}\n"
     assert (submission_dir / "run_leaderboard.json").read_text(encoding="utf-8") == "{}\n"
+    assert (submission_dir / "raw_benchmark_result.json").is_file()
+    assert (submission_dir / "env-manifest.json").is_file()
+    assert (submission_dir / "pip-packages.json").is_file()
+    assert (submission_dir / "checksums.sha256").is_file()
+    assert (submission_dir / "measurement.json").is_file()
+    assert (submission_dir / "perfgate-provenance.json").is_file()
     assert (submission_dir / "STATUS").read_text(encoding="utf-8") == "OK\n"
     snapshot_dir = benchmark_repo / "leaderboard-data" / "snapshots"
     for snapshot_name in (
@@ -1219,9 +1572,7 @@ def test_snapshot_sync_rebuilds_staging_before_push_retry(tmp_path: Path) -> Non
     hust_repo.mkdir()
     (hust_repo / "pyproject.toml").write_text("[project]\nname='fake'\n", encoding="utf-8")
     current_submission.mkdir()
-    (current_submission / "leaderboard_manifest.json").write_text("{}\n", encoding="utf-8")
-    (current_submission / "run_leaderboard.json").write_text("{}\n", encoding="utf-8")
-    (current_submission / "STATUS").write_text("OK\n", encoding="utf-8")
+    _write_complete_submission_evidence(current_submission)
 
     env = {
         **os.environ,

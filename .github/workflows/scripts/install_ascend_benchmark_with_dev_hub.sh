@@ -7,7 +7,7 @@ VLLM_HUST_REPO=${VLLM_HUST_REPO:-$WORKSPACE_ROOT/vllm-hust}
 VLLM_HUST_BENCHMARK_REPO=${VLLM_HUST_BENCHMARK_REPO:-$WORKSPACE_ROOT/vllm-hust-benchmark}
 VLLM_HUST_CONDA_ENV=${VLLM_HUST_CONDA_ENV:-vllm-hust-dev}
 PYTHON_VERSION=${PYTHON_VERSION:-3.11}
-ASCEND_BENCHMARK_STACK_MARKER_VERSION=${ASCEND_BENCHMARK_STACK_MARKER_VERSION:-2026-07-17-install-only-v1}
+ASCEND_BENCHMARK_STACK_MARKER_VERSION=${ASCEND_BENCHMARK_STACK_MARKER_VERSION:-2026-08-17-frozen-benchmark-deps-v2}
 ASCEND_BENCHMARK_TRITON_ASCEND_INDEX_URL=${ASCEND_BENCHMARK_TRITON_ASCEND_INDEX_URL:-https://mirrors.huaweicloud.com/ascend/repos/pypi}
 CURRENT_USER_NAME="$(id -un 2>/dev/null || printf '%s' "${USER:-runner}")"
 CURRENT_USER_HOME="$(getent passwd "$CURRENT_USER_NAME" 2>/dev/null | cut -d: -f6 || true)"
@@ -381,6 +381,8 @@ install_benchmark_baseline_stack() {
     "torchvision==0.25.0"
     "torchaudio==2.10.0"
     "triton-ascend==3.2.1"
+    "datasets==3.3.0"
+    "xxhash==3.6.0"
     "huggingface_hub>=0.20"
     "jsonschema>=4"
   )
@@ -410,6 +412,8 @@ install_benchmark_baseline_stack() {
     "compressed_tensors>=0.11.0"
     "arctic-inference==0.1.1"
     "transformers==5.5.4"
+    "datasets==3.3.0"
+    "xxhash==3.6.0"
     "jsonschema>=4"
     "huggingface_hub>=0.20"
   )

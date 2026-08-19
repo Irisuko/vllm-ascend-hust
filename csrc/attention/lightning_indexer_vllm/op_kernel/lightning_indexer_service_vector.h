@@ -42,7 +42,7 @@ public:
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitParams(const struct LICommon::ConstInfo &constInfo,
-                                      const LITilingData *__restrict tilingData);
+                                      const LightningIndexerVllmTilingData *__restrict tilingData);
     __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
                                                 GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<K_T> weightsGm,
                                                 GlobalTensor<int32_t> indiceOutGm);
@@ -147,7 +147,7 @@ __aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe *pipe)
 
 template <typename LIT>
 __aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInfo &constInfo,
-                                                 const LITilingData *__restrict tilingData)
+                                                 const LightningIndexerVllmTilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
     blockS2StartIdx_ = 0;
