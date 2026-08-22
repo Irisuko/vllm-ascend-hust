@@ -83,3 +83,13 @@ def test_dual_editable_documentation_uses_target_specific_flow():
         contents = (root / readme).read_text()
         for command_fragment in required:
             assert command_fragment in contents
+
+
+def test_custom_op_builder_normalizes_supported_device_family_shorthands():
+    root = Path(__file__).resolve().parents[2]
+    builder = (root / "csrc/build_aclnn.sh").read_text()
+
+    assert "910b) SOC_VERSION=ascend910b1" in builder
+    assert "910c) SOC_VERSION=ascend910_9392" in builder
+    assert "310p) SOC_VERSION=ascend310p1" in builder
+    assert "input_SOC_VERSION=${INPUT_SOC_VERSION:-<unset>}" in builder
