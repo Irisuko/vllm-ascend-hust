@@ -15,6 +15,9 @@
 
 import math
 import os
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -94,6 +97,24 @@ class TestUtils(TestBase):
             ]
         )
         self.assertTrue(torch.allclose(output, expected))
+
+    def test_setup_ascend_local_comm_res_uses_selected_physical_device(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            endpoint_file = Path(temp_dir) / "ub_endpoint_npu_5.json"
+            endpoint_file.write_text('{"device": 5}', encoding="utf-8")
+            kv_transfer_config = SimpleNamespace(kv_connector_extra_config={"ascend_local_comm_res_path": temp_dir})
+
+            with (
+                mock.patch.dict(os.environ, {}, clear=False),
+                mock.patch(
+                    "vllm.platforms.current_platform.visible_device_id_to_physical_device_id",
+                    return_value=5,
+                ) as mock_visible_to_physical,
+            ):
+                utils.setup_ascend_local_comm_res(1, kv_transfer_config)
+                self.assertEqual(os.environ["ASCEND_LOCAL_COMM_RES"], '{"device":5}')
+
+            mock_visible_to_physical.assert_called_once_with(1)
 
     def test_aligned_16(self):
         # align to 16
