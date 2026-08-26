@@ -19,6 +19,8 @@ def test_selected_tests_uses_hosted_container_only_for_explicit_cpu_groups() -> 
     text = (WORKFLOWS / "_selected_tests.yaml").read_text(encoding="utf-8")
     assert "matrix.group.hosted_cpu == true" in text
     assert "ubuntu:22.04" in text
+    assert "matrix.group.hosted_cpu == true && 'https://pypi.org/simple'" in text
+    assert 'if [ "${{ matrix.group.hosted_cpu }}" != "true" ]' in text
     assert "--device /dev/davinci1:/dev/davinci0" in text
 
 
