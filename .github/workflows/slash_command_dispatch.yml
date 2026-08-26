@@ -32,29 +32,16 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           reaction-token: ${{ secrets.GITHUB_TOKEN }}
           commands: |
-            e2e
             rerun
-            nightly
             cherry-pick
             revert
-            weekly
           permission: none
           issue-type: both
           dispatch-type: repository
           config: >
             [
               {
-                "command": "e2e",
-                "permission": "none",
-                "issue_type": "pull-request"
-              },
-              {
                 "command": "rerun",
-                "permission": "none",
-                "issue_type": "pull-request"
-              },
-              {
-                "command": "nightly",
                 "permission": "none",
                 "issue_type": "pull-request"
               },
@@ -65,11 +52,6 @@ jobs:
               },
               {
                 "command": "revert",
-                "permission": "none",
-                "issue_type": "pull-request"
-              },
-              {
-                "command": "weekly",
                 "permission": "none",
                 "issue_type": "pull-request"
               }

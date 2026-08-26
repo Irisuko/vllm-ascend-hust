@@ -681,10 +681,8 @@
     - tests/ut/test_custom_op_package.py
     - tests/ut/test_perfgate_store_baseline.py
     - tests/ut/test_prepare_plugin_perfgate_artifact.py
-    - tests/ut/test_ascend_benchmark_perfgate_workflow_static.py
     - tests/ut/test_parse_ascend_comment_command.py
     - tests/ut/test_perfgate_fail_fast_scripts.py
-    - tests/ut/test_perfgate_summary_conflict.py
     - tests/ut/test_resolve_ascend_benchmark_scenario.py
     - tests/ut/test_resolve_perfgate_spec_file.py
     - tests/ut/test_smart_ut_container_runtime.py
@@ -861,5 +859,4 @@ partition:
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-
 

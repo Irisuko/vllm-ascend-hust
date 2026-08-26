@@ -6,17 +6,14 @@ This document describes the CI workflows for `vllm-ascend`, how to add tests, an
 
 | Workflow | Trigger | What it runs |
 |----------|---------|---------------|
-| `pr_test.yaml` | PR to main/dev/release branches | Lint + selective tests (UT + E2E) |
-| `_selected_tests.yaml` | Called by `pr_test.yaml` | Runs tests selected by `select_tests.py` |
-| `_parse_trigger.yaml` | PR comment `/e2e` | Parses comment to run specific E2E tests |
-| `_pre_commit.yml` | Called by `pr_test.yaml` | Lint and format checks |
-| `schedule_nightly_test_a2.yaml` | Cron | Nightly E2E on A2 runners |
-| `schedule_nightly_test_a3.yaml` | Cron | Nightly E2E on A3 runners |
-| `schedule_weekly_test_a3.yaml` | Cron | Weekly E2E on A3 runners |
+| `pr_smart_ut.yaml` | PR to release branches | Hosted CPU-only Smart UT checks |
+| `_selected_tests.yaml` | Called by Smart UT | Runs the supplied hosted CPU matrix |
 
 ## Selective Testing System
 
-When a PR changes source files, `select_tests.py` maps changed files to affected modules in `test_config.yaml`, collects their tests, routes tests to runners, and emits a GitHub Actions matrix.
+For the release-branch Smart UT workflow, `select_tests.py` maps changed files to affected modules,
+collects tests, and emits a matrix that is reduced to hosted CPU groups before execution. NPU groups
+are reserved for controlled nightly flows or the external dataset validator.
 
 ```text
 PR changed files
@@ -131,7 +128,8 @@ No decorator is needed. UT runner routing is determined by path:
 
 ### E2E Routing
 
-All E2E tests run on NPU. E2E routing is determined by directory or `_310p` filename suffix:
+The old NPU E2E routing and nightly/weekly workflows have been retired. Dataset validation is handled
+by the external fixed-machine service; this directory layout is retained only for source-level tests:
 
 | Pattern | Runner |
 |---------|--------|

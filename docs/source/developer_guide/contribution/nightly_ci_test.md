@@ -1,5 +1,8 @@
 # Nightly CI Test
 
+> Historical document: the NPU nightly/weekly workflows described below are retired. Use the
+> external dataset validation service for pull request validation.
+
 This document explains how to trigger nightly hardware CI tests against your own PR code
 on Ascend NPU hardware (A2/A3), without waiting for the scheduled nightly run.
 
