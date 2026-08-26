@@ -80,8 +80,8 @@ jobs:
         HF_HUB_OFFLINE: 1
         ASCEND_RT_VISIBLE_DEVICES: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && '0' || '' }}
         MAX_JOBS: 4
-        UV_INDEX_URL: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://pypi.org/simple' || 'http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple' }}
-        UV_EXTRA_INDEX_URL: ${{ matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://repo.huaweicloud.com/ascend/repos/pypi https://download.pytorch.org/whl/cpu/' || 'https://repo.huaweicloud.com/ascend/repos/pypi http://cache-service.nginx-pypi-cache.svc.cluster.local/whl/cpu/' }}
+        UV_INDEX_URL: ${{ matrix.group.hosted_cpu == true && 'https://pypi.org/simple' || matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://pypi.org/simple' || 'http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple' }}
+        UV_EXTRA_INDEX_URL: ${{ matrix.group.hosted_cpu == true && 'https://download.pytorch.org/whl/cpu/' || matrix.group.runner == 'linux-aarch64-a2b3-1' && 'https://repo.huaweicloud.com/ascend/repos/pypi https://download.pytorch.org/whl/cpu/' || 'https://repo.huaweicloud.com/ascend/repos/pypi http://cache-service.nginx-pypi-cache.svc.cluster.local/whl/cpu/' }}
         UV_INDEX_STRATEGY: unsafe-best-match
         UV_INSECURE_HOST: cache-service.nginx-pypi-cache.svc.cluster.local
         UV_HTTP_TIMEOUT: 120
@@ -104,7 +104,7 @@ jobs:
 
       - name: Install packages
         run: |
-          if [ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then
+          if [ "${{ matrix.group.hosted_cpu }}" != "true" ] && [ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then
             sed -Ei 's@(ports|archive).ubuntu.com@cache-service.nginx-pypi-cache.svc.cluster.local:8081@g' /etc/apt/sources.list
             pip config set global.index-url http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple
             pip config set global.trusted-host cache-service.nginx-pypi-cache.svc.cluster.local
