@@ -88,12 +88,18 @@ jobs:
         UV_NO_CACHE: 1
         UV_SYSTEM_PYTHON: 1
     steps:
+      - name: Install git for hosted checkout
+        if: ${{ matrix.group.hosted_cpu == true }}
+        run: |
+          apt-get update -y
+          apt-get install -y git
+
       - name: Checkout vllm-project/vllm-ascend repo
         uses: actions/checkout@v6.0.1
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
-          submodules: recursive
+          submodules: ${{ matrix.group.hosted_cpu != true && 'recursive' || 'false' }}
 
       - name: Validate Ascend container runtime
         if: ${{ matrix.group.npu_type != 'cpu' }}

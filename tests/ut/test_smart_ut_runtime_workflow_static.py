@@ -58,6 +58,18 @@ def test_container_checkout_uses_runner_compatible_node_runtime() -> None:
     assert "uses: actions/checkout@v7" not in workflow
 
 
+def test_hosted_cpu_checkout_installs_git_before_disabling_submodules() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    install_git = workflow.index("- name: Install git for hosted checkout")
+    checkout = workflow.index("- name: Checkout vllm-project/vllm-ascend repo")
+    assert install_git < checkout
+    install_block = workflow[install_git:checkout]
+    assert "matrix.group.hosted_cpu == true" in install_block
+    assert "apt-get install -y git" in install_block
+    assert "submodules: ${{ matrix.group.hosted_cpu != true && 'recursive' || 'false' }}" in workflow
+
+
 def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
