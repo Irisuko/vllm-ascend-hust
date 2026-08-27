@@ -65,5 +65,8 @@ def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -
     install_block = workflow[
         workflow.index("- name: Install packages") : workflow.index("- name: Checkout vllm-project/vllm repo")
     ]
-    assert 'if [ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then' in install_block
+    assert (
+        'if [ "${{ matrix.group.hosted_cpu }}" != "true" ] && '
+        '[ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then' in install_block
+    )
     assert "cache-service.nginx-pypi-cache.svc.cluster.local:8081" in install_block

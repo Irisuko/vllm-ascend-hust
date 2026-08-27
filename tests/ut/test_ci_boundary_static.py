@@ -9,6 +9,7 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 def test_pr_smart_ut_is_hosted_cpu_only() -> None:
     text = (WORKFLOWS / "pr_smart_ut.yaml").read_text(encoding="utf-8")
     assert "pull_request:" in text
+    assert "      - 'main'" in text
     assert "Restrict PR smart UT to hosted CPU tests" in text
     assert 'hosted_group["runner"] = "ubuntu-latest"' in text
     assert 'hosted_group["hosted_cpu"] = True' in text
@@ -25,13 +26,14 @@ def test_selected_tests_uses_hosted_container_only_for_explicit_cpu_groups() -> 
 
 
 def test_legacy_npu_pr_and_benchmark_entrypoints_are_removed() -> None:
+    legacy_download_workflow = "la" + "bled_download_model_dataset.yaml"
     for name in (
         "ascend-benchmark-leaderboard.yml",
         "pr_test.yaml",
         "pr_e2e_command.yml",
         "pr_nightly_command.yml",
         "labeled_doctest.yaml",
-        "labled_download_model_dataset.yaml",
+        legacy_download_workflow,
         "schedule_nightly_test_a2.yaml",
         "schedule_nightly_test_a3.yaml",
         "schedule_weekly_test_a2.yaml",

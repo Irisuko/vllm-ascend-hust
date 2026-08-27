@@ -8,7 +8,7 @@ name: PR Smart UT
 on:
   pull_request:
     branches:
-      # - 'main'
+      - 'main'
       # - '*-dev'
       - 'releases/v*'
     paths:

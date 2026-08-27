@@ -11,7 +11,7 @@ This document describes the CI workflows for `vllm-ascend`, how to add tests, an
 
 ## Selective Testing System
 
-For the release-branch Smart UT workflow, `select_tests.py` maps changed files to affected modules,
+For the PR Smart UT workflow, `select_tests.py` maps changed files to affected modules,
 collects tests, and emits a matrix that is reduced to hosted CPU groups before execution. NPU groups
 are reserved for controlled nightly flows or the external dataset validator.
 
