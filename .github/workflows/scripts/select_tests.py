@@ -323,7 +323,8 @@ def _configured_nodeid_targets_for_file(file_path: str, config: list[dict]) -> l
 
 def _is_skipped_test_target(target: str, skip_tests: set[str]) -> bool:
     target = target.rstrip("/")
-    return target in skip_tests or _pytest_node_file_path(target) in skip_tests
+    file_path = _pytest_node_file_path(target)
+    return any(target == skip or file_path == skip or file_path.startswith(skip + "/") for skip in skip_tests)
 
 
 def _collect_cpu_only_skip_tests(config: list[dict]) -> set[str]:

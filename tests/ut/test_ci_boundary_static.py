@@ -21,6 +21,23 @@ def test_pr_smart_ut_is_hosted_cpu_only() -> None:
     assert "--cpu-only" in text
     config = (WORKFLOWS / "scripts" / "test_config.yaml").read_text(encoding="utf-8")
     for cpu_skip in (
+        "tests/ut/distributed/ascend_store",
+        "tests/ut/eplb",
+        "tests/ut/kv_offload",
+        "tests/ut/quantization",
+        "tests/ut/ops/test_comm_utils.py",
+        "tests/ut/ops/test_linear.py",
+        "tests/ut/ops/test_mla.py",
+        "tests/ut/sample/test_rejection_sampler.py",
+        "tests/ut/sample/test_sampler.py",
+        "tests/ut/simllm/test_embedding.py",
+        "tests/ut/spec_decode/test_ngram_proposer.py",
+        "tests/ut/test_ascend_forward_context.py",
+        "tests/ut/test_envs.py",
+        "tests/ut/test_perfgate_store_baseline.py",
+        "tests/ut/test_platform.py",
+        "tests/ut/test_resolve_ascend_benchmark_scenario.py",
+        "tests/ut/test_utils.py",
         "tests/ut/compilation/test_add_rms_norm_bias_gating.py",
         "tests/ut/compilation/test_qknorm_rope_fusion_pass.py",
         "tests/ut/eplb/core/policy/test_policy_abstract.py",
