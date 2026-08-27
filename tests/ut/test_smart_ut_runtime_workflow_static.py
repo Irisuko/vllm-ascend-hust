@@ -90,6 +90,18 @@ def test_repo_steps_use_the_checked_out_workspace() -> None:
     assert "/__w/vllm-ascend/vllm-ascend" not in workflow
 
 
+def test_hosted_cpu_install_excludes_ascend_only_dependencies() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    install_start = workflow.index("- name: Install vllm-project/vllm-ascend no device")
+    install_end = workflow.index("- name: Uninstall Triton for 310P tests", install_start)
+    install_block = workflow[install_start:install_end]
+
+    assert "sed -E '/^-r (requirements-lint\\.txt|requirements\\.txt)$/d' requirements-dev.txt" in install_block
+    assert "torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid" in install_block
+    assert 'uv pip install -r "$CPU_REQUIREMENTS"' in install_block
+    assert "uv pip install --no-deps -e ." in install_block
+
+
 def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 

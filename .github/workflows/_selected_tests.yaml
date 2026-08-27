@@ -251,9 +251,15 @@ jobs:
           SOC_VERSION: ascend910b1
           COMPILE_CUSTOM_KERNELS: 0
         run: |
+          CPU_REQUIREMENTS=$(mktemp)
+          {
+            sed -E '/^-r (requirements-lint\.txt|requirements\.txt)$/d' requirements-dev.txt
+            sed -E '/^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid)([<=>]|$)/d' requirements.txt
+          } > "$CPU_REQUIREMENTS"
           pip install uc-manager
-          uv pip install -r requirements-dev.txt
-          uv pip install -e .
+          uv pip install -r "$CPU_REQUIREMENTS"
+          uv pip install --no-deps -e .
+          rm -f "$CPU_REQUIREMENTS"
 
       - name: Uninstall Triton for 310P tests
         if: ${{ matrix.group.npu_type != 'cpu' && matrix.group.npu_type == '310p' }}
