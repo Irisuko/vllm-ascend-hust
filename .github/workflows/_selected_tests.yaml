@@ -117,7 +117,7 @@ jobs:
           fi
           apt-get update -y
           apt-get install -y python3-pip git vim wget net-tools gcc g++ cmake libnuma-dev curl gnupg2 zstd
-          git config --global --add safe.directory /__w/vllm-ascend/vllm-ascend
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           pip install uv
 
       - name: Checkout vllm-project/vllm repo
@@ -134,6 +134,7 @@ jobs:
           pip uninstall -y triton
 
       - name: Rebase on latest ${{ inputs.base_ref }}
+        working-directory: ${{ github.workspace }}
         run: |
           git config user.name "vllm-ascend-ci"
           git config user.email "vllm-ascend-ci@users.noreply.github.com"
@@ -142,6 +143,7 @@ jobs:
 
       - name: Get csrc hash
         id: get_csrc_hash
+        working-directory: ${{ github.workspace }}
         run: |
           CSRC_HASH=$(find ./csrc ./setup.py ./CMakeLists.txt ./cmake \
             -type f -not -path '*/.*' | sort | xargs sha256sum | sha256sum | awk '{print $1}')
@@ -201,6 +203,7 @@ jobs:
 
       - name: Install vllm-project/vllm-ascend with device
         if: ${{ matrix.group.npu_type != 'cpu' }}
+        working-directory: ${{ github.workspace }}
         run: |
           export MAX_JOBS=$(( ${{ matrix.group.num_npus }} * 23 ))
           pip install uc-manager
@@ -243,6 +246,7 @@ jobs:
 
       - name: Install vllm-project/vllm-ascend no device
         if: ${{ matrix.group.npu_type == 'cpu' }}
+        working-directory: ${{ github.workspace }}
         env:
           SOC_VERSION: ascend910b1
           COMPILE_CUSTOM_KERNELS: 0
@@ -258,6 +262,7 @@ jobs:
 
       - name: Run selected tests with device
         if: ${{ matrix.group.npu_type != 'cpu' }}
+        working-directory: ${{ github.workspace }}
         continue-on-error: ${{ inputs.continue_on_error }}
         env:
           VLLM_WORKER_MULTIPROC_METHOD: spawn
@@ -276,6 +281,7 @@ jobs:
 
       - name: Run selected tests without device
         if: ${{ matrix.group.npu_type == 'cpu' }}
+        working-directory: ${{ github.workspace }}
         continue-on-error: ${{ inputs.continue_on_error }}
         env:
           VLLM_WORKER_MULTIPROC_METHOD: spawn

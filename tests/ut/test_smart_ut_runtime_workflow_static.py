@@ -70,6 +70,26 @@ def test_hosted_cpu_checkout_installs_git_before_disabling_submodules() -> None:
     assert "submodules: ${{ matrix.group.hosted_cpu != true && 'recursive' || 'false' }}" in workflow
 
 
+def test_repo_steps_use_the_checked_out_workspace() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    workspace = "working-directory: ${{ github.workspace }}"
+
+    for step_name in (
+        "Rebase on latest",
+        "Get csrc hash",
+        "Install vllm-project/vllm-ascend with device",
+        "Install vllm-project/vllm-ascend no device",
+        "Run selected tests with device",
+        "Run selected tests without device",
+    ):
+        step_start = workflow.index(f"- name: {step_name}")
+        step_end = workflow.find("\n      - ", step_start + 1)
+        assert workspace in workflow[step_start:step_end]
+
+    assert 'git config --global --add safe.directory "$GITHUB_WORKSPACE"' in workflow
+    assert "/__w/vllm-ascend/vllm-ascend" not in workflow
+
+
 def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
