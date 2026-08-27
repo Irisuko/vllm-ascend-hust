@@ -96,8 +96,12 @@ def test_hosted_cpu_install_excludes_ascend_only_dependencies() -> None:
     install_end = workflow.index("- name: Uninstall Triton for 310P tests", install_start)
     install_block = workflow[install_start:install_end]
 
-    assert "sed -E '/^-r (requirements-lint\\.txt|requirements\\.txt)$/d' requirements-dev.txt" in install_block
-    assert "torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid" in install_block
+    assert (
+        "sed -E '/^-r (requirements-lint\\.txt|requirements\\.txt)$/d; "
+        "/^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite)([<=>]|$)/d' requirements-dev.txt"
+        in install_block
+    )
+    assert "torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite" in install_block
     assert 'uv pip install -r "$CPU_REQUIREMENTS"' in install_block
     assert "uv pip install --no-deps -e ." in install_block
 

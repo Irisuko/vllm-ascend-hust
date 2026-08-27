@@ -253,8 +253,8 @@ jobs:
         run: |
           CPU_REQUIREMENTS=$(mktemp)
           {
-            sed -E '/^-r (requirements-lint\.txt|requirements\.txt)$/d' requirements-dev.txt
-            sed -E '/^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid)([<=>]|$)/d' requirements.txt
+            sed -E '/^-r (requirements-lint\.txt|requirements\.txt)$/d; /^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite)([<=>]|$)/d' requirements-dev.txt
+            sed -E '/^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite)([<=>]|$)/d' requirements.txt
           } > "$CPU_REQUIREMENTS"
           pip install uc-manager
           uv pip install -r "$CPU_REQUIREMENTS"
