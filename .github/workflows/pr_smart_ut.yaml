@@ -83,7 +83,8 @@ jobs:
           git fetch origin "${{ github.base_ref }}"
           python3 -m pip install pyyaml regex
           python3 .github/workflows/scripts/select_tests.py \
-            --diff-base "origin/${{ github.base_ref }}"
+            --diff-base "origin/${{ github.base_ref }}" \
+            --cpu-only
 
       - name: Set no-tests output when smart UT paths unchanged
         id: noop

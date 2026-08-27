@@ -326,6 +326,15 @@ def _is_skipped_test_target(target: str, skip_tests: set[str]) -> bool:
     return target in skip_tests or _pytest_node_file_path(target) in skip_tests
 
 
+def _collect_cpu_only_skip_tests(config: list[dict]) -> set[str]:
+    """Collect test targets that require NPU-only runtime support."""
+    skipped: set[str] = set()
+    for module in config:
+        for target in module.get("cpu_only_skip_tests", []):
+            skipped.add(target.rstrip("/"))
+    return skipped
+
+
 def _is_ut_path(path: str) -> bool:
     return path == "tests/ut" or path.startswith("tests/ut/")
 
@@ -706,6 +715,11 @@ def main():
         action="store_true",
         help="Run tests for all configured modules regardless of changed files",
     )
+    parser.add_argument(
+        "--cpu-only",
+        action="store_true",
+        help="Remove test targets explicitly marked as NPU-only for hosted CPU validation",
+    )
 
     args = parser.parse_args()
     docs = list(yaml.safe_load_all(args.config.read_text()))
@@ -814,6 +828,15 @@ def main():
                     filtered.append(t)
             all_groups[key] = filtered
         _dedup_groups(all_groups)
+
+    if args.cpu_only:
+        cpu_only_skip_tests = _collect_cpu_only_skip_tests(config)
+        for key in list(all_groups.keys()):
+            all_groups[key] = [
+                target for target in all_groups[key] if not _is_skipped_test_target(target, cpu_only_skip_tests)
+            ]
+            if not all_groups[key]:
+                del all_groups[key]
 
     runners = _load_runners()
     estimated_times = _load_estimated_times(meta)

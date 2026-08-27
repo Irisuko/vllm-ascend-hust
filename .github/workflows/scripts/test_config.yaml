@@ -44,6 +44,14 @@
 - name: default_cpu_ut
   optional: false
   cpu_only: true
+  cpu_only_skip_tests:
+    - tests/ut/compilation/test_add_rms_norm_bias_gating.py
+    - tests/ut/compilation/test_qknorm_rope_fusion_pass.py
+    - tests/ut/eplb/core/policy/test_policy_abstract.py
+    - tests/ut/eplb/core/policy/test_policy_factor.py
+    - tests/ut/eplb/core/policy/test_policy_swift_balancer.py
+    - tests/ut/kv_offload/test_experimental_mapped.py
+    - tests/ut/patch/worker/patch_common/test_patch_routed_experts_capturer.py
   tests:
     - tests/ut
 
@@ -859,4 +867,3 @@ partition:
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-

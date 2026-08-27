@@ -18,6 +18,18 @@ def test_pr_smart_ut_is_hosted_cpu_only() -> None:
     assert "Read verified vLLM main commit" in text
     assert "vllm: ${{ needs.scope.outputs.main_commit }}" in text
     assert "d886c26d4d4fef7d079696beb4ece1cfb4b008a8" not in text
+    assert "--cpu-only" in text
+    config = (WORKFLOWS / "scripts" / "test_config.yaml").read_text(encoding="utf-8")
+    for cpu_skip in (
+        "tests/ut/compilation/test_add_rms_norm_bias_gating.py",
+        "tests/ut/compilation/test_qknorm_rope_fusion_pass.py",
+        "tests/ut/eplb/core/policy/test_policy_abstract.py",
+        "tests/ut/eplb/core/policy/test_policy_factor.py",
+        "tests/ut/eplb/core/policy/test_policy_swift_balancer.py",
+        "tests/ut/kv_offload/test_experimental_mapped.py",
+        "tests/ut/patch/worker/patch_common/test_patch_routed_experts_capturer.py",
+    ):
+        assert cpu_skip in config
 
 
 def test_selected_tests_uses_hosted_container_only_for_explicit_cpu_groups() -> None:
