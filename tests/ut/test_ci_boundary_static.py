@@ -14,6 +14,10 @@ def test_pr_smart_ut_is_hosted_cpu_only() -> None:
     assert 'hosted_group["runner"] = "ubuntu-latest"' in text
     assert 'hosted_group["hosted_cpu"] = True' in text
     assert "cpu_scope.outputs.test_groups" in text
+    assert "main_commit: ${{ steps.vllm.outputs.main_commit }}" in text
+    assert "Read verified vLLM main commit" in text
+    assert "vllm: ${{ needs.scope.outputs.main_commit }}" in text
+    assert "d886c26d4d4fef7d079696beb4ece1cfb4b008a8" not in text
 
 
 def test_selected_tests_uses_hosted_container_only_for_explicit_cpu_groups() -> None:

@@ -46,10 +46,21 @@ jobs:
       has_tests: ${{ steps.cpu_scope.outputs.has_tests || steps.noop.outputs.has_tests }}
       test_groups: ${{ steps.cpu_scope.outputs.test_groups || steps.noop.outputs.test_groups }}
       matched_modules: ${{ steps.scope.outputs.matched_modules || steps.noop.outputs.matched_modules }}
+      main_commit: ${{ steps.vllm.outputs.main_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Read verified vLLM main commit
+        id: vllm
+        run: |
+          main_commit="$(tr -d '[:space:]' < .github/vllm-main-verified.commit)"
+          if [[ ! "${main_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.github/vllm-main-verified.commit::expected one full lowercase commit ID"
+            exit 1
+          fi
+          echo "main_commit=${main_commit}" >> "$GITHUB_OUTPUT"
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -185,7 +196,7 @@ jobs:
     if: ${{ needs.scope.outputs.has_tests == 'true' }}
     uses: ./.github/workflows/_selected_tests.yaml
     with:
-      vllm: d886c26d4d4fef7d079696beb4ece1cfb4b008a8
+      vllm: ${{ needs.scope.outputs.main_commit }}
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.scope.outputs.test_groups }}
