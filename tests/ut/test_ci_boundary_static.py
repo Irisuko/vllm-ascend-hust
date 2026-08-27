@@ -32,6 +32,7 @@ def test_pr_smart_ut_is_hosted_cpu_only() -> None:
         "tests/ut/sample/test_sampler.py",
         "tests/ut/simllm/test_embedding.py",
         "tests/ut/spec_decode/test_ngram_proposer.py",
+        "tests/ut/worker/test_pcp_manager.py",
         "tests/ut/test_ascend_forward_context.py",
         "tests/ut/test_envs.py",
         "tests/ut/test_perfgate_store_baseline.py",
