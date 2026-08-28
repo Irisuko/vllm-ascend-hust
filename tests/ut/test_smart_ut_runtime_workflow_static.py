@@ -54,8 +54,8 @@ def test_npu_preflight_is_fail_closed_and_runs_before_package_install() -> None:
 def test_container_checkout_uses_runner_compatible_node_runtime() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    assert workflow.count("uses: actions/checkout@v6.0.1") == 2
-    assert "uses: actions/checkout@v7" not in workflow
+    assert workflow.count("uses: actions/checkout@v7") == 2
+    assert "uses: actions/checkout@v6.0.1" not in workflow
 
 
 def test_hosted_cpu_checkout_installs_git_before_disabling_submodules() -> None:
