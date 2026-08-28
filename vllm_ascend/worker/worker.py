@@ -32,7 +32,6 @@ import torch
 import torch.nn as nn
 import torch_npu
 import vllm.envs as envs_vllm
-from torch_npu.op_plugin.atb._atb_ops import _register_atb_extensions
 from torch_npu.profiler import dynamic_profile as dp
 from vllm.config import CUDAGraphMode, VllmConfig, set_current_vllm_config
 from vllm.distributed import ensure_model_parallel_initialized, init_distributed_environment
@@ -81,6 +80,16 @@ from vllm_ascend.utils import (
     vllm_version_is,
 )
 from vllm_ascend.worker.model_runner_v1 import NPUModelRunner
+
+
+def _register_atb_extensions() -> None:
+    """Load the optional ATB plugin only when an NPU worker needs it."""
+    from torch_npu.op_plugin.atb._atb_ops import (
+        _register_atb_extensions as register_atb_extensions,
+    )
+
+    register_atb_extensions()
+
 
 torch._dynamo.trace_rules.clear_lru_cache()  # noqa: E402
 from torch._dynamo.variables import TorchInGraphFunctionVariable  # noqa: E402
@@ -1352,7 +1361,7 @@ class NPUWorker(WorkerBase):
             context = nullcontext()  # type: ignore
         with context:
             self.model_runner.initialize_kv_cache(kv_cache_config)
-            provider = self.kv_cache_compression_provider
+            provider = getattr(self, "kv_cache_compression_provider", None)
             if provider is not None:
                 self.model_runner.activate_kv_cache_compression_provider(provider)
                 config = self.vllm_config.kv_cache_compression_config
