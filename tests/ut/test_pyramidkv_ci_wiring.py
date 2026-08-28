@@ -31,7 +31,10 @@ def test_pyramidkv_uses_pinned_hust_core_in_github_hosted_ci() -> None:
     assert "vllm_repository: vLLM-HUST/vllm-hust" in smart_ut
     assert "needs.scope.outputs.pyramidkv_core_commit" in smart_ut
     assert "rebase_on_base: false" in smart_ut
-    assert "tests/ut/kv_cache_compression" in smart_ut
+    assert "tests/ut/kv_cache_compression/test_model_runner.py" in smart_ut
+    assert "tests/ut/kv_cache_compression/test_pyramidkv.py" in smart_ut
+    assert "tests/ut/kv_cache_compression/test_registry.py" in smart_ut
+    assert "tests/ut/kv_cache_compression/a2" not in smart_ut
     assert "!contains(needs.scope.outputs.matched_modules, 'kv_cache_compression')" in smart_ut
 
 

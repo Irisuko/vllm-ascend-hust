@@ -224,7 +224,7 @@ jobs:
       base_ref: ${{ github.base_ref }}
       rebase_on_base: false
       test_groups: >-
-        [{"num_npus":0,"npu_type":"cpu","runner":"ubuntu-latest","tests":"tests/ut/kv_cache_compression tests/ut/attention/test_attention_utils.py tests/ut/test_pyramidkv_ci_wiring.py tests/ut/test_build_metadata.py tests/ut/test_ci_boundary_static.py tests/ut/test_smart_ut_runtime_workflow_static.py","partition":"1-1","image_tag":"22.04","hosted_cpu":true}]
+        [{"num_npus":0,"npu_type":"cpu","runner":"ubuntu-latest","tests":"tests/ut/kv_cache_compression/test_model_runner.py tests/ut/kv_cache_compression/test_pyramidkv.py tests/ut/kv_cache_compression/test_registry.py tests/ut/attention/test_attention_utils.py tests/ut/test_pyramidkv_ci_wiring.py tests/ut/test_build_metadata.py tests/ut/test_ci_boundary_static.py tests/ut/test_smart_ut_runtime_workflow_static.py","partition":"1-1","image_tag":"22.04","hosted_cpu":true}]
 
   paired-core-mypy:
     name: PyramidKV paired-Core mypy

@@ -32,7 +32,6 @@ import torch
 import torch.nn as nn
 import torch_npu
 import vllm.envs as envs_vllm
-from torch_npu.profiler import dynamic_profile as dp
 from vllm.config import CUDAGraphMode, VllmConfig, set_current_vllm_config
 from vllm.distributed import ensure_model_parallel_initialized, init_distributed_environment
 from vllm.distributed.ec_transfer import ensure_ec_transfer_initialized
@@ -89,6 +88,13 @@ def _register_atb_extensions() -> None:
     )
 
     register_atb_extensions()
+
+
+def _dynamic_profile_step() -> None:
+    """Load the optional dynamic profiler only when monitoring is enabled."""
+    from torch_npu.profiler import dynamic_profile
+
+    dynamic_profile.step()
 
 
 torch._dynamo.trace_rules.clear_lru_cache()  # noqa: E402
@@ -1006,7 +1012,7 @@ class NPUWorker(WorkerBase):
         self.profile_memory()
         # enable msMonitor to monitor the performance of vllm-ascend
         if get_ascend_config().msmonitor_use_daemon:
-            dp.step()
+            _dynamic_profile_step()
 
         if self._pp_send_work:
             for handle in self._pp_send_work:
