@@ -411,6 +411,10 @@ def _maybe_auto_select_idle_ascend_device(local_rank: int, parallel_config) -> i
 
 
 class NPUWorker(WorkerBase):
+    # WorkerBase is imported with follow-imports=skip in paired-Core mypy.
+    # Restate the inherited attribute so device mapping remains type-checked.
+    local_rank: int
+
     def __init__(
         self,
         vllm_config: VllmConfig,
