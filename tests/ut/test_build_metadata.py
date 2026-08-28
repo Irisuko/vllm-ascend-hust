@@ -40,7 +40,7 @@ def test_custom_op_metadata_uses_opc_discovery_filename():
 
 def test_paired_editable_workflow_uses_empty_target_dependency_sets():
     root = Path(__file__).resolve().parents[2]
-    workflow = (root / ".github/workflows/pr_test.yaml").read_text()
+    workflow = (root / ".github/workflows/pr_smart_ut.yaml").read_text()
 
     job = workflow.index("validate-hust-dual-editable:")
     checkout = workflow.index("repository: vLLM-HUST/vllm-hust", job)
@@ -53,7 +53,7 @@ def test_paired_editable_workflow_uses_empty_target_dependency_sets():
     assert "runs-on: linux-aarch64-a2b3-1" not in workflow[job:checkout]
     assert "container:" not in workflow[job:checkout]
     assert "TORCH_DEVICE_BACKEND_AUTOLOAD: 0" in workflow[job:checkout]
-    assert "ref: ${{ needs.lint-and-select-tests.outputs.pyramidkv_core_commit }}" in workflow[checkout:runtime_install]
+    assert "ref: ${{ needs.scope.outputs.pyramidkv_core_commit }}" in workflow[checkout:runtime_install]
     assert "-r ./requirements.txt" in workflow[runtime_install:core_install]
     assert runtime_install < build_tools < core_install < plugin_install
     assert "--no-build-isolation" in workflow[core_install:plugin_install]
@@ -82,3 +82,13 @@ def test_dual_editable_documentation_uses_target_specific_flow():
         contents = (root / readme).read_text()
         for command_fragment in required:
             assert command_fragment in contents
+
+
+def test_custom_op_builder_normalizes_supported_device_family_shorthands():
+    root = Path(__file__).resolve().parents[2]
+    builder = (root / "csrc/build_aclnn.sh").read_text()
+
+    assert "910b) SOC_VERSION=ascend910b1" in builder
+    assert "910c) SOC_VERSION=ascend910_9392" in builder
+    assert "310p) SOC_VERSION=ascend310p1" in builder
+    assert "input_SOC_VERSION=${INPUT_SOC_VERSION:-<unset>}" in builder

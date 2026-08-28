@@ -54,8 +54,56 @@ def test_npu_preflight_is_fail_closed_and_runs_before_package_install() -> None:
 def test_container_checkout_uses_runner_compatible_node_runtime() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-    assert workflow.count("uses: actions/checkout@v6.0.1") == 2
-    assert "uses: actions/checkout@v7" not in workflow
+    assert workflow.count("uses: actions/checkout@v7") == 2
+    assert "uses: actions/checkout@v6.0.1" not in workflow
+
+
+def test_hosted_cpu_checkout_installs_git_before_disabling_submodules() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    install_git = workflow.index("- name: Install git for hosted checkout")
+    checkout = workflow.index("- name: Checkout vllm-project/vllm-ascend repo")
+    assert install_git < checkout
+    install_block = workflow[install_git:checkout]
+    assert "matrix.group.hosted_cpu == true" in install_block
+    assert "apt-get install -y git" in install_block
+    assert "submodules: ${{ matrix.group.hosted_cpu != true && 'recursive' || 'false' }}" in workflow
+
+
+def test_repo_steps_use_the_checked_out_workspace() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    workspace = "working-directory: ${{ github.workspace }}"
+
+    for step_name in (
+        "Rebase on latest",
+        "Get csrc hash",
+        "Install vllm-project/vllm-ascend with device",
+        "Install vllm-project/vllm-ascend no device",
+        "Run selected tests with device",
+        "Run selected tests without device",
+    ):
+        step_start = workflow.index(f"- name: {step_name}")
+        step_end = workflow.find("\n      - ", step_start + 1)
+        assert workspace in workflow[step_start:step_end]
+
+    assert 'git config --global --add safe.directory "$GITHUB_WORKSPACE"' in workflow
+    assert "/__w/vllm-ascend/vllm-ascend" not in workflow
+
+
+def test_hosted_cpu_install_excludes_ascend_only_dependencies() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    install_start = workflow.index("- name: Install vllm-project/vllm-ascend no device")
+    install_end = workflow.index("- name: Uninstall Triton for 310P tests", install_start)
+    install_block = workflow[install_start:install_end]
+
+    assert (
+        "sed -E '/^-r (requirements-lint\\.txt|requirements\\.txt)$/d; "
+        "/^(torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite)([<=>]|$)/d' requirements-dev.txt"
+        in install_block
+    )
+    assert "torch-npu|triton-ascend|memfabric_hybrid|memcache_hybrid|xlite" in install_block
+    assert 'uv pip install -r "$CPU_REQUIREMENTS"' in install_block
+    assert "uv pip install --no-deps -e ." in install_block
 
 
 def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -> None:
@@ -65,5 +113,8 @@ def test_standalone_a2_runner_does_not_depend_on_cluster_local_package_cache() -
     install_block = workflow[
         workflow.index("- name: Install packages") : workflow.index("- name: Checkout vllm-project/vllm repo")
     ]
-    assert 'if [ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then' in install_block
+    assert (
+        'if [ "${{ matrix.group.hosted_cpu }}" != "true" ] && '
+        '[ "${{ matrix.group.runner }}" != "linux-aarch64-a2b3-1" ]; then' in install_block
+    )
     assert "cache-service.nginx-pypi-cache.svc.cluster.local:8081" in install_block

@@ -4,6 +4,16 @@ ROOT_DIR=$1
 SOC_VERSION=$2
 : "${ROOT_DIR:?ROOT_DIR is not set}"
 
+# setup.py accepts these stable device-family shorthands when generating build
+# metadata. Normalize them before selecting the custom-op package so a supported
+# shorthand cannot silently fall through to the successful no-op branch.
+INPUT_SOC_VERSION=${SOC_VERSION}
+case "${SOC_VERSION}" in
+    910b) SOC_VERSION=ascend910b1 ;;
+    910c) SOC_VERSION=ascend910_9392 ;;
+    310p) SOC_VERSION=ascend310p1 ;;
+esac
+
 log() {
     echo "[build_aclnn] $*"
 }
@@ -72,7 +82,7 @@ log_selected_ops() {
     done
 }
 
-log "start: ROOT_DIR=${ROOT_DIR:-<unset>} SOC_VERSION=${SOC_VERSION:-<unset>} cwd=$(pwd)"
+log "start: ROOT_DIR=${ROOT_DIR:-<unset>} SOC_VERSION=${SOC_VERSION:-<unset>} input_SOC_VERSION=${INPUT_SOC_VERSION:-<unset>} cwd=$(pwd)"
 log "env: ASCEND_HOME_PATH=${ASCEND_HOME_PATH:-<unset>} ASCEND_TOOLKIT_HOME=${ASCEND_TOOLKIT_HOME:-<unset>}"
 
 if [[ "$SOC_VERSION" =~ ^ascend310 ]]; then

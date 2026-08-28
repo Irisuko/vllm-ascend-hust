@@ -13,24 +13,19 @@ def test_pyramidkv_uses_pinned_hust_core_in_github_hosted_ci() -> None:
     core_commit = (REPO_ROOT / ".github/vllm-hust-pyramidkv.commit").read_text().strip()
     assert re.fullmatch(r"[0-9a-f]{40}", core_commit)
 
-    pr_workflow = (REPO_ROOT / ".github/workflows/pr_test.yaml").read_text()
-    assert "run-pyramidkv-selected-tests:" not in pr_workflow
-    assert "vllm-hust-pyramidkv.commit" in pr_workflow
-    assert "Checkout verified vLLM for mypy" in pr_workflow
-    assert "repository: vllm-project/vllm" in pr_workflow
-    assert "Checkout paired vLLM-HUST for PyramidKV mypy" in pr_workflow
-    assert "Run paired-Core mypy for PyramidKV changes" in pr_workflow
-    assert "changed_python_files" in pr_workflow
-    assert ("!contains(needs.lint-and-select-tests.outputs.matched_modules, 'kv_cache_compression')") in pr_workflow
-    assert pr_workflow.index("Select tests based on changed files") < pr_workflow.index(
-        "Checkout paired vLLM-HUST for PyramidKV mypy"
-    )
-    assert "validate-hust-dual-editable:" in pr_workflow
-    assert (
-        "needs.lint-and-select-tests.outputs.packaging_changed == 'true' || "
-        "contains(needs.lint-and-select-tests.outputs.matched_modules, "
-        "'kv_cache_compression')"
-    ) in pr_workflow
+    smart_ut = (REPO_ROOT / ".github/workflows/pr_smart_ut.yaml").read_text()
+    selected_tests = (REPO_ROOT / ".github/workflows/_selected_tests.yaml").read_text()
+    assert not (REPO_ROOT / ".github/workflows/pr_test.yaml").exists()
+    assert "vllm-hust-pyramidkv.commit" in smart_ut
+    assert "repository: vLLM-HUST/vllm-hust" in smart_ut
+    assert "Run paired-Core mypy for PyramidKV changes" in smart_ut
+    assert "changed_python_files" in smart_ut
+    assert "validate-hust-dual-editable:" in smart_ut
+    assert "contains(needs.scope.outputs.matched_modules, 'kv_cache_compression')" in smart_ut
+    assert "vllm_repository:" in selected_tests
+    assert "repository: ${{ inputs.vllm_repository }}" in selected_tests
+    assert "'vLLM-HUST/vllm-hust'" in smart_ut
+    assert "needs.scope.outputs.pyramidkv_core_commit" in smart_ut
 
 
 def test_pyramidkv_selective_test_module_is_complete() -> None:

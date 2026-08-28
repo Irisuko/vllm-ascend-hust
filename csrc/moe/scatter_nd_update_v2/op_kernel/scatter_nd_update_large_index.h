@@ -19,7 +19,7 @@
 
 namespace ScatterNdUpdateV2 {
 
-template<typename T>
+template<typename T, typename IndicesT>
 class LargeIndexKernel {
 public:
     __aicore__ inline LargeIndexKernel() = delete;
@@ -61,20 +61,23 @@ public:
 
     __aicore__ inline void InitBuffers(TPipe& pipe)
     {
-        uint64_t indicesInt64Size = ((blockLength_ * indexDim_ * 2) + ALIGN_NUM - 1) & ~(ALIGN_NUM - 1);
-        uint64_t updateBufBytes = (ubLengthForUpdates_ * sizeof(T) + 31) & ~31ULL;
+        constexpr uint64_t ubAlignmentBytes = 32;
+        uint64_t indicesBytes = blockLength_ * indexDim_ * sizeof(IndicesT);
+        indicesBytes = (indicesBytes + ubAlignmentBytes - 1) & ~(ubAlignmentBytes - 1);
+        uint64_t updateBufBytes =
+            (ubLengthForUpdates_ * sizeof(T) + ubAlignmentBytes - 1) & ~(ubAlignmentBytes - 1);
 
-        pipe.InitBuffer(indicesBuf, indicesInt64Size * sizeof(int));
+        pipe.InitBuffer(indicesBuf, indicesBytes);
         pipe.InitBuffer(updateBuf, updateBufBytes);
 
-        indicesInt64Local = indicesBuf.Get<int>().ReinterpretCast<int64_t>();
+        indicesLocal = indicesBuf.Get<IndicesT>();
         updateLocal = updateBuf.Get<T>();
     }
 
     __aicore__ inline void SetGmAddr(GM_ADDR indices, GM_ADDR updates, GM_ADDR output,
                                       const ScatterNdUpdateV2TilingData& tiling)
     {
-        indicesGmInt64_.SetGlobalBuffer((__gm__ int64_t*)indices);
+        indicesGm_.SetGlobalBuffer((__gm__ IndicesT*)indices);
         updatesGm_.SetGlobalBuffer((__gm__ T*)updates);
         outputGm_.SetGlobalBuffer((__gm__ T*)output);
     }
@@ -92,7 +95,7 @@ public:
     __aicore__ inline void ProcessOneBlock(uint64_t blockIdx, bool isTail)
     {
         uint64_t copyRow = isTail ? blockRemainLength_ : blockLength_;
-        CopyInInt64(blockIdx, isTail);
+        CopyIn(blockIdx, isTail);
 
         for (uint64_t i = 0; i < copyRow; ++i) {
             int64_t linearIndex = ComputeLinearIndex(i);
@@ -102,14 +105,15 @@ public:
         }
     }
 
-    __aicore__ inline void CopyInInt64(uint64_t blockIdx, bool isTail)
+    __aicore__ inline void CopyIn(uint64_t blockIdx, bool isTail)
     {
         uint64_t indicesOffset = blockIdx * blockLength_ * indexDim_;
         uint64_t copyRow = isTail ? blockRemainLength_ : blockLength_;
 
-        DataCopyExtParams copyParams{1, static_cast<uint32_t>(copyRow * indexDim_ * sizeof(int64_t)), 0, 0, 0};
-        DataCopyPadExtParams<int64_t> padParams{true, 0, 0, 0};
-        DataCopyPad(indicesInt64Local, indicesGmInt64_[indicesOffset], copyParams, padParams);
+        DataCopyExtParams copyParams{
+            1, static_cast<uint32_t>(copyRow * indexDim_ * sizeof(IndicesT)), 0, 0, 0};
+        DataCopyPadExtParams<IndicesT> padParams{true, 0, 0, 0};
+        DataCopyPad(indicesLocal, indicesGm_[indicesOffset], copyParams, padParams);
         PipeMte2ToS();
     }
 
@@ -117,7 +121,8 @@ public:
     {
         int64_t linearIndex = 0;
         for (uint64_t dim = 0; dim < indexDim_; ++dim) {
-            int64_t idxValue = indicesInt64Local.GetValue(rowIdx * indexDim_ + dim);
+            int64_t idxValue = static_cast<int64_t>(
+                indicesLocal.GetValue(rowIdx * indexDim_ + dim));
             int64_t stride = static_cast<int64_t>(indicesMask_[dim]);
             linearIndex += idxValue * stride;
         }
@@ -142,14 +147,14 @@ public:
     }
 
 private:
-    GlobalTensor<int64_t> indicesGmInt64_;
+    GlobalTensor<IndicesT> indicesGm_;
     GlobalTensor<T> updatesGm_;
     GlobalTensor<T> outputGm_;
 
     TBuf<TPosition::VECCALC> indicesBuf;
     TBuf<TPosition::VECCALC> updateBuf;
 
-    LocalTensor<int64_t> indicesInt64Local;
+    LocalTensor<IndicesT> indicesLocal;
     LocalTensor<T> updateLocal;
 
     uint64_t blockIdx_;

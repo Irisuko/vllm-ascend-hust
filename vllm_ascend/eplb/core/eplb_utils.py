@@ -87,7 +87,7 @@ def init_eplb_config(eplb_config, layer_id, moe_config, mix_placement=False, num
         eplb_enable = True
         global_placement, physical_count = expert_file_to_tensor(expert_map_path, layer_id)
         n_redundant = physical_count - n_experts
-    elif not eplb_enable:
+    elif not eplb_enable and not mix_placement:
         _, expert_map, _ = determine_expert_map(ep_size, moe_config.ep_rank, n_experts)
         return None, expert_map, None, 0
 

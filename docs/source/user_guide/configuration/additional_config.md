@@ -71,6 +71,8 @@ The following table lists additional configuration options available in vLLM Asc
 | `finegrained_tp_config`             | dict | `{}`    | Configuration options for module tensor parallelism                                                       |
 | `ascend_compilation_config`         | dict | `{}`    | Configuration options for ascend compilation                                                              |
 | `eplb_config`                       | dict | `{}`    | Configuration options for eplb |
+| `enable_layered_prefill`            | bool | `False` | Enable the isolated Layered Prefill scheduler and NPU V1 runner. See [Layered Prefill](../feature_guide/layered_prefill.md). |
+| `layered_prefill_num_stages`        | int  | `2`     | Number of balanced transformer layer stages. Must be at least 2 and no greater than the model layer count. |
 | `refresh`                           | bool | `false` | Whether to refresh global Ascend configuration content. This is usually used by rlhf or ut/e2e test case. |
 | `dump_config`                       | dict | `None`  | Inline msprobe dump configuration. vLLM-Ascend will materialize it to a temporary JSON file and pass that file to the debugger. |
 | `dump_config_path`                  | str  | `None`  | Configuration file path for msprobe dump (compatible legacy option).                                      |

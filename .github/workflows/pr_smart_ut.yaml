@@ -8,10 +8,11 @@ name: PR Smart UT
 on:
   pull_request:
     branches:
-      # - 'main'
+      - 'main'
       # - '*-dev'
       - 'releases/v*'
     paths:
+      - '.github/vllm-hust-pyramidkv.commit'
       - '.github/workflows/pr_smart_ut.yaml'
       - '.github/workflows/_selected_tests.yaml'
       - '.github/workflows/scripts/select_tests.py'
@@ -43,13 +44,33 @@ jobs:
     name: Determine smart UT scope
     runs-on: ubuntu-latest
     outputs:
-      has_tests: ${{ steps.scope.outputs.has_tests || steps.noop.outputs.has_tests }}
-      test_groups: ${{ steps.scope.outputs.test_groups || steps.noop.outputs.test_groups }}
+      has_tests: ${{ steps.cpu_scope.outputs.has_tests || steps.noop.outputs.has_tests }}
+      test_groups: ${{ steps.cpu_scope.outputs.test_groups || steps.noop.outputs.test_groups }}
       matched_modules: ${{ steps.scope.outputs.matched_modules || steps.noop.outputs.matched_modules }}
+      main_commit: ${{ steps.vllm.outputs.main_commit }}
+      pyramidkv_core_commit: ${{ steps.vllm.outputs.pyramidkv_core_commit }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Read verified vLLM commits
+        id: vllm
+        run: |
+          main_commit="$(tr -d '[:space:]' < .github/vllm-main-verified.commit)"
+          pyramidkv_core_commit="$(tr -d '[:space:]' < .github/vllm-hust-pyramidkv.commit)"
+          if [[ ! "${main_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.github/vllm-main-verified.commit::expected one full lowercase commit ID"
+            exit 1
+          fi
+          if [[ ! "${pyramidkv_core_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error file=.github/vllm-hust-pyramidkv.commit::expected one full lowercase commit ID"
+            exit 1
+          fi
+          {
+            echo "main_commit=${main_commit}"
+            echo "pyramidkv_core_commit=${pyramidkv_core_commit}"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: dorny/paths-filter@v4
         id: filter
@@ -72,7 +93,8 @@ jobs:
           git fetch origin "${{ github.base_ref }}"
           python3 -m pip install pyyaml regex
           python3 .github/workflows/scripts/select_tests.py \
-            --diff-base "origin/${{ github.base_ref }}"
+            --diff-base "origin/${{ github.base_ref }}" \
+            --cpu-only
 
       - name: Set no-tests output when smart UT paths unchanged
         id: noop
@@ -85,10 +107,44 @@ jobs:
             echo "matched_modules=workflow-only"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Post scope summary
-        if: ${{ steps.scope.outputs.has_tests == 'true' }}
+      - name: Restrict PR smart UT to hosted CPU tests
+        id: cpu_scope
+        if: steps.scope.outputs.has_tests == 'true'
         env:
           TEST_GROUPS: ${{ steps.scope.outputs.test_groups }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          groups = json.loads(os.environ["TEST_GROUPS"])
+          cpu_groups = []
+          for group in groups:
+              if group.get("npu_type") != "cpu":
+                  continue
+              hosted_group = dict(group)
+              hosted_group["runner"] = "ubuntu-latest"
+              hosted_group["image_tag"] = "22.04"
+              hosted_group["hosted_cpu"] = True
+              cpu_groups.append(hosted_group)
+          print(
+              "PR Smart UT CPU-only groups:",
+              json.dumps(cpu_groups, ensure_ascii=True, sort_keys=True),
+          )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"has_tests={'true' if cpu_groups else 'false'}\n")
+              output.write(
+                  "test_groups="
+                  + json.dumps(cpu_groups, separators=(",", ":"))
+                  + "\n"
+              )
+          PY
+
+      - name: Post scope summary
+        if: ${{ steps.cpu_scope.outputs.has_tests == 'true' }}
+        env:
+          TEST_GROUPS: ${{ steps.cpu_scope.outputs.test_groups }}
           MATCHED_MODULES: ${{ steps.scope.outputs.matched_modules }}
         run: |
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
@@ -121,6 +177,15 @@ jobs:
           print("\n".join(lines))
           PY
 
+      - name: Post CPU-only notice when NPU groups were selected
+        if: ${{ steps.scope.outputs.has_tests == 'true' && steps.cpu_scope.outputs.has_tests != 'true' }}
+        run: |
+          {
+            echo "## Smart UT Test Scope"
+            echo
+            echo "No hosted CPU Smart UT targets matched this PR; NPU groups are handled by the external validator."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Post no-test summary
         if: ${{ steps.scope.outputs.has_tests != 'true' }}
         env:
@@ -142,7 +207,137 @@ jobs:
     if: ${{ needs.scope.outputs.has_tests == 'true' }}
     uses: ./.github/workflows/_selected_tests.yaml
     with:
-      vllm: d886c26d4d4fef7d079696beb4ece1cfb4b008a8
+      vllm_repository: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') && 'vLLM-HUST/vllm-hust' || 'vllm-project/vllm' }}
+      vllm: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') && needs.scope.outputs.pyramidkv_core_commit || needs.scope.outputs.main_commit }}
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
       test_groups: ${{ needs.scope.outputs.test_groups }}
+
+  paired-core-mypy:
+    name: PyramidKV paired-Core mypy
+    needs: [scope]
+    if: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/ascend-ci/vllm-ascend:lint
+    steps:
+      - name: Checkout vllm-ascend-hust
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout paired vllm-hust
+        uses: actions/checkout@v7
+        with:
+          repository: vLLM-HUST/vllm-hust
+          ref: ${{ needs.scope.outputs.pyramidkv_core_commit }}
+          path: vllm-empty
+
+      - name: Run paired-Core mypy for PyramidKV changes
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch origin "${{ github.base_ref }}"
+          mapfile -t changed_python_files < <(
+            git diff --name-only --diff-filter=ACMRT \
+              "origin/${{ github.base_ref }}...HEAD" -- \
+              ':(glob)vllm_ascend/**/*.py'
+          )
+          if (( ${#changed_python_files[@]} == 0 )); then
+            echo "No changed vllm_ascend Python files to type-check."
+            exit 0
+          fi
+          printf 'Type-checking paired-Core files:\n'
+          printf '  %s\n' "${changed_python_files[@]}"
+          export PYTHONPATH="$PYTHONPATH:$(pwd)/vllm-empty"
+          for python_version in 3.10 3.11 3.12; do
+            mypy --follow-imports skip --check-untyped-defs \
+              --python-version "$python_version" \
+              "${changed_python_files[@]}"
+          done
+
+  validate-hust-dual-editable:
+    name: PyramidKV dual-editable compatibility
+    needs: [scope]
+    if: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      UV_INDEX_URL: https://repo.huaweicloud.com/repository/pypi/simple
+      UV_HTTP_TIMEOUT: 60
+      UV_LINK_MODE: copy
+      TORCH_DEVICE_BACKEND_AUTOLOAD: 0
+    steps:
+      - name: Checkout vllm-ascend-hust
+        uses: actions/checkout@v7
+
+      - name: Checkout paired vllm-hust
+        uses: actions/checkout@v7
+        with:
+          repository: vLLM-HUST/vllm-hust
+          ref: ${{ needs.scope.outputs.pyramidkv_core_commit }}
+          path: vllm-hust
+
+      - name: Create clean Python environment
+        run: |
+          python3 -m pip install uv
+          uv venv --python 3.12 .venv-dual-editable
+
+      - name: Install Ascend target runtime and core build dependencies
+        run: |
+          UV_EXTRA_INDEX_URL=https://mirrors.huaweicloud.com/ascend/repos/pypi \
+          UV_INDEX_STRATEGY=unsafe-best-match \
+            uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -r ./vllm-hust/requirements/common.txt \
+            -r ./requirements.txt \
+            -r ./vllm-hust/requirements/build/empty.txt \
+            --verbose
+
+      - name: Install paired vllm-hust editable
+        run: |
+          VLLM_TARGET_DEVICE=empty uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -e ./vllm-hust \
+            --no-build-isolation \
+            --no-deps \
+            --verbose
+
+      - name: Install vllm-ascend-hust editable
+        run: |
+          COMPILE_CUSTOM_KERNELS=0 \
+          SOC_VERSION=ascend910b1 \
+            uv pip install \
+            --python .venv-dual-editable/bin/python \
+            -e . \
+            --no-deps \
+            --verbose
+
+      - name: Validate metadata and dependencies
+        run: |
+          .venv-dual-editable/bin/python -m pytest --noconftest \
+            tests/ut/test_build_metadata.py \
+            tests/ut/test_runtime_metadata.py \
+            -q
+          .venv-dual-editable/bin/python - <<'PY'
+          import json
+          from importlib.metadata import distribution
+          from pathlib import Path
+          from sysconfig import get_path
+
+          for package in ("vllm", "vllm-ascend-hust"):
+              dist = distribution(package)
+              direct_url = dist.read_text("direct_url.json")
+              if direct_url is not None:
+                  assert json.loads(direct_url)["dir_info"]["editable"] is True, package
+                  continue
+
+              normalized_name = package.replace("-", "_")
+              editable_paths = list(
+                  Path(get_path("purelib")).glob(
+                      f"__editable__.{normalized_name}-*.pth"
+                  )
+              )
+              assert editable_paths, f"{package}: no editable-install metadata"
+              assert all(path.is_file() for path in editable_paths)
+          PY
+          uv pip check --python .venv-dual-editable/bin/python

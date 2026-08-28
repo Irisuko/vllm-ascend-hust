@@ -86,6 +86,13 @@ class TestAscendConfig(unittest.TestCase):
             )
         )
 
+    def test_generate_dsv4_mix_placement_replicates_shared_slot(self):
+        placement = generate_global_placement(257, 8, 0, 1)
+
+        self.assertEqual(tuple(placement.shape), (8, 33))
+        self.assertTrue(torch.equal(placement[:, -1], torch.full((8,), 256, dtype=torch.int32)))
+        self.assertTrue(torch.equal(torch.sort(placement[:, :-1].flatten()).values, torch.arange(256)))
+
     def test_init_eplb_config_with_eplb_withmap(self):
         _TEST_DIR = os.path.dirname(__file__)
         self.vllm_config.additional_config["eplb_config"]["expert_map_path"] = _TEST_DIR + "/expert_map.json"
@@ -125,3 +132,35 @@ class TestAscendConfig(unittest.TestCase):
         self.assertIsNone(log2phy)
         self.assertTrue(torch.equal(expert_map, gt_expert_map))
         self.assertEqual(redundant_experts, 0)
+
+    def test_mix_placement_replicates_shared_expert_without_eplb(self):
+        self.vllm_config.additional_config = {"refresh": True}
+        eplb_config = init_ascend_config(self.vllm_config).eplb_config
+        self.moe_config.num_experts = 9
+        self.moe_config.num_logical_experts = 8
+        self.moe_config.num_local_experts = 5
+
+        global_expert_map, expert_map, log2phy, redundant_experts = init_eplb_config(
+            eplb_config,
+            0,
+            self.moe_config,
+            mix_placement=True,
+            num_shared_experts=1,
+            tp_size=2,
+        )
+
+        self.assertIsNone(log2phy)
+        self.assertEqual(redundant_experts, 1)
+        self.assertTrue(
+            torch.equal(
+                global_expert_map,
+                torch.tensor(
+                    [
+                        [0, 1, 2, 3, -1, -1, -1, -1, 4],
+                        [-1, -1, -1, -1, 0, 1, 2, 3, 4],
+                    ],
+                    dtype=torch.int32,
+                ),
+            )
+        )
+        self.assertTrue(torch.equal(expert_map, global_expert_map[1]))
