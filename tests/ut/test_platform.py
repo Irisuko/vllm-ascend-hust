@@ -9,6 +9,7 @@ from vllm.v1.attention.selector import AttentionSelectorConfig  # type: ignore
 
 from tests.ut.base import TestBase
 from vllm_ascend.ascend_forward_context import MoECommType, override_mrv2_in_profile_run
+from vllm_ascend.model_compat import uses_qwen2_rope
 from vllm_ascend.platform import (
     NPUPlatform,
     _ensure_ascend_compilation_config_dict,
@@ -84,19 +85,20 @@ class TestNPUPlatform(TestBase):
         self.assertEqual(NPUPlatform.dispatch_key, "PrivateUse1")
         self.assertEqual(NPUPlatform.supported_quantization, [ASCEND_QUANTIZATION_METHOD, COMPRESSED_TENSORS_METHOD])
 
-    @pytest.mark.parametrize(
-        "additional_config",
-        [None, {}, {"ascend_compilation_config": None}],
-    )
-    def test_sync_npugraph_ex_to_additional_config(self, additional_config):
-        vllm_config = self.mock_vllm_config()
-        vllm_config.additional_config = additional_config
-        ascend_config = self.mock_vllm_ascend_config()
-        ascend_config.ascend_compilation_config.enable_npugraph_ex = False
+    def test_slicegpt_qwen2_architecture_is_recognized(self):
+        assert uses_qwen2_rope(["SliceGPTQwen2ForCausalLM"])
+        assert uses_qwen2_rope(["OtherModel", "SliceGPTQwen2ForCausalLM"])
 
-        _sync_npugraph_ex_to_additional_config(vllm_config, ascend_config)
+    def test_sync_npugraph_ex_to_additional_config(self):
+        for additional_config in (None, {}, {"ascend_compilation_config": None}):
+            vllm_config = self.mock_vllm_config()
+            vllm_config.additional_config = additional_config
+            ascend_config = self.mock_vllm_ascend_config()
+            ascend_config.ascend_compilation_config.enable_npugraph_ex = False
 
-        assert vllm_config.additional_config == {"ascend_compilation_config": {"enable_npugraph_ex": False}}
+            _sync_npugraph_ex_to_additional_config(vllm_config, ascend_config)
+
+            assert vllm_config.additional_config == {"ascend_compilation_config": {"enable_npugraph_ex": False}}
 
     def test_sync_npugraph_ex_preserves_other_compilation_config(self):
         vllm_config = self.mock_vllm_config()
@@ -451,11 +453,61 @@ class TestNPUPlatform(TestBase):
             vllm_config.compilation_config.mode,
             CompilationMode.NONE,
         )
-
         self.assertEqual(
             vllm_config.compilation_config.cudagraph_mode,
             CUDAGraphMode.NONE,
         )
+
+    @patch("vllm_ascend.quantization.utils.maybe_auto_detect_quantization")
+    @patch("vllm_ascend.ascend_config.init_ascend_config")
+    @patch("vllm_ascend.utils.get_ascend_device_type", return_value=AscendDeviceType.A3)
+    @patch("vllm_ascend.core.recompute_scheduler.RecomputeSchedulerConfig.initialize_from_config")
+    def test_check_and_update_config_slicegpt_qwen2_graph_policy(
+        self,
+        mock_init_recompute,
+        _mock_soc_version,
+        mock_init_ascend,
+        _mock_auto_detect,
+    ):
+        """Keep SliceGPT on the dense-Qwen2 graph/eager compatibility policy."""
+        mock_init_ascend.return_value = TestNPUPlatform.mock_vllm_ascend_config()
+        mock_init_recompute.return_value = MagicMock()
+        vllm_config = TestNPUPlatform.mock_vllm_config()
+        vllm_config.model_config.architectures = ["SliceGPTQwen2ForCausalLM"]
+        vllm_config.model_config.enforce_eager = False
+        vllm_config.parallel_config.decode_context_parallel_size = 1
+        vllm_config.parallel_config.prefill_context_parallel_size = 1
+        vllm_config.parallel_config.tensor_parallel_size = 1
+        vllm_config.compilation_config.mode = CompilationMode.VLLM_COMPILE
+        vllm_config.compilation_config.cudagraph_mode = CUDAGraphMode.FULL_DECODE_ONLY
+        vllm_config.scheduler_config = MagicMock()
+
+        from vllm_ascend import platform
+
+        importlib.reload(platform)
+        self.platform = platform.NPUPlatform()
+
+        def run_policy(allow_aclgraph: str) -> tuple[bool, CompilationMode]:
+            with (
+                patch.dict(
+                    "os.environ",
+                    {
+                        "VLLM_ASCEND_USE_NATIVE_QWEN2_ROPE": "0",
+                        "VLLM_ASCEND_ALLOW_UNSAFE_QWEN2_ACLGRAPH": allow_aclgraph,
+                    },
+                    clear=False,
+                ),
+                patch.object(platform.NPUPlatform, "_fix_incompatible_config"),
+            ):
+                self.platform.check_and_update_config(vllm_config)
+            return vllm_config.model_config.enforce_eager, vllm_config.compilation_config.mode
+
+        assert run_policy("0") == (True, CompilationMode.NONE)
+
+        vllm_config.model_config.enforce_eager = False
+        vllm_config.compilation_config.mode = CompilationMode.VLLM_COMPILE
+        vllm_config.compilation_config.cudagraph_mode = CUDAGraphMode.FULL_DECODE_ONLY
+        assert run_policy("1") == (False, CompilationMode.VLLM_COMPILE)
 
     @patch("vllm_ascend.quantization.utils.maybe_auto_detect_quantization")
     @patch("vllm_ascend.utils.get_ascend_device_type", return_value=AscendDeviceType.A3)
