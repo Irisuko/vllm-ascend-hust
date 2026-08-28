@@ -34,6 +34,42 @@ class AscendConfig:
         additional_config = vllm_config.additional_config if vllm_config.additional_config is not None else {}
         self._check_mooncake_c8_kv_cache_quant(vllm_config)
 
+        enable_layered_prefill = additional_config.get(
+            "enable_layered_prefill",
+            False,
+        )
+        if not isinstance(enable_layered_prefill, bool):
+            raise TypeError("enable_layered_prefill must be a boolean.")
+        layered_prefill_num_stages = additional_config.get(
+            "layered_prefill_num_stages",
+            2,
+        )
+        if (
+            isinstance(layered_prefill_num_stages, bool)
+            or not isinstance(layered_prefill_num_stages, int)
+            or layered_prefill_num_stages < 2
+        ):
+            raise ValueError(
+                "layered_prefill_num_stages must be an integer greater than "
+                "or equal to 2."
+            )
+        self.enable_layered_prefill = enable_layered_prefill
+        self.layered_prefill_num_stages = layered_prefill_num_stages
+        # Keep vLLM's scheduler flags synchronized after its generic config
+        # validation. Ascend enables this feature through additional_config so
+        # the NPU-specific scheduler and runner can be selected together.
+        if hasattr(vllm_config.scheduler_config, "enable_layered_prefill"):
+            vllm_config.scheduler_config.enable_layered_prefill = (
+                enable_layered_prefill
+            )
+        if hasattr(
+            vllm_config.scheduler_config,
+            "layered_prefill_num_stages",
+        ):
+            vllm_config.scheduler_config.layered_prefill_num_stages = (
+                layered_prefill_num_stages
+            )
+
         xlite_graph_config = additional_config.get("xlite_graph_config", {})
         self.xlite_graph_config = XliteGraphConfig(xlite_graph_config, vllm_config)
 

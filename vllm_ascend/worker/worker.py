@@ -709,6 +709,15 @@ class NPUWorker(WorkerBase):
             from vllm_ascend.worker.v2.model_runner import NPUModelRunner as NPUModelRunnerV2
 
             self.model_runner = NPUModelRunnerV2(self.vllm_config, self.device)
+        elif get_ascend_config().enable_layered_prefill is True:
+            from vllm_ascend.worker.layered_prefill_model_runner import (
+                LayeredPrefillNPUModelRunner,
+            )
+
+            self.model_runner = LayeredPrefillNPUModelRunner(
+                self.vllm_config,
+                self.device,
+            )
         else:
             self.model_runner = NPUModelRunner(self.vllm_config, self.device)
 
