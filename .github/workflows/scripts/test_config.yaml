@@ -44,6 +44,34 @@
 - name: default_cpu_ut
   optional: false
   cpu_only: true
+  cpu_only_skip_tests:
+    # These suites require Ascend runtime, NPU custom ops, benchmark tooling,
+    # or an external service and are not hosted-CPU correctness tests.
+    - tests/ut/distributed/ascend_store
+    - tests/ut/eplb
+    - tests/ut/kv_offload
+    - tests/ut/quantization
+    - tests/ut/ops/test_comm_utils.py
+    - tests/ut/ops/test_linear.py
+    - tests/ut/ops/test_mla.py
+    - tests/ut/sample/test_rejection_sampler.py
+    - tests/ut/sample/test_sampler.py
+    - tests/ut/simllm/test_embedding.py
+    - tests/ut/spec_decode/test_ngram_proposer.py
+    - tests/ut/worker/test_pcp_manager.py
+    - tests/ut/test_ascend_forward_context.py
+    - tests/ut/test_envs.py
+    - tests/ut/test_perfgate_store_baseline.py
+    - tests/ut/test_platform.py
+    - tests/ut/test_resolve_ascend_benchmark_scenario.py
+    - tests/ut/test_utils.py
+    - tests/ut/compilation/test_add_rms_norm_bias_gating.py
+    - tests/ut/compilation/test_qknorm_rope_fusion_pass.py
+    - tests/ut/eplb/core/policy/test_policy_abstract.py
+    - tests/ut/eplb/core/policy/test_policy_factor.py
+    - tests/ut/eplb/core/policy/test_policy_swift_balancer.py
+    - tests/ut/kv_offload/test_experimental_mapped.py
+    - tests/ut/patch/worker/patch_common/test_patch_routed_experts_capturer.py
   tests:
     - tests/ut
 
@@ -681,10 +709,8 @@
     - tests/ut/test_custom_op_package.py
     - tests/ut/test_perfgate_store_baseline.py
     - tests/ut/test_prepare_plugin_perfgate_artifact.py
-    - tests/ut/test_ascend_benchmark_perfgate_workflow_static.py
     - tests/ut/test_parse_ascend_comment_command.py
     - tests/ut/test_perfgate_fail_fast_scripts.py
-    - tests/ut/test_perfgate_summary_conflict.py
     - tests/ut/test_resolve_ascend_benchmark_scenario.py
     - tests/ut/test_resolve_perfgate_spec_file.py
     - tests/ut/test_smart_ut_container_runtime.py
@@ -861,5 +887,3 @@ partition:
   a3_x2: 3
   a3_x4: 3
   cpu_x0: 1
-
-

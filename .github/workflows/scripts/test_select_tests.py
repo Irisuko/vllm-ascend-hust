@@ -134,6 +134,14 @@ def test_collect_paths_and_basic_path_helpers():
         "tests/e2e/pull_request/two_card/test_split.py::test_a",
         {"tests/e2e/pull_request/two_card/test_split.py::test_a"},
     )
+    assert select_tests._is_skipped_test_target(
+        "tests/ut/distributed/ascend_store/test_backend.py::test_config",
+        {"tests/ut/distributed/ascend_store"},
+    )
+    assert not select_tests._is_skipped_test_target(
+        "tests/ut/distributed/ascend_store_extra/test_backend.py",
+        {"tests/ut/distributed/ascend_store"},
+    )
 
 
 def test_route_helpers():

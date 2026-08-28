@@ -1,5 +1,8 @@
 # Multi Node Test
 
+> Historical document: the legacy NPU multi-node CI workflow has been retired. This content is
+> retained for implementation history only.
+
 Multi-Node CI is designed to test distributed scenarios of very large models, eg: disaggregated_prefill multi DP across multi nodes and so on.
 
 ## How it works
