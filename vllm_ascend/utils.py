@@ -39,6 +39,13 @@ from vllm.sequence import IntermediateTensors
 
 import vllm_ascend.envs as envs_ascend
 from vllm_ascend.ascend_config import WeightPrefetchConfig, get_ascend_config
+from vllm_ascend.diagnostics.capability_manifest import (
+    CAP_FUSION_ADD_RMS_NORM_BIAS,
+    STATUS_DISABLED_BY_POLICY,
+    STATUS_ENABLED,
+    STATUS_UNAVAILABLE,
+    record_capability,
+)
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -362,6 +369,12 @@ def aligned_16(tensor: torch.Tensor):
 @lru_cache(maxsize=1)
 def is_add_rms_norm_bias_custom_op_available() -> bool:
     if envs_ascend.VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP:
+        record_capability(
+            CAP_FUSION_ADD_RMS_NORM_BIAS,
+            STATUS_DISABLED_BY_POLICY,
+            reason="npu_add_rms_norm_bias disabled by VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP",
+            detail={"env": "VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP"},
+        )
         return False
 
     vendor_opapi = os.path.join(
@@ -387,12 +400,27 @@ def is_add_rms_norm_bias_custom_op_available() -> bool:
 
         missing_symbols = [symbol for symbol in _ADD_RMS_NORM_BIAS_REQUIRED_SYMBOLS if not hasattr(opapi, symbol)]
         if not missing_symbols:
+            record_capability(
+                CAP_FUSION_ADD_RMS_NORM_BIAS,
+                STATUS_ENABLED,
+                reason="an OPAPI library provides all required ACLNN symbols",
+                detail={
+                    "library": candidate,
+                    "symbols": list(_ADD_RMS_NORM_BIAS_REQUIRED_SYMBOLS),
+                },
+            )
             return True
         failures.append(f"{candidate}: missing {', '.join(missing_symbols)}")
 
     logger.warning_once(
         "Disable npu_add_rms_norm_bias custom op because no available OPAPI library exports all required symbols: %s",
         "; ".join(failures),
+    )
+    record_capability(
+        CAP_FUSION_ADD_RMS_NORM_BIAS,
+        STATUS_UNAVAILABLE,
+        reason="no available OPAPI library exports all required ACLNN symbols",
+        detail={"failures": failures},
     )
     return False
 

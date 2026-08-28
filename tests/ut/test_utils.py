@@ -147,8 +147,12 @@ class TestUtils(TestBase):
             mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
             mock.patch("vllm_ascend.utils.os.path.isfile", return_value=False),
             mock.patch("vllm_ascend.utils.ctypes.CDLL", side_effect=OSError("missing")),
+            mock.patch("vllm_ascend.utils.record_capability") as record_capability,
         ):
             self.assertFalse(utils.is_add_rms_norm_bias_custom_op_available())
+        record_capability.assert_called_once()
+        self.assertEqual(record_capability.call_args.args[1], utils.STATUS_UNAVAILABLE)
+        self.assertIn("libopapi.so: missing", record_capability.call_args.kwargs["detail"]["failures"])
 
     def test_add_rms_norm_bias_custom_op_requires_all_symbols(self):
         class MissingSymbolLib:
@@ -185,10 +189,14 @@ class TestUtils(TestBase):
             mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
             mock.patch("vllm_ascend.utils.os.path.isfile", return_value=True),
             mock.patch("vllm_ascend.utils.ctypes.CDLL", return_value=CompleteLib()) as cdll,
+            mock.patch("vllm_ascend.utils.record_capability") as record_capability,
         ):
             self.assertTrue(utils.is_add_rms_norm_bias_custom_op_available())
             bundled_path = cdll.call_args.args[0]
             self.assertTrue(bundled_path.endswith("/op_api/lib/libcust_opapi.so"))
+        record_capability.assert_called_once()
+        self.assertEqual(record_capability.call_args.args[1], utils.STATUS_ENABLED)
+        self.assertEqual(record_capability.call_args.kwargs["detail"]["library"], bundled_path)
 
     def test_add_rms_norm_bias_enablement_checks_symbols_before_extension(self):
         with (
