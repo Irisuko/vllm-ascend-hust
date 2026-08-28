@@ -46,7 +46,7 @@ private:
     inline size_t CalcWorkSpaceSize(uint64_t indexRow);
     inline void SetTilingKeyMode();
     inline void GetDtypeSize();
-    inline void Tiling4Scatter(uint64_t totalLength, uint64_t indexRow);
+    inline bool Tiling4Scatter(uint64_t totalLength, uint64_t indexRow);
     inline void Tiling4LinearIndex(uint64_t indexRow, uint64_t indexDim);
 
     ScatterNdUpdateV2TilingData tilingData_;
@@ -92,16 +92,18 @@ private:
 
 inline void ScatterNdUpdateV2Tiling::SetTilingKeyMode()
 {
-    // tilingKey: indexType * 10 + sortFlag (indexType: 1=int32, 2=int64(cast), 3=int64(large))
+    // tilingKey: indexType * 10 + sortFlag
+    //   1 = int32 indices with int32 physical offsets
+    //   2 = int64 indices cast to int32 physical offsets
+    //   3 = int64 indices with int64 physical offsets
+    //   4 = int32 indices with int64 physical offsets
     uint64_t indexType;
-    if (!isInt64Indices_) {
-        indexType = 1;
-    } else if (needLargeIndexKernel_) {
-        indexType = 3;
+    if (needLargeIndexKernel_) {
+        indexType = isInt64Indices_ ? 3 : 4;
     } else {
-        indexType = 2;
+        indexType = isInt64Indices_ ? 2 : 1;
     }
-    uint64_t sortFlag = (indexType == 3) ? 0 : (isSort_ ? 1 : 0);
+    uint64_t sortFlag = needLargeIndexKernel_ ? 0 : (isSort_ ? 1 : 0);
     tilingKey_ = indexType * 10 + sortFlag;
 
     tilingContext_->SetTilingKey(tilingKey_);
@@ -148,15 +150,35 @@ inline void ScatterNdUpdateV2Tiling::Tiling4LinearIndex(uint64_t indexRow, uint6
     OP_LOGD(tilingContext_, "linearIndexTiling finish");
 }
 
-inline void ScatterNdUpdateV2Tiling::Tiling4Scatter(uint64_t totalLength, uint64_t indexRow)
+inline bool ScatterNdUpdateV2Tiling::Tiling4Scatter(uint64_t totalLength, uint64_t indexRow)
 {
     OP_LOGD(tilingContext_, "scatterTiling start new");
+    if (dataTypeSize_ == 0) {
+        OP_LOGE(tilingContext_, "unsupported varRef dtype size");
+        return false;
+    }
+
+    uint64_t reservedUbBytes = SORT_BLOCK_LENGTH * SORT_USE_GM_NUM * sizeof(int);
+    if (needLargeIndexKernel_) {
+        const uint64_t indexTypeSize = isInt64Indices_ ? sizeof(int64_t) : sizeof(int32_t);
+        const uint64_t indexBufferBytes = blockLength_ * indexDim_ * indexTypeSize;
+        reservedUbBytes = (indexBufferBytes + ALIGNED_SIZE - 1) / ALIGNED_SIZE * ALIGNED_SIZE;
+    }
+    if (reservedUbBytes + ALIGNED_SIZE > ubSize_) {
+        OP_LOGE(tilingContext_,
+                "UB cannot hold scatter index and update buffers: ub=%lu, indices=%lu",
+                ubSize_, reservedUbBytes);
+        return false;
+    }
+
     uint64_t scatterAlignNum = ALIGNED_SIZE / dataTypeSize_;
     tailRow_ = totalLength / coreNum_;
     frontRow_ = tailRow_ + 1;
     frontNum_ = totalLength % coreNum_;
     tailNum_ = tailRow_ == 0 ? 0 : coreNum_ - frontNum_;
-    ubLengthForUpdates_ = ((ubSize_ - SORT_BLOCK_LENGTH * SORT_USE_GM_NUM * sizeof(int)) / ALIGNED_SIZE * ALIGNED_SIZE) / dataTypeSize_;
+    const uint64_t updateBufferBytes =
+        (ubSize_ - reservedUbBytes) / ALIGNED_SIZE * ALIGNED_SIZE;
+    ubLengthForUpdates_ = updateBufferBytes / dataTypeSize_;
     scatterAlignLength_ = (scatterLength_ + scatterAlignNum - 1) & ~(scatterAlignNum - 1);
     formDim_ = scatterAlignLength_ / ubLengthForUpdates_;
 
@@ -173,7 +195,10 @@ inline void ScatterNdUpdateV2Tiling::Tiling4Scatter(uint64_t totalLength, uint64
     } else {
         copyRow_ = formDim_ == 0 ? ubLengthForUpdates_ / scatterAlignLength_ : 1;
     }
-    OP_LOGD(tilingContext_, "scatterTiling finish");
+    OP_LOGD(tilingContext_,
+            "scatterTiling finish: reservedUbBytes=%lu, updateBufferBytes=%lu",
+            reservedUbBytes, updateBufferBytes);
+    return true;
 }
 
 inline void ScatterNdUpdateV2Tiling::GetDtypeSize()
@@ -318,10 +343,6 @@ ge::graphStatus ScatterNdUpdateV2Tiling::Init()
         totalLength *= varRefShape.GetDim(i);
     }
 
-    if (isInt64Indices_) {
-        needLargeIndexKernel_ = !IsLinearIndex(totalLength);
-    }
-
     if (varDimNum > indexDim_) {
         for (uint64_t i = indexDim_; i < varDimNum; i++) {
             scatterLength_ *= varRefShape.GetDim(i);
@@ -332,13 +353,6 @@ ge::graphStatus ScatterNdUpdateV2Tiling::Init()
         indexRow *= indicesShape.GetDim(i);
     }
 
-    if (needLargeIndexKernel_) {
-        isSort_ = false;
-        isLinearIndex_ = false;
-    } else {
-        isSort_ = false;
-        isLinearIndex_ = IsLinearIndex(totalLength);
-    }
     coreNum_ = std::min(compileInfo->totalCoreNum,
                     std::min(static_cast<uint64_t>(totalLength), static_cast<uint64_t>(indexRow)));
     coreNum_ = coreNum_ == 0 ? 1 : coreNum_;
@@ -350,12 +364,17 @@ ge::graphStatus ScatterNdUpdateV2Tiling::Init()
         maxPhysicalOffset += (varRefShape.GetDim(i) - 1) * indicesMask_[i];
     }
     uint64_t totalPhysicalRange = maxPhysicalOffset + scatterLength_;
-    if (!needLargeIndexKernel_) {
-        isSort_ = IsSort(totalPhysicalRange, indexRow);
-    }
+    // Address width is a property of the physical storage envelope, not the
+    // logical product of the indexed dimensions. A cache can therefore cross
+    // INT32_MAX with int32 indices when its physical strides contain gaps.
+    needLargeIndexKernel_ = !IsLinearIndex(totalPhysicalRange);
+    isLinearIndex_ = !needLargeIndexKernel_;
+    isSort_ = needLargeIndexKernel_ ? false : IsSort(totalPhysicalRange, indexRow);
     SetTilingKeyMode();
     tilingContext_->SetScheduleMode(1);
-    Tiling4Scatter(totalPhysicalRange, indexRow);
+    if (!Tiling4Scatter(totalPhysicalRange, indexRow)) {
+        return ge::GRAPH_FAILED;
+    }
     size_t* currentWorkSpace = tilingContext_->GetWorkspaceSizes(1);
     currentWorkSpace[0] = CalcWorkSpaceSize(indexRow);
     OP_LOGD(tilingContext_, "Tiling inited");
