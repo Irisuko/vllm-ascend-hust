@@ -95,7 +95,7 @@ jobs:
           apt-get install -y git
 
       - name: Checkout vllm-project/vllm-ascend repo
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
@@ -121,7 +121,7 @@ jobs:
           pip install uv
 
       - name: Checkout vllm-project/vllm repo
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v7
         with:
           repository: vllm-project/vllm
           ref: ${{ inputs.vllm }}
