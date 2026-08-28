@@ -16,6 +16,17 @@ import json
 import os
 import sys
 
+# CANN build may invoke this script with -S -E, which disables
+# site-packages and ignores PYTHONPATH.  Add site-packages back so
+# pip-installed modules (e.g. regex) remain importable.
+try:
+    import site as _site
+    for _sp in _site.getsitepackages():
+        if _sp not in sys.path:
+            sys.path.insert(0, _sp)
+except Exception:
+    pass
+
 import const_var
 import opdesc_parser
 import regex as re
@@ -27,9 +38,15 @@ IMPL_HEAD = '''#!/usr/bin/env python
 """
 Copyright (c) Huawei Technologies Co., Ltd. {}-{}. All rights reserved.
 """
-
-import regex as re
 import os, sys
+try:
+    import site as _site
+    for _sp in _site.getsitepackages():
+        if _sp not in sys.path:
+            sys.path.insert(0, _sp)
+except Exception:
+    pass
+import regex as re
 import ctypes
 import json
 import shutil

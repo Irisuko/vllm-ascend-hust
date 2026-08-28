@@ -14,6 +14,18 @@ import os
 import shutil
 import sys
 
+
+# CANN build may invoke this script with -S -E, which disables
+# site-packages and ignores PYTHONPATH.  Add site-packages back so
+# pip-installed modules (e.g. regex) remain importable.
+try:
+    import site as _site
+    for _sp in _site.getsitepackages():
+        if _sp not in sys.path:
+            sys.path.insert(0, _sp)
+except Exception:
+    pass
+
 import regex as re
 
 

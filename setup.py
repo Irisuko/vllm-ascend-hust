@@ -43,6 +43,31 @@ def load_module_from_path(module_name, path):
     return module
 
 
+def _default_site_packages() -> list[str]:
+    """Return candidate site-packages directories for the current Python.
+
+    Replaces hardcoded paths so the build works across Python installs.
+    """
+    import sysconfig
+
+    paths: list[str] = []
+    seen: set[str] = set()
+    purelib = sysconfig.get_path("purelib")
+    if purelib and purelib not in seen:
+        paths.append(purelib)
+        seen.add(purelib)
+    try:
+        import site as _site
+
+        for _sp in _site.getsitepackages():
+            if _sp not in seen:
+                paths.append(_sp)
+                seen.add(_sp)
+    except Exception:
+        pass
+    return paths
+
+
 ROOT_DIR = str(Path(__file__).resolve().parent)
 UPSTREAM_METADATA_FILE = os.path.join(ROOT_DIR, "upstream_version.json")
 DISTRIBUTION_NAME = "vllm-ascend-hust"
@@ -489,14 +514,50 @@ class cmake_build_ext(build_ext):
 
         # ccache and ninja can not be applied at ascendc kernels now
 
+        pybind11_cmake_path = ""
+        # Try 1: direct import in the current process.
         try:
-            # if pybind11 is installed via pip
-            pybind11_cmake_path = (
-                subprocess.check_output([python_executable, "-m", "pybind11", "--cmakedir"]).decode().strip()
+            import pybind11
+            pybind11_cmake_path = pybind11.get_cmake_dir() or ""
+        except (ImportError, AttributeError):
+            pass
+        # Try 2: subprocess (CANN set_env.sh may set PYTHONHOME which breaks
+        # module resolution, so also try with PYTHONHOME cleared).
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            for clear_pythonhome in (False, True):
+                env = os.environ.copy()
+                if clear_pythonhome:
+                    env.pop("PYTHONHOME", None)
+                try:
+                    pybind11_cmake_path = (
+                        subprocess.check_output(
+                            [python_executable, "-m", "pybind11", "--cmakedir"], env=env
+                        ).decode().strip()
+                    )
+                    break
+                except subprocess.CalledProcessError:
+                    continue
+        # Try 3: filesystem search in known CANN / system site-packages.
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            import glob
+            search_patterns = [
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/pybind11/share/cmake/pybind11",
+                "/usr/local/Ascend/cann-*/python/site-packages/pybind11/share/cmake/pybind11",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/pybind11/share/cmake/pybind11",
+            ]
+            search_patterns += [
+                os.path.join(sp, "pybind11", "share", "cmake", "pybind11") for sp in _default_site_packages()
+            ]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    pybind11_cmake_path = matches[0]
+                    break
+        if not pybind11_cmake_path or not os.path.isdir(pybind11_cmake_path):
+            raise RuntimeError(
+                "CMake configuration failed: could not locate pybind11 cmake directory "
+                "via import, subprocess, or filesystem search."
             )
-        except subprocess.CalledProcessError as e:
-            # else specify pybind11 path installed from source code on CI container
-            raise RuntimeError(f"CMake configuration failed: {e}")
 
         install_path = os.path.join(ROOT_DIR, self.build_lib)
         if isinstance(self.distribution.get_command_obj("develop"), develop):
@@ -504,12 +565,44 @@ class cmake_build_ext(build_ext):
         # add CMAKE_INSTALL_PATH
         cmake_args += [f"-DCMAKE_INSTALL_PREFIX={install_path}"]
 
+        torch_cmake_prefix_output = ""
+        # Try 1: direct import in the current process (avoids PYTHONHOME issues).
         try:
-            torch_cmake_prefix_output = subprocess.check_output(
-                [python_executable, "-c", "import torch; print(torch.utils.cmake_prefix_path)"],
-            ).decode()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Failed to locate torch CMake prefix path: {e}")
+            import torch
+            torch_cmake_prefix_output = str(torch.utils.cmake_prefix_path)
+        except (ImportError, AttributeError):
+            pass
+        # Try 2: subprocess with and without PYTHONHOME cleared.
+        if not torch_cmake_prefix_output:
+            for clear_pythonhome in (False, True):
+                env = os.environ.copy()
+                if clear_pythonhome:
+                    env.pop("PYTHONHOME", None)
+                try:
+                    torch_cmake_prefix_output = subprocess.check_output(
+                        [python_executable, "-c", "import torch; print(torch.utils.cmake_prefix_path)"],
+                        env=env,
+                    ).decode()
+                    break
+                except subprocess.CalledProcessError:
+                    continue
+        # Try 3: filesystem search for TorchConfig.cmake in known site-packages.
+        if not torch_cmake_prefix_output:
+            import glob
+            search_patterns = [
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch/share/cmake",
+                "/usr/local/Ascend/cann-*/python/site-packages/torch/share/cmake",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch/share/cmake",
+                "/usr/local/lib/python3.*/site-packages/torch/share/cmake",
+            ]
+            search_patterns += [os.path.join(sp, "torch", "share", "cmake") for sp in _default_site_packages()]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    torch_cmake_prefix_output = matches[0]
+                    break
+        if not torch_cmake_prefix_output:
+            raise RuntimeError("Failed to locate torch CMake prefix path via import, subprocess, or filesystem search.")
 
         torch_cmake_prefix_path = next(
             (
@@ -541,12 +634,56 @@ class cmake_build_ext(build_ext):
         fc_base_dir = os.environ.get("FETCHCONTENT_BASE_DIR", fc_base_dir)
         cmake_args += ["-DFETCHCONTENT_BASE_DIR={}".format(fc_base_dir)]
 
+        # CANN's set_env.sh sets PYTHONHOME to the CANN toolkit path.
+        # The Dockerfile adds the default Python site-packages to PYTHONPATH
+        # so both CANN packages (torch_npu) and default packages (torch,
+        # pybind11) are visible regardless of PYTHONHOME.  Keep PYTHONHOME
+        # intact because some CANN Python builds have a broken compiled-in
+        # default prefix and rely on PYTHONHOME to locate their stdlib.
+        cmake_env = os.environ.copy()
+
+        torch_npu_path = ""
+        # Try 1: use pip show (may fail if python3.12 lacks pip without PYTHONHOME).
         torch_npu_command = f"{sys.executable} -m pip show torch-npu | grep '^Location:' | awk '{{print $2}}'"
         try:
-            torch_npu_path = subprocess.check_output(torch_npu_command, shell=True).decode().strip()
-            torch_npu_path += "/torch_npu"
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"Retrieve torch version version failed: {e}")
+            torch_npu_location = subprocess.check_output(
+                torch_npu_command, shell=True, env=cmake_env
+            ).decode().strip()
+            if torch_npu_location:
+                torch_npu_path = torch_npu_location + "/torch_npu"
+        except subprocess.CalledProcessError:
+            pass
+        # Try 2: search PYTHONPATH directories (set by Dockerfile, includes
+        # the actual site-packages where pip installed torch_npu).
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            for p in os.environ.get("PYTHONPATH", "").split(":"):
+                if not p:
+                    continue
+                candidate = os.path.join(p, "torch_npu")
+                if os.path.isdir(candidate):
+                    torch_npu_path = candidate
+                    break
+        # Try 3: filesystem search in known site-packages locations.
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            import glob
+            search_patterns = [
+                "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/torch_npu",
+                "/usr/local/Ascend/ascend-toolkit/latest/python/lib/python3.12/site-packages/torch_npu",
+                "/usr/local/Ascend/cann-*/python/site-packages/torch_npu",
+                "/usr/local/Ascend/cann-*/python/lib/python3.*/site-packages/torch_npu",
+                "/usr/local/lib/python3.*/site-packages/torch_npu",
+            ]
+            search_patterns += [os.path.join(sp, "torch_npu") for sp in _default_site_packages()]
+            for pattern in search_patterns:
+                matches = glob.glob(pattern)
+                if matches and os.path.isdir(matches[0]):
+                    torch_npu_path = matches[0]
+                    break
+        if not torch_npu_path or not os.path.isdir(torch_npu_path):
+            raise RuntimeError(
+                "Failed to locate torch_npu path via pip show, PYTHONPATH search, "
+                "or filesystem search."
+            )
 
         # add TORCH_NPU_PATH
         cmake_args += [f"-DTORCH_NPU_PATH={torch_npu_path}"]
@@ -564,7 +701,7 @@ class cmake_build_ext(build_ext):
 
         cmake_args += [source_dir]
         logging.info("cmake config command: %s", cmake_args)
-        proc = subprocess.Popen(cmake_args, cwd=self.build_temp, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmake_args, cwd=self.build_temp, stderr=subprocess.PIPE, text=True, env=cmake_env)
         # Forward CMake stderr to the real stderr in real time while also
         # accumulating it so the full error is visible on failure.
         stderr_lines: list[str] = []
@@ -584,6 +721,7 @@ class cmake_build_ext(build_ext):
         subprocess.check_call(
             ["cmake", ext.cmake_lists_dir, *build_tool, *cmake_args],
             cwd=self.build_temp,
+            env=cmake_env,
         )
 
     def build_extensions(self) -> None:

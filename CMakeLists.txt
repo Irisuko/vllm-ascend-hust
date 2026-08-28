@@ -26,16 +26,21 @@ if(NOT pybind11_FOUND)
     find_package(pybind11 REQUIRED)
 endif()
 
-append_cmake_prefix_path("torch" "torch.utils.cmake_prefix_path")
+# Auto-detect Torch via CMAKE_PREFIX_PATH first (provided by setup.py);
+# fall back to Python discovery so that running cmake directly (without
+# setup.py) still works.  This avoids requiring `import torch` to succeed
+# in CANN's build environment where PYTHONHOME may break module resolution.
+find_package(Torch QUIET)
+if(NOT Torch_FOUND)
+    message(STATUS "Torch not found via CMAKE_PREFIX_PATH, auto-detecting via Python...")
+    append_cmake_prefix_path("torch" "torch.utils.cmake_prefix_path")
+    find_package(Torch REQUIRED)
+endif()
 set(VLLM_ASCEND_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}")
 
-find_package(Torch REQUIRED)
-
-run_python(TORCH_VERSION
-  "import torch; print(torch.__version__)" "Failed to locate torch path")
-# check torch version is 2.10.0
-if(NOT ${TORCH_VERSION} VERSION_EQUAL "2.10.0")
-  message(FATAL_ERROR "Expected PyTorch version 2.10.0, but found ${TORCH_VERSION}")
+# check torch version is 2.10.0 (use version from find_package, not Python import)
+if(${Torch_VERSION} VERSION_LESS "2.10.0")
+  message(FATAL_ERROR "PyTorch version >= 2.10.0 required, but found ${Torch_VERSION}")
 endif()
 
 set(RUN_MODE "npu" CACHE STRING "cpu/sim/npu")

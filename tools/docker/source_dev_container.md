@@ -47,6 +47,32 @@ container by ID. If the same tag later resolves to a different image, `start`
 requires `recreate`. For a repeatable toolchain across hosts, set `IMAGE` to an
 immutable registry digest instead of a mutable tag.
 
+Docker-style `sha256:<digest>` and Podman-compatible raw 64-character image IDs
+are normalized to the same value before the provenance comparison.
+
+## Baked custom-op contract
+
+`start` and `verify` validate the custom-op package owned by the image. When
+custom kernels are enabled, the helper fails closed unless all of the following
+are true:
+
+- `ASCEND_CUSTOM_OPP_PATH` resolves to a vendor containing the
+  `MoeInitRoutingCustom` header and `libcust_opapi.so`;
+- the vendor's `op_api/lib` directory is active in `LD_LIBRARY_PATH`; and
+- the package compiler version matches the active CANN version.
+
+A successful probe prints the resolved vendor and library paths, package/CANN
+versions, and SHA-256 checksums for the version metadata, routing header, and
+op API library. This makes repeated containers auditable without copying or
+installing generated artifacts into the live source tree. The image path is
+immutable, so no per-container mutable installation directory needs cleanup.
+
+Images deliberately built with `COMPILE_CUSTOM_KERNELS=0` print
+`custom_ops.status=not-built` and must not export `ASCEND_CUSTOM_OPP_PATH`.
+Missing activation metadata, missing artifacts, stale library paths, and CANN
+version mismatches make `start` fail. A newly created invalid container is
+removed before the command returns an error.
+
 To develop vLLM and vllm-ascend together, select an existing local checkout:
 
 ```bash
