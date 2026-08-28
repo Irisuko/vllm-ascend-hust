@@ -204,15 +204,27 @@ jobs:
   smart-ut:
     name: smart unit test
     needs: [scope]
-    if: ${{ needs.scope.outputs.has_tests == 'true' }}
+    if: ${{ needs.scope.outputs.has_tests == 'true' && !contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
     uses: ./.github/workflows/_selected_tests.yaml
     with:
-      vllm_repository: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') && 'vLLM-HUST/vllm-hust' || 'vllm-project/vllm' }}
-      vllm: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') && needs.scope.outputs.pyramidkv_core_commit || needs.scope.outputs.main_commit }}
+      vllm: ${{ needs.scope.outputs.main_commit }}
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
-      rebase_on_base: ${{ !contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
       test_groups: ${{ needs.scope.outputs.test_groups }}
+
+  pyramidkv-smart-ut:
+    name: PyramidKV paired-Core CPU tests
+    needs: [scope]
+    if: ${{ needs.scope.outputs.has_tests == 'true' && contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
+    uses: ./.github/workflows/_selected_tests.yaml
+    with:
+      vllm_repository: vLLM-HUST/vllm-hust
+      vllm: ${{ needs.scope.outputs.pyramidkv_core_commit }}
+      ref: ${{ github.event.pull_request.head.sha }}
+      base_ref: ${{ github.base_ref }}
+      rebase_on_base: false
+      test_groups: >-
+        [{"num_npus":0,"npu_type":"cpu","runner":"ubuntu-latest","tests":"tests/ut/kv_cache_compression tests/ut/attention/test_attention_utils.py tests/ut/test_pyramidkv_ci_wiring.py tests/ut/test_build_metadata.py tests/ut/test_ci_boundary_static.py tests/ut/test_smart_ut_runtime_workflow_static.py","partition":"1-1","image_tag":"22.04","hosted_cpu":true}]
 
   paired-core-mypy:
     name: PyramidKV paired-Core mypy

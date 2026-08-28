@@ -18,6 +18,8 @@ def test_pyramidkv_uses_pinned_hust_core_in_github_hosted_ci() -> None:
     assert not (REPO_ROOT / ".github/workflows/pr_test.yaml").exists()
     assert "vllm-hust-pyramidkv.commit" in smart_ut
     assert "repository: vLLM-HUST/vllm-hust" in smart_ut
+    assert "pyramidkv-smart-ut:" in smart_ut
+    assert "PyramidKV paired-Core CPU tests" in smart_ut
     assert "Run paired-Core mypy for PyramidKV changes" in smart_ut
     assert "changed_python_files" in smart_ut
     assert "validate-hust-dual-editable:" in smart_ut
@@ -26,9 +28,11 @@ def test_pyramidkv_uses_pinned_hust_core_in_github_hosted_ci() -> None:
     assert "repository: ${{ inputs.vllm_repository }}" in selected_tests
     assert "rebase_on_base:" in selected_tests
     assert "if: ${{ inputs.rebase_on_base }}" in selected_tests
-    assert "'vLLM-HUST/vllm-hust'" in smart_ut
+    assert "vllm_repository: vLLM-HUST/vllm-hust" in smart_ut
     assert "needs.scope.outputs.pyramidkv_core_commit" in smart_ut
-    assert "rebase_on_base: ${{ !contains(" in smart_ut
+    assert "rebase_on_base: false" in smart_ut
+    assert "tests/ut/kv_cache_compression" in smart_ut
+    assert "!contains(needs.scope.outputs.matched_modules, 'kv_cache_compression')" in smart_ut
 
 
 def test_pyramidkv_selective_test_module_is_complete() -> None:
