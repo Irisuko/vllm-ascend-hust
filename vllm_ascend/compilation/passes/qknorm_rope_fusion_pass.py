@@ -28,6 +28,13 @@ from vllm_ascend.compilation.passes.qknorm_rope_pattern_specs import (
     iter_qknorm_rope_pattern_specs,
 )
 from vllm_ascend.device.device_op import DeviceOperator
+from vllm_ascend.diagnostics.capability_manifest import (
+    CAP_FUSION_QKNORM_ROPE,
+    STATUS_DISABLED_BY_POLICY,
+    STATUS_ENABLED,
+    STATUS_FALLBACK,
+    record_capability,
+)
 from vllm_ascend.utils import get_rope_dim
 
 
@@ -199,12 +206,23 @@ class QKNormRopeFusionPass(VllmInductorPass):
         dtype = vllm_config.model_config.dtype
         if dtype not in (torch.bfloat16,):
             logger.debug("QKNorm and Rope fusion not enabled: unsupported dtype %s", dtype)
+            record_capability(
+                CAP_FUSION_QKNORM_ROPE,
+                STATUS_DISABLED_BY_POLICY,
+                reason=f"unsupported dtype {dtype}",
+                detail={"dtype": str(dtype)},
+            )
             return
 
         # use one attn layer to get meta (such as head_dim) for QKNormRopeFusionPattern
         attn_layers: dict[str, Attention] = get_layers_from_vllm_config(vllm_config, Attention)
         if len(attn_layers) == 0:
             logger.debug("QKNorm and Rope fusion enabled, but no Attention layers were discovered.")
+            record_capability(
+                CAP_FUSION_QKNORM_ROPE,
+                STATUS_FALLBACK,
+                reason="no Attention layers discovered; fusion patterns cannot be applied",
+            )
             return
         # Register patterns for every distinct attention shape.
         # In speculative decoding, target and draft models may coexist in the
@@ -215,6 +233,7 @@ class QKNormRopeFusionPass(VllmInductorPass):
             if layer.head_size != 128:
                 logger.debug("QKNorm and Rope fusion not enabled: head_dim %d is not equal of 128", layer.head_size)
 
+        registered = 0
         for head_dim, num_heads, num_kv_heads, epsilon in iter_qknorm_rope_pattern_specs(attn_layers.values()):
             QKNormRopeFusionPattern(
                 vllm_config=vllm_config,
@@ -231,6 +250,21 @@ class QKNormRopeFusionPass(VllmInductorPass):
                 num_kv_heads=num_kv_heads,
                 eps=epsilon,
             ).register(self.pattern_match_passes)
+            registered += 2
+
+        if registered:
+            record_capability(
+                CAP_FUSION_QKNORM_ROPE,
+                STATUS_ENABLED,
+                reason=f"{registered} QKNorm/RoPE fusion patterns registered",
+                detail={"registered_patterns": registered},
+            )
+        else:
+            record_capability(
+                CAP_FUSION_QKNORM_ROPE,
+                STATUS_FALLBACK,
+                reason="no QKNorm/RoPE pattern specs matched the discovered attention layers",
+            )
 
     def __call__(self, graph: torch.fx.Graph):
         self.begin()

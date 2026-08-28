@@ -9,6 +9,17 @@ from vllm.v1.sample.sampler import Sampler
 
 import vllm_ascend.envs as envs_ascend
 from vllm_ascend.ascend_config import get_ascend_config
+from vllm_ascend.diagnostics.capability_manifest import (
+    CAP_SAMPLER_PENALTY_TRITON,
+    CAP_SAMPLER_TOP_K_TOP_P,
+    SAMPLER_STATE_ENABLED,
+    SAMPLER_STATE_NOT_REGISTERED,
+    SAMPLER_STATE_RUNTIME_SYMBOL_UNAVAILABLE,
+    STATUS_DISABLED_BY_POLICY,
+    STATUS_ENABLED,
+    STATUS_FALLBACK,
+    record_capability,
+)
 from vllm_ascend.sample.penalties import apply_all_penalties
 from vllm_ascend.utils import AscendDeviceType, get_ascend_device_type, global_stream, npu_stream_switch
 
@@ -59,8 +70,21 @@ class AscendSampler(Sampler):
                 "[sample/sampler] Triton not available, falling back to vLLM default "
                 "penalty implementation. Penalty performance may be degraded on NPU. "
             )
+            record_capability(
+                CAP_SAMPLER_PENALTY_TRITON,
+                STATUS_FALLBACK,
+                state="triton-unavailable",
+                reason="Triton not available; using vLLM default penalty implementation",
+                detail={"triton_available": False},
+            )
             return Sampler.apply_penalties(logits, sampling_metadata, output_token_ids)
 
+        record_capability(
+            CAP_SAMPLER_PENALTY_TRITON,
+            STATUS_ENABLED,
+            reason="Triton-Ascend penalty kernels available",
+            detail={"triton_available": True},
+        )
         if sampling_metadata.no_penalties:
             return logits
         assert sampling_metadata.prompt_token_ids is not None
@@ -329,16 +353,31 @@ def apply_top_k_top_p(
 ) -> torch.Tensor:
     global _BROKEN_TOP_K_TOP_P_OP_WARNED, _DISABLE_TOP_K_TOP_P_CUSTOM_OP
 
-    if get_ascend_device_type() not in [AscendDeviceType.A2, AscendDeviceType.A3]:
+    device_type = get_ascend_device_type()
+    if device_type not in [AscendDeviceType.A2, AscendDeviceType.A3]:
+        record_capability(
+            CAP_SAMPLER_TOP_K_TOP_P,
+            STATUS_DISABLED_BY_POLICY,
+            reason=f"npu_apply_top_k_top_p not supported on device {device_type.name}",
+            detail={"device": device_type.name},
+        )
         return _apply_top_k_top_p_pytorch(logits, k, p, top_k)
 
     if _has_ascend_top_k_top_p_op():
         try:
-            return _apply_top_k_top_p_ascendc(logits, k, p, top_k)
+            result = _apply_top_k_top_p_ascendc(logits, k, p, top_k)
         except RuntimeError as exc:
             if "aclnnApplyTopKTopPCustom" not in str(exc):
                 raise
             _DISABLE_TOP_K_TOP_P_CUSTOM_OP = True
+            record_capability(
+                CAP_SAMPLER_TOP_K_TOP_P,
+                STATUS_FALLBACK,
+                state=SAMPLER_STATE_RUNTIME_SYMBOL_UNAVAILABLE,
+                reason="npu_apply_top_k_top_p is registered but its underlying aclnn "
+                "symbols are unavailable at runtime",
+                detail={"error": str(exc)[:512]},
+            )
             if not _BROKEN_TOP_K_TOP_P_OP_WARNED:
                 logger.warning(
                     "Custom op npu_apply_top_k_top_p is registered but its "
@@ -347,6 +386,20 @@ def apply_top_k_top_p(
                     exc_info=True,
                 )
                 _BROKEN_TOP_K_TOP_P_OP_WARNED = True
-
-    _warn_top_k_top_p_fallback("op is not registered")
+        else:
+            record_capability(
+                CAP_SAMPLER_TOP_K_TOP_P,
+                STATUS_ENABLED,
+                state=SAMPLER_STATE_ENABLED,
+                reason="npu_apply_top_k_top_p registered and runtime symbols available",
+            )
+            return result
+    else:
+        record_capability(
+            CAP_SAMPLER_TOP_K_TOP_P,
+            STATUS_FALLBACK,
+            state=SAMPLER_STATE_NOT_REGISTERED,
+            reason="npu_apply_top_k_top_p is not registered",
+        )
+        _warn_top_k_top_p_fallback("op is not registered")
     return _apply_top_k_top_p_pytorch(logits, k, p, top_k)

@@ -66,6 +66,14 @@ from vllm_ascend.batch_invariant import init_batch_invariance
 from vllm_ascend.cpu_binding import bind_cpus
 from vllm_ascend.device_allocator.camem import CaMemAllocator
 from vllm_ascend.device_allocator.sleep_mem_optimized import SleepWakeupManager
+from vllm_ascend.diagnostics.capability_manifest import (
+    CAP_GRAPH_MODE,
+    CAP_RUNNER_V2_MODEL_RUNNER,
+    STATUS_DISABLED_BY_POLICY,
+    STATUS_ENABLED,
+    STATUS_FALLBACK,
+    record_capability,
+)
 from vllm_ascend.distributed.parallel_state import init_ascend_model_parallel
 from vllm_ascend.ops.triton.triton_utils import init_device_properties_triton
 from vllm_ascend.profiler.torch_npu_profiler import TorchNPUProfilerWrapper
@@ -485,6 +493,34 @@ class NPUWorker(WorkerBase):
         if self.use_v2_model_runner and vllm_version_is("0.23.0"):
             logger.warning("VLLM_USE_V2_MODEL_RUNNER is not supported on vllm 0.23.0; falling back to v1 model runner.")
             self.use_v2_model_runner = False
+            record_capability(
+                CAP_RUNNER_V2_MODEL_RUNNER,
+                STATUS_FALLBACK,
+                reason="V2 model runner is not supported on vllm 0.23.0; falling back to V1",
+                detail={"vllm_version": "0.23.0"},
+            )
+        elif not self.use_v2_model_runner:
+            record_capability(
+                CAP_RUNNER_V2_MODEL_RUNNER,
+                STATUS_DISABLED_BY_POLICY,
+                reason="V2 model runner not enabled (VLLM_USE_V2_MODEL_RUNNER unset or false)",
+            )
+        else:
+            record_capability(CAP_RUNNER_V2_MODEL_RUNNER, STATUS_ENABLED)
+        record_capability(
+            CAP_GRAPH_MODE,
+            STATUS_ENABLED
+            if self.vllm_config.compilation_config.cudagraph_mode != CUDAGraphMode.NONE
+            else STATUS_DISABLED_BY_POLICY,
+            reason=(
+                f"effective cudagraph mode={self.vllm_config.compilation_config.cudagraph_mode.name}, "
+                f"enforce_eager={self.vllm_config.model_config.enforce_eager}"
+            ),
+            detail={
+                "cudagraph_mode": self.vllm_config.compilation_config.cudagraph_mode.name,
+                "enforce_eager": self.vllm_config.model_config.enforce_eager,
+            },
+        )
         self._pp_send_work: list[Handle] = []
 
         ascend_compilation_config = get_ascend_config().ascend_compilation_config
