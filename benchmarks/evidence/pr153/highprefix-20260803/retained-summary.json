@@ -1,0 +1,1133 @@
+{
+  "device_crossovers": {
+    "1": {
+      "mapped": {
+        "d2h": {
+          "aggregate_gbps": 6.683640978164596,
+          "bytes": 63403196416,
+          "count": 686,
+          "mean_latency_ms": 13.828463388949025,
+          "mean_run_gbps": 6.686951317839918,
+          "median_latency_ms": 10.734179973602295,
+          "p99_latency_ms": 56.18656158447266,
+          "sample_stddev_run_gbps": 0.210409506697703,
+          "time_s": 9.486325884819031
+        },
+        "duration": {
+          "max": 853.9888043690007,
+          "mean": 852.3692155320896,
+          "min": 850.7496266951784,
+          "sample_stddev": 2.290444498627793
+        },
+        "h2d": {
+          "aggregate_gbps": 64.94206793922145,
+          "bytes": 28038922240,
+          "count": 150,
+          "mean_latency_ms": 2.878352263768514,
+          "mean_run_gbps": 64.94264438319794,
+          "median_latency_ms": 2.743809938430786,
+          "p99_latency_ms": 7.49314022064209,
+          "sample_stddev_run_gbps": 0.2736267390890891,
+          "time_s": 0.4317528395652771
+        },
+        "lifecycles": 2,
+        "mean_itl_ms": {
+          "max": 103.1856935911496,
+          "mean": 103.03262634167231,
+          "min": 102.87955909219504,
+          "sample_stddev": 0.21646978016591764
+        },
+        "mean_tpot_ms": {
+          "max": 103.16343668305007,
+          "mean": 103.00939382602434,
+          "min": 102.85535096899862,
+          "sample_stddev": 0.2178494975924756
+        },
+        "mean_ttft_ms": {
+          "max": 302868.35652161855,
+          "mean": 301747.1282067761,
+          "min": 300625.89989193366,
+          "sample_stddev": 1585.6562893669188
+        },
+        "median_itl_ms": {
+          "max": 15.741475159302354,
+          "mean": 15.707778045907617,
+          "min": 15.67408093251288,
+          "sample_stddev": 0.04765491477566149
+        },
+        "median_tpot_ms": {
+          "max": 15.77618850404214,
+          "mean": 15.736203611937954,
+          "min": 15.696218719833768,
+          "sample_stddev": 0.05654717670376549
+        },
+        "median_ttft_ms": {
+          "max": 302792.37014392857,
+          "mean": 301390.224247938,
+          "min": 299988.0783519475,
+          "sample_stddev": 1982.9337425356011
+        },
+        "output_throughput": {
+          "max": 60.182218591022476,
+          "mean": 60.06808307904397,
+          "min": 59.95394756706547,
+          "sample_stddev": 0.16141198898839615
+        },
+        "p99_itl_ms": {
+          "max": 19.987951687071455,
+          "mean": 19.986099788220592,
+          "min": 19.98424788936973,
+          "sample_stddev": 0.002618980471032833
+        },
+        "p99_tpot_ms": {
+          "max": 1726.3740380549546,
+          "mean": 1721.167456908649,
+          "min": 1715.9608757623432,
+          "sample_stddev": 7.363217670701529
+        },
+        "p99_ttft_ms": {
+          "max": 605745.0505278585,
+          "mean": 604178.8830855081,
+          "min": 602612.7156431577,
+          "sample_stddev": 2214.89523791914
+        },
+        "peak_hbm_usage_percent": {
+          "max": 29,
+          "mean": 29
+        },
+        "peak_npu_process_memory_mb": {
+          "max": 16026,
+          "mean": 16026
+        },
+        "request_throughput": {
+          "max": 0.23508679137118155,
+          "mean": 0.23464094952751552,
+          "min": 0.2341951076838495,
+          "sample_stddev": 0.0006305155819859225
+        },
+        "total_token_throughput": {
+          "max": 1023.0988914813389,
+          "mean": 1021.1585855484952,
+          "min": 1019.2182796156515,
+          "sample_stddev": 2.74400696538058
+        }
+      },
+      "mapped_vs_native": {
+        "duration_percent": -2.0606226047548026,
+        "mean_itl_ms_percent": -9.495132483481006,
+        "mean_tpot_ms_percent": -9.480275683853534,
+        "mean_ttft_ms_percent": -2.766221915874123,
+        "median_itl_ms_percent": 0.226461993966387,
+        "median_tpot_ms_percent": -0.19521681424317094,
+        "median_ttft_ms_percent": -2.809610014639996,
+        "output_throughput_percent": 2.0994002050884086,
+        "p99_itl_ms_percent": -4.89988791370124,
+        "p99_tpot_ms_percent": -3.301714422784363,
+        "p99_ttft_ms_percent": -1.8427304266056987,
+        "request_throughput_percent": 2.0994002050884086,
+        "total_token_throughput_percent": 2.099400205088431
+      },
+      "native": {
+        "d2h": {
+          "aggregate_gbps": 8.84929192836591,
+          "bytes": 63315116032,
+          "count": 683,
+          "mean_latency_ms": 10.47558249317186,
+          "mean_run_gbps": 8.849043799370463,
+          "median_latency_ms": 6.885900020599365,
+          "p99_latency_ms": 54.85546112060547,
+          "sample_stddev_run_gbps": 0.07464510819675725,
+          "time_s": 7.15482284283638
+        },
+        "duration": {
+          "max": 876.360167264007,
+          "mean": 870.3028732684907,
+          "min": 864.2455792729743,
+          "sample_stddev": 8.566307319740371
+        },
+        "h2d": {
+          "aggregate_gbps": 0.9722836694746301,
+          "bytes": 28552724480,
+          "count": 160,
+          "mean_latency_ms": 183.5416284389794,
+          "mean_run_gbps": 0.9747159836017449,
+          "median_latency_ms": 104.44343185424805,
+          "p99_latency_ms": 743.4083251953125,
+          "sample_stddev_run_gbps": 0.06711480484560542,
+          "time_s": 29.366660550236702
+        },
+        "lifecycles": 2,
+        "mean_itl_ms": {
+          "max": 116.34764562051275,
+          "mean": 113.84208293865161,
+          "min": 111.33652025679048,
+          "sample_stddev": 3.543400726063923
+        },
+        "mean_tpot_ms": {
+          "max": 116.31570584230197,
+          "mean": 113.79773259831948,
+          "min": 111.279759354337,
+          "sample_stddev": 3.560951911332604
+        },
+        "mean_ttft_ms": {
+          "max": 314247.77435750817,
+          "mean": 310331.58862315,
+          "min": 306415.40288879187,
+          "sample_stddev": 5538.322978301336
+        },
+        "median_itl_ms": {
+          "max": 15.75211260933429,
+          "mean": 15.672286273911595,
+          "min": 15.5924599384889,
+          "sample_stddev": 0.11289148618931863
+        },
+        "median_tpot_ms": {
+          "max": 15.82913000419663,
+          "mean": 15.766983414662308,
+          "min": 15.704836825127986,
+          "sample_stddev": 0.08788854977467211
+        },
+        "median_ttft_ms": {
+          "max": 315471.9293115195,
+          "mean": 310102.9065665207,
+          "min": 304733.8838215219,
+          "sample_stddev": 7592.944782666928
+        },
+        "output_throughput": {
+          "max": 59.24242047390137,
+          "mean": 58.8329441293332,
+          "min": 58.42346778476502,
+          "sample_stddev": 0.5790869999592686
+        },
+        "p99_itl_ms": {
+          "max": 21.320684272795905,
+          "mean": 21.015853030839935,
+          "min": 20.71102178888396,
+          "sample_stddev": 0.4310964766091697
+        },
+        "p99_tpot_ms": {
+          "max": 1791.400272751364,
+          "mean": 1779.9358557750852,
+          "min": 1768.4714387988067,
+          "sample_stddev": 16.213133972553525
+        },
+        "p99_ttft_ms": {
+          "max": 618027.8057330009,
+          "mean": 615521.2810129672,
+          "min": 613014.7562929336,
+          "sample_stddev": 3544.761253494986
+        },
+        "peak_hbm_usage_percent": {
+          "max": 29,
+          "mean": 29
+        },
+        "peak_npu_process_memory_mb": {
+          "max": 16066,
+          "mean": 16066
+        },
+        "request_throughput": {
+          "max": 0.23141570497617722,
+          "mean": 0.2298161880052078,
+          "min": 0.22821667103423837,
+          "sample_stddev": 0.002262058593590893
+        },
+        "total_token_throughput": {
+          "max": 1007.1223051348481,
+          "mean": 1000.1611992796043,
+          "min": 993.2000934243605,
+          "sample_stddev": 9.844490309600587
+        }
+      }
+    },
+    "2": {
+      "mapped": {
+        "d2h": {
+          "aggregate_gbps": 6.038221821405303,
+          "bytes": 62779293696,
+          "count": 684,
+          "mean_latency_ms": 15.20026852896339,
+          "mean_run_gbps": 6.038854105273608,
+          "median_latency_ms": 11.329549789428711,
+          "p99_latency_ms": 65.6263427734375,
+          "sample_stddev_run_gbps": 0.1395764410322326,
+          "time_s": 10.396983673810958
+        },
+        "duration": {
+          "max": 853.5986116789281,
+          "mean": 851.2440983069828,
+          "min": 848.8895849350374,
+          "sample_stddev": 3.329784743393934
+        },
+        "h2d": {
+          "aggregate_gbps": 62.8449380011196,
+          "bytes": 29462888448,
+          "count": 162,
+          "mean_latency_ms": 2.8939432126504405,
+          "mean_run_gbps": 62.81890431066343,
+          "median_latency_ms": 2.6864999532699585,
+          "p99_latency_ms": 7.357999801635743,
+          "sample_stddev_run_gbps": 3.30614605798756,
+          "time_s": 0.4688188004493713
+        },
+        "lifecycles": 2,
+        "mean_itl_ms": {
+          "max": 119.602104597307,
+          "mean": 111.33926715664876,
+          "min": 103.07642971599051,
+          "sample_stddev": 11.685416772263084
+        },
+        "mean_tpot_ms": {
+          "max": 119.58568688113168,
+          "mean": 111.32499408238913,
+          "min": 103.06430128364657,
+          "sample_stddev": 11.682383790579479
+        },
+        "mean_ttft_ms": {
+          "max": 302713.70721020154,
+          "mean": 301750.5283069174,
+          "min": 300787.34940363327,
+          "sample_stddev": 1362.140668016065
+        },
+        "median_itl_ms": {
+          "max": 15.695359441451728,
+          "mean": 15.626987267751247,
+          "min": 15.558615094050765,
+          "sample_stddev": 0.0966928553361502
+        },
+        "median_tpot_ms": {
+          "max": 15.736549901867322,
+          "mean": 15.665077152159796,
+          "min": 15.59360440245227,
+          "sample_stddev": 0.1010777319764813
+        },
+        "median_ttft_ms": {
+          "max": 301844.6081170114,
+          "mean": 301369.7806322598,
+          "min": 300894.9531475082,
+          "sample_stddev": 671.5074687231968
+        },
+        "output_throughput": {
+          "max": 60.31408667114011,
+          "mean": 60.147720042093525,
+          "min": 59.98135341304693,
+          "sample_stddev": 0.23527794312397993
+        },
+        "p99_itl_ms": {
+          "max": 20.8342638099566,
+          "mean": 20.594197579193853,
+          "min": 20.35413134843111,
+          "sample_stddev": 0.3395049194124625
+        },
+        "p99_tpot_ms": {
+          "max": 1965.9322486344947,
+          "mean": 1847.346846652052,
+          "min": 1728.761444669609,
+          "sample_stddev": 167.70508378303595
+        },
+        "p99_ttft_ms": {
+          "max": 605267.4207285885,
+          "mean": 600111.6797792853,
+          "min": 594955.9388299822,
+          "sample_stddev": 7291.318774586843
+        },
+        "peak_hbm_usage_percent": {
+          "max": 29,
+          "mean": 29
+        },
+        "peak_npu_process_memory_mb": {
+          "max": 16026,
+          "mean": 16026
+        },
+        "request_throughput": {
+          "max": 0.23560190105914106,
+          "mean": 0.23495203141442783,
+          "min": 0.23430216176971458,
+          "sample_stddev": 0.0009190544653280466
+        },
+        "total_token_throughput": {
+          "max": 1025.340651418887,
+          "mean": 1022.5124154757468,
+          "min": 1019.6841795326067,
+          "sample_stddev": 3.999729628379953
+        }
+      },
+      "mapped_vs_native": {
+        "duration_percent": -1.7033396738218687,
+        "mean_itl_ms_percent": 7.289687494983776,
+        "mean_tpot_ms_percent": 7.308593980385525,
+        "mean_ttft_ms_percent": -1.8855520198047815,
+        "median_itl_ms_percent": -0.38155846185496944,
+        "median_tpot_ms_percent": -0.5125726671397102,
+        "median_ttft_ms_percent": -1.6531679852736625,
+        "output_throughput_percent": 1.7321831317275382,
+        "p99_itl_ms_percent": 0.42035921301415424,
+        "p99_tpot_ms_percent": 4.357505678410001,
+        "p99_ttft_ms_percent": -2.5245277470678396,
+        "request_throughput_percent": 1.7321831317275382,
+        "total_token_throughput_percent": 1.7321831317275382
+      },
+      "native": {
+        "d2h": {
+          "aggregate_gbps": 5.8973232535394375,
+          "bytes": 63050874880,
+          "count": 680,
+          "mean_latency_ms": 15.722705172703547,
+          "mean_run_gbps": 5.983075529408399,
+          "median_latency_ms": 11.075819969177246,
+          "p99_latency_ms": 129.57046508789062,
+          "sample_stddev_run_gbps": 1.0505441757053393,
+          "time_s": 10.691439517438411
+        },
+        "duration": {
+          "max": 869.2657783010509,
+          "mean": 865.9949335840065,
+          "min": 862.7240888669621,
+          "sample_stddev": 4.625672959260555
+        },
+        "h2d": {
+          "aggregate_gbps": 1.0085768321755635,
+          "bytes": 28435283968,
+          "count": 155,
+          "mean_latency_ms": 181.89337599508224,
+          "mean_run_gbps": 1.016099484587804,
+          "median_latency_ms": 135.9982452392578,
+          "p99_latency_ms": 689.0626831054689,
+          "sample_stddev_run_gbps": 0.10978940854396883,
+          "time_s": 28.193473279237747
+        },
+        "lifecycles": 2,
+        "mean_itl_ms": {
+          "max": 104.41822431663536,
+          "mean": 103.77443513558032,
+          "min": 103.13064595452529,
+          "sample_stddev": 0.9104553911570972
+        },
+        "mean_tpot_ms": {
+          "max": 104.379321983988,
+          "mean": 103.74285036549611,
+          "min": 103.10637874700421,
+          "sample_stddev": 0.9001067949367939
+        },
+        "mean_ttft_ms": {
+          "max": 309878.9266930218,
+          "mean": 307549.5347717055,
+          "min": 305220.14285038924,
+          "sample_stddev": 3294.2576472077953
+        },
+        "median_itl_ms": {
+          "max": 15.702473348937929,
+          "mean": 15.686841739807278,
+          "min": 15.671210130676627,
+          "sample_stddev": 0.02210643363428141
+        },
+        "median_tpot_ms": {
+          "max": 15.791775215891937,
+          "mean": 15.745785746120792,
+          "min": 15.699796276349646,
+          "sample_stddev": 0.06503893187670096
+        },
+        "median_ttft_ms": {
+          "max": 308755.87594194803,
+          "mean": 306435.6771422317,
+          "min": 304115.4783425154,
+          "sample_stddev": 3281.25660996058
+        },
+        "output_throughput": {
+          "max": 59.34689973389092,
+          "mean": 59.123591168992675,
+          "min": 58.900282604094436,
+          "sample_stddev": 0.3158060010731679
+        },
+        "p99_itl_ms": {
+          "max": 20.56481302715829,
+          "mean": 20.50799035234372,
+          "min": 20.451167677529153,
+          "sample_stddev": 0.08035939737307964
+        },
+        "p99_tpot_ms": {
+          "max": 1796.3915562834222,
+          "mean": 1770.2098518384196,
+          "min": 1744.0281473934172,
+          "sample_stddev": 37.02652151216654
+        },
+        "p99_ttft_ms": {
+          "max": 618151.835235441,
+          "mean": 615654.0367633186,
+          "min": 613156.2382911961,
+          "sample_stddev": 3532.4204753503836
+        },
+        "peak_hbm_usage_percent": {
+          "max": 29,
+          "mean": 29
+        },
+        "peak_npu_process_memory_mb": {
+          "max": 16066,
+          "mean": 16066
+        },
+        "request_throughput": {
+          "max": 0.2318238270855114,
+          "mean": 0.23095152800387764,
+          "min": 0.2300792289222439,
+          "sample_stddev": 0.0012336171916920622
+        },
+        "total_token_throughput": {
+          "max": 1008.898454595281,
+          "mean": 1005.1022046305155,
+          "min": 1001.30595466575,
+          "sample_stddev": 5.368708186329726
+        }
+      }
+    }
+  },
+  "mapped_vs_native": {
+    "d2h_aggregate_gbps_percent": -10.37534732288713,
+    "d2h_mean_latency_ms_percent": 10.845148450658805,
+    "d2h_p99_latency_ms_percent": -19.56486666137165,
+    "duration_percent": -1.882424367780211,
+    "h2d_aggregate_gbps_percent": 6349.1364989533395,
+    "h2d_mean_latency_ms_percent": -98.42038070064126,
+    "h2d_p99_latency_ms_percent": -98.9321726481436,
+    "mean_itl_ms_percent": -1.49098267200658,
+    "mean_tpot_ms_percent": -1.4738376682273735,
+    "mean_ttft_ms_percent": -2.327869607366251,
+    "median_itl_ms_percent": -0.0776893415191604,
+    "median_tpot_ms_percent": -0.35378800294103563,
+    "median_ttft_ms_percent": -2.2348283128803326,
+    "output_throughput_percent": 1.9153392536476854,
+    "p99_itl_ms_percent": -2.2722993318853635,
+    "p99_tpot_ms_percent": 0.5174040014133352,
+    "p99_ttft_ms_percent": -2.183665845417604,
+    "peak_npu_process_memory_mb_percent": -0.2489729864309731,
+    "request_throughput_percent": 1.9153392536476854,
+    "total_token_throughput_percent": 1.9153392536476854
+  },
+  "modes": {
+    "mapped": {
+      "d2h": {
+        "aggregate_gbps": 6.346151265206892,
+        "bytes": 126182490112,
+        "count": 1370,
+        "mean_latency_ms": 14.513364641335759,
+        "mean_run_gbps": 6.362902711556763,
+        "median_latency_ms": 10.995739936828613,
+        "p99_latency_ms": 59.26150131225586,
+        "sample_stddev_run_gbps": 0.4015734637382534,
+        "time_s": 19.88330955862999
+      },
+      "duration": {
+        "max": 853.9888043690007,
+        "mean": 851.8066569195362,
+        "min": 848.8895849350374,
+        "sample_stddev": 2.422085272987264
+      },
+      "h2d": {
+        "aggregate_gbps": 63.85034586150714,
+        "bytes": 57501810688,
+        "count": 312,
+        "mean_latency_ms": 2.886447564149514,
+        "mean_run_gbps": 63.88077434693068,
+        "median_latency_ms": 2.7070499658584595,
+        "p99_latency_ms": 7.357999801635743,
+        "sample_stddev_run_gbps": 2.2741844871499257,
+        "time_s": 0.9005716400146484
+      },
+      "lifecycles": 4,
+      "mean_itl_ms": {
+        "max": 119.602104597307,
+        "mean": 107.18594674916054,
+        "min": 102.87955909219504,
+        "sample_stddev": 8.278407776383188
+      },
+      "mean_tpot_ms": {
+        "max": 119.58568688113168,
+        "mean": 107.16719395420674,
+        "min": 102.85535096899862,
+        "sample_stddev": 8.279991084086372
+      },
+      "mean_ttft_ms": {
+        "max": 302868.35652161855,
+        "mean": 301748.82825684675,
+        "min": 300625.89989193366,
+        "sample_stddev": 1206.8892006798703
+      },
+      "median_itl_ms": {
+        "max": 15.741475159302354,
+        "mean": 15.667382656829432,
+        "min": 15.558615094050765,
+        "sample_stddev": 0.07777670818963094
+      },
+      "median_tpot_ms": {
+        "max": 15.77618850404214,
+        "mean": 15.700640382048874,
+        "min": 15.59360440245227,
+        "sample_stddev": 0.07847136287684875
+      },
+      "median_ttft_ms": {
+        "max": 302792.37014392857,
+        "mean": 301380.0024400989,
+        "min": 299988.0783519475,
+        "sample_stddev": 1208.7688570413673
+      },
+      "output_throughput": {
+        "max": 60.31408667114011,
+        "mean": 60.10790156056875,
+        "min": 59.95394756706547,
+        "sample_stddev": 0.1710278599074782
+      },
+      "p99_itl_ms": {
+        "max": 20.8342638099566,
+        "mean": 20.290148683707223,
+        "min": 19.98424788936973,
+        "sample_stddev": 0.40210005916874814
+      },
+      "p99_tpot_ms": {
+        "max": 1965.9322486344947,
+        "mean": 1784.2571517803503,
+        "min": 1715.9608757623432,
+        "sample_stddev": 121.24417580123018
+      },
+      "p99_ttft_ms": {
+        "max": 605745.0505278585,
+        "mean": 602145.2814323967,
+        "min": 594955.9388299822,
+        "sample_stddev": 4987.02426709386
+      },
+      "peak_hbm_usage_percent": {
+        "max": 29,
+        "mean": 29
+      },
+      "peak_npu_process_memory_mb": {
+        "max": 16026,
+        "mean": 16026
+      },
+      "request_throughput": {
+        "max": 0.23560190105914106,
+        "mean": 0.23479649047097167,
+        "min": 0.2341951076838495,
+        "sample_stddev": 0.0006680775777635867
+      },
+      "total_token_throughput": {
+        "max": 1025.340651418887,
+        "mean": 1021.835500512121,
+        "min": 1019.2182796156515,
+        "sample_stddev": 2.9074769588149736
+      }
+    },
+    "native": {
+      "d2h": {
+        "aggregate_gbps": 7.080809883938871,
+        "bytes": 126365990912,
+        "count": 1363,
+        "mean_latency_ms": 13.093369303209679,
+        "mean_run_gbps": 7.416059664389431,
+        "median_latency_ms": 10.229020118713379,
+        "p99_latency_ms": 73.67613983154297,
+        "sample_stddev_run_gbps": 1.7628564964960944,
+        "time_s": 17.846262360274793
+      },
+      "duration": {
+        "max": 876.360167264007,
+        "mean": 868.1489034262486,
+        "min": 862.7240888669621,
+        "sample_stddev": 6.146457401013617
+      },
+      "h2d": {
+        "aggregate_gbps": 0.9900603882685644,
+        "bytes": 56988008448,
+        "count": 315,
+        "mean_latency_ms": 182.73058358563318,
+        "mean_run_gbps": 0.9954077340947745,
+        "median_latency_ms": 132.2880401611328,
+        "p99_latency_ms": 689.0626831054689,
+        "sample_stddev_run_gbps": 0.07803995859336281,
+        "time_s": 57.56013382947445
+      },
+      "lifecycles": 4,
+      "mean_itl_ms": {
+        "max": 116.34764562051275,
+        "mean": 108.80825903711597,
+        "min": 103.13064595452529,
+        "sample_stddev": 6.184446890154999
+      },
+      "mean_tpot_ms": {
+        "max": 116.31570584230197,
+        "mean": 108.7702914819078,
+        "min": 103.10637874700421,
+        "sample_stddev": 6.180378291363237
+      },
+      "mean_ttft_ms": {
+        "max": 314247.77435750817,
+        "mean": 308940.56169742777,
+        "min": 305220.14285038924,
+        "sample_stddev": 4052.3646796450766
+      },
+      "median_itl_ms": {
+        "max": 15.75211260933429,
+        "mean": 15.679564006859437,
+        "min": 15.5924599384889,
+        "sample_stddev": 0.06694535993256089
+      },
+      "median_tpot_ms": {
+        "max": 15.82913000419663,
+        "mean": 15.75638458039155,
+        "min": 15.699796276349646,
+        "sample_stddev": 0.06430085793298343
+      },
+      "median_ttft_ms": {
+        "max": 315471.9293115195,
+        "mean": 308269.2918543762,
+        "min": 304115.4783425154,
+        "sample_stddev": 5223.9202094279635
+      },
+      "output_throughput": {
+        "max": 59.34689973389092,
+        "mean": 58.97826764916294,
+        "min": 58.42346778476502,
+        "sample_stddev": 0.41615337136624386
+      },
+      "p99_itl_ms": {
+        "max": 21.320684272795905,
+        "mean": 20.761921691591827,
+        "min": 20.451167677529153,
+        "sample_stddev": 0.3873957085893575
+      },
+      "p99_tpot_ms": {
+        "max": 1796.3915562834222,
+        "mean": 1775.0728538067524,
+        "min": 1744.0281473934172,
+        "sample_stddev": 24.00294538231323
+      },
+      "p99_ttft_ms": {
+        "max": 618151.835235441,
+        "mean": 615587.6588881429,
+        "min": 613014.7562929336,
+        "sample_stddev": 2890.2682025609843
+      },
+      "peak_hbm_usage_percent": {
+        "max": 29,
+        "mean": 29
+      },
+      "peak_npu_process_memory_mb": {
+        "max": 16066,
+        "mean": 16066
+      },
+      "request_throughput": {
+        "max": 0.2318238270855114,
+        "mean": 0.23038385800454272,
+        "min": 0.22821667103423837,
+        "sample_stddev": 0.00162559910689939
+      },
+      "total_token_throughput": {
+        "max": 1008.898454595281,
+        "mean": 1002.63170195506,
+        "min": 993.2000934243605,
+        "sample_stddev": 7.074615441221685
+      }
+    }
+  },
+  "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+  "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+  "reverse_order_pairs": [
+    {
+      "duration_mapped_minus_native": -27.470582328969613,
+      "mean_tpot_ms_mapped_minus_native": 3.2699810388297124,
+      "mean_ttft_ms_mapped_minus_native": -13460.424953874899,
+      "p99_tpot_ms_mapped_minus_native": 197.460809835688,
+      "p99_ttft_ms_mapped_minus_native": -23071.866903018672,
+      "pair": 1
+    },
+    {
+      "duration_mapped_minus_native": -18.516151605872437,
+      "mean_tpot_ms_mapped_minus_native": -0.25102777800559295,
+      "mean_ttft_ms_mapped_minus_native": -9253.026801088126,
+      "p99_tpot_ms_mapped_minus_native": -80.43068052107901,
+      "p99_ttft_ms_mapped_minus_native": -15539.11959228327,
+      "pair": 2
+    },
+    {
+      "duration_mapped_minus_native": -8.735284497961402,
+      "mean_tpot_ms_mapped_minus_native": -1.2158853009379413,
+      "mean_ttft_ms_mapped_minus_native": -2351.786328770686,
+      "p99_tpot_ms_mapped_minus_native": -17.654109338462604,
+      "p99_ttft_ms_mapped_minus_native": -7411.187763337512,
+      "pair": 3
+    },
+    {
+      "duration_mapped_minus_native": -10.646967594046146,
+      "mean_tpot_ms_mapped_minus_native": -8.215458070690431,
+      "mean_ttft_ms_mapped_minus_native": -3701.695678590331,
+      "p99_tpot_ms_mapped_minus_native": -62.63882808175481,
+      "p99_ttft_ms_mapped_minus_native": -7747.335564345121,
+      "pair": 4
+    }
+  ],
+  "runs": [
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 8.901825861558793,
+        "bytes": 31995199488,
+        "count": 344,
+        "mean_latency_ms": 10.4483397320606,
+        "median_latency_ms": 6.553580045700073,
+        "p99_latency_ms": 55.578758239746094,
+        "time_s": 3.594228867828846
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 1.0221733172260843,
+        "bytes": 14239662080,
+        "count": 81,
+        "mean_latency_ms": 171.9848232401742,
+        "median_latency_ms": 81.65042114257812,
+        "p99_latency_ms": 752.9718627929688,
+        "time_s": 13.93077068245411
+      },
+      "lifecycle_index": 1,
+      "mode": "native",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16066,
+      "physical_device_id": "1",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 876.360167264007,
+        "mean_itl_ms": 116.34764562051275,
+        "mean_tpot_ms": 116.31570584230197,
+        "mean_ttft_ms": 314247.77435750817,
+        "median_itl_ms": 15.75211260933429,
+        "median_tpot_ms": 15.82913000419663,
+        "median_ttft_ms": 315471.9293115195,
+        "output_throughput": 58.42346778476502,
+        "p99_itl_ms": 20.71102178888396,
+        "p99_tpot_ms": 1768.4714387988067,
+        "p99_ttft_ms": 618027.8057330009,
+        "request_throughput": 0.22821667103423837,
+        "total_token_throughput": 993.2000934243605
+      },
+      "run": "retained-01-npu1-native"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 5.940158657325832,
+        "bytes": 31077695488,
+        "count": 341,
+        "mean_latency_ms": 15.342508874331052,
+        "median_latency_ms": 11.20263957977295,
+        "p99_latency_ms": 62.55590057373046,
+        "time_s": 5.231795526146889
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 65.1567026078596,
+        "bytes": 15443427328,
+        "count": 87,
+        "mean_latency_ms": 2.724365289183869,
+        "median_latency_ms": 2.661020040512085,
+        "p99_latency_ms": 7.357999801635743,
+        "time_s": 0.23701978015899658
+      },
+      "lifecycle_index": 2,
+      "mode": "mapped",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16026,
+      "physical_device_id": "2",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 848.8895849350374,
+        "mean_itl_ms": 119.602104597307,
+        "mean_tpot_ms": 119.58568688113168,
+        "mean_ttft_ms": 300787.34940363327,
+        "median_itl_ms": 15.558615094050765,
+        "median_tpot_ms": 15.59360440245227,
+        "median_ttft_ms": 300894.9531475082,
+        "output_throughput": 60.31408667114011,
+        "p99_itl_ms": 20.35413134843111,
+        "p99_tpot_ms": 1965.9322486344947,
+        "p99_ttft_ms": 594955.9388299822,
+        "request_throughput": 0.23560190105914106,
+        "total_token_throughput": 1025.340651418887
+      },
+      "run": "retained-02-npu2-mapped"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 6.83573330685198,
+        "bytes": 31701598208,
+        "count": 343,
+        "mean_latency_ms": 13.520785616194889,
+        "median_latency_ms": 10.643440246582031,
+        "p99_latency_ms": 55.43230056762695,
+        "time_s": 4.637629466354847
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 64.74916106047408,
+        "bytes": 14019461120,
+        "count": 75,
+        "mean_latency_ms": 2.8869277254740395,
+        "median_latency_ms": 2.7945399284362793,
+        "p99_latency_ms": 7.49314022064209,
+        "time_s": 0.21651957941055297
+      },
+      "lifecycle_index": 3,
+      "mode": "mapped",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16026,
+      "physical_device_id": "1",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 850.7496266951784,
+        "mean_itl_ms": 102.87955909219504,
+        "mean_tpot_ms": 102.85535096899862,
+        "mean_ttft_ms": 300625.89989193366,
+        "median_itl_ms": 15.67408093251288,
+        "median_tpot_ms": 15.696218719833768,
+        "median_ttft_ms": 299988.0783519475,
+        "output_throughput": 60.182218591022476,
+        "p99_itl_ms": 19.987951687071455,
+        "p99_tpot_ms": 1715.9608757623432,
+        "p99_ttft_ms": 602612.7156431577,
+        "request_throughput": 0.23508679137118155,
+        "total_token_throughput": 1023.0988914813389
+      },
+      "run": "retained-03-npu1-mapped"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 5.2402286188311225,
+        "bytes": 31246516224,
+        "count": 337,
+        "mean_latency_ms": 17.69381442232726,
+        "median_latency_ms": 11.210359573364258,
+        "p99_latency_ms": 135.0970458984375,
+        "time_s": 5.962815460324287
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 0.9384666493039033,
+        "bytes": 14511243264,
+        "count": 80,
+        "mean_latency_ms": 193.28394987136127,
+        "median_latency_ms": 147.79837036132812,
+        "p99_latency_ms": 706.548095703125,
+        "time_s": 15.4627159897089
+      },
+      "lifecycle_index": 4,
+      "mode": "native",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16066,
+      "physical_device_id": "2",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 869.2657783010509,
+        "mean_itl_ms": 103.13064595452529,
+        "mean_tpot_ms": 103.10637874700421,
+        "mean_ttft_ms": 309878.9266930218,
+        "median_itl_ms": 15.702473348937929,
+        "median_tpot_ms": 15.791775215891937,
+        "median_ttft_ms": 308755.87594194803,
+        "output_throughput": 58.900282604094436,
+        "p99_itl_ms": 20.451167677529153,
+        "p99_tpot_ms": 1796.3915562834222,
+        "p99_ttft_ms": 618151.835235441,
+        "request_throughput": 0.2300792289222439,
+        "total_token_throughput": 1001.30595466575
+      },
+      "run": "retained-04-npu2-native"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 6.5381693288278555,
+        "bytes": 31701598208,
+        "count": 343,
+        "mean_latency_ms": 14.13614116170316,
+        "median_latency_ms": 10.782999992370605,
+        "p99_latency_ms": 57.915340423583984,
+        "time_s": 4.848696418464184
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 65.1361277059218,
+        "bytes": 14019461120,
+        "count": 75,
+        "mean_latency_ms": 2.8697768020629884,
+        "median_latency_ms": 2.704279899597168,
+        "p99_latency_ms": 8.641059875488281,
+        "time_s": 0.21523326015472413
+      },
+      "lifecycle_index": 5,
+      "mode": "mapped",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16026,
+      "physical_device_id": "1",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 853.9888043690007,
+        "mean_itl_ms": 103.1856935911496,
+        "mean_tpot_ms": 103.16343668305007,
+        "mean_ttft_ms": 302868.35652161855,
+        "median_itl_ms": 15.741475159302354,
+        "median_tpot_ms": 15.77618850404214,
+        "median_ttft_ms": 302792.37014392857,
+        "output_throughput": 59.95394756706547,
+        "p99_itl_ms": 19.98424788936973,
+        "p99_tpot_ms": 1726.3740380549546,
+        "p99_ttft_ms": 605745.0505278585,
+        "request_throughput": 0.2341951076838495,
+        "total_token_throughput": 1019.2182796156515
+      },
+      "run": "retained-05-npu1-mapped"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 6.725922439985677,
+        "bytes": 31804358656,
+        "count": 343,
+        "mean_latency_ms": 13.786075968262754,
+        "median_latency_ms": 10.942779541015625,
+        "p99_latency_ms": 61.306640625,
+        "time_s": 4.728624057114124
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 1.0937323198717046,
+        "bytes": 13924040704,
+        "count": 75,
+        "mean_latency_ms": 169.7434305270513,
+        "median_latency_ms": 132.2880401611328,
+        "p99_latency_ms": 689.0626831054689,
+        "time_s": 12.730757289528846
+      },
+      "lifecycle_index": 6,
+      "mode": "native",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16066,
+      "physical_device_id": "2",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 862.7240888669621,
+        "mean_itl_ms": 104.41822431663536,
+        "mean_tpot_ms": 104.379321983988,
+        "mean_ttft_ms": 305220.14285038924,
+        "median_itl_ms": 15.671210130676627,
+        "median_tpot_ms": 15.699796276349646,
+        "median_ttft_ms": 304115.4783425154,
+        "output_throughput": 59.34689973389092,
+        "p99_itl_ms": 20.56481302715829,
+        "p99_tpot_ms": 1744.0281473934172,
+        "p99_ttft_ms": 613156.2382911961,
+        "request_throughput": 0.2318238270855114,
+        "total_token_throughput": 1008.898454595281
+      },
+      "run": "retained-06-npu2-native"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 8.796261737182132,
+        "bytes": 31319916544,
+        "count": 339,
+        "mean_latency_ms": 10.50322706491898,
+        "median_latency_ms": 7.737299919128418,
+        "p99_latency_ms": 45.01544189453125,
+        "time_s": 3.560593975007534
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 0.9272586499774056,
+        "bytes": 14313062400,
+        "count": 79,
+        "mean_latency_ms": 195.39101098458977,
+        "median_latency_ms": 109.06851959228516,
+        "p99_latency_ms": 644.7449340820312,
+        "time_s": 15.435889867782592
+      },
+      "lifecycle_index": 7,
+      "mode": "native",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16066,
+      "physical_device_id": "1",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 864.2455792729743,
+        "mean_itl_ms": 111.33652025679048,
+        "mean_tpot_ms": 111.279759354337,
+        "mean_ttft_ms": 306415.40288879187,
+        "median_itl_ms": 15.5924599384889,
+        "median_tpot_ms": 15.704836825127986,
+        "median_ttft_ms": 304733.8838215219,
+        "output_throughput": 59.24242047390137,
+        "p99_itl_ms": 21.320684272795905,
+        "p99_tpot_ms": 1791.400272751364,
+        "p99_ttft_ms": 613014.7562929336,
+        "request_throughput": 0.23141570497617722,
+        "total_token_throughput": 1007.1223051348481
+      },
+      "run": "retained-07-npu1-native"
+    },
+    {
+      "completed": 200,
+      "d2h": {
+        "aggregate_gbps": 6.137549553221384,
+        "bytes": 31701598208,
+        "count": 343,
+        "mean_latency_ms": 15.058857573364635,
+        "median_latency_ms": 11.733099937438965,
+        "p99_latency_ms": 66.25296020507812,
+        "time_s": 5.16518814766407
+      },
+      "failed": 0,
+      "h2d": {
+        "aggregate_gbps": 60.48110601346725,
+        "bytes": 14019461120,
+        "count": 75,
+        "mean_latency_ms": 3.0906536038716634,
+        "median_latency_ms": 2.7294600009918213,
+        "p99_latency_ms": 8.053999900817871,
+        "time_s": 0.23179902029037475
+      },
+      "lifecycle_index": 8,
+      "mode": "mapped",
+      "peak_hbm_usage_percent": 29,
+      "peak_npu_process_memory_mb": 16026,
+      "physical_device_id": "2",
+      "request_set_file_sha256": "607912ba4ad105124d220fd278df81e87f5b9e1d5b3cca592b863cb7d1dedc23",
+      "request_set_sha256": "c0498f87ca1c221fa82f5811619ff1001d7921ddf9d907735746eabe3c4d9a82",
+      "result": {
+        "duration": 853.5986116789281,
+        "mean_itl_ms": 103.07642971599051,
+        "mean_tpot_ms": 103.06430128364657,
+        "mean_ttft_ms": 302713.70721020154,
+        "median_itl_ms": 15.695359441451728,
+        "median_tpot_ms": 15.736549901867322,
+        "median_ttft_ms": 301844.6081170114,
+        "output_throughput": 59.98135341304693,
+        "p99_itl_ms": 20.8342638099566,
+        "p99_tpot_ms": 1728.761444669609,
+        "p99_ttft_ms": 605267.4207285885,
+        "request_throughput": 0.23430216176971458,
+        "total_token_throughput": 1019.6841795326067
+      },
+      "run": "retained-08-npu2-mapped"
+    }
+  ],
+  "schema_version": "pr153-highprefix-crossover-summary/v1",
+  "source": {
+    "vllm_ascend_commit": "d48784c2e0803df4f4eb6212f49d11f219aa13c0",
+    "vllm_ascend_head_tree": "372508902acfb5ed02c1bdd143fac98a36543c11",
+    "vllm_commit": "6901c26b23fa60ca1a2450b0999f803f6ee6c335",
+    "vllm_head_tree": "829202c4f054e11527dd6867878c76e36859a1bb"
+  }
+}

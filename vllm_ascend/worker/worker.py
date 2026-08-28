@@ -22,11 +22,11 @@ import gc
 import logging
 import math
 import os
-import re
 import subprocess
 import sys
 from types import NoneType
 
+import regex as re
 import torch
 import torch.nn as nn
 import torch_npu
@@ -46,6 +46,7 @@ from vllm.distributed.kv_transfer.kv_connector.v1.base import KVConnectorHandsha
 from vllm.distributed.parallel_state import Handle, get_pp_group, get_tp_group
 from vllm.logger import logger
 from vllm.lora.request import LoRARequest
+from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors
 from vllm.tasks import SupportedTask
 from vllm.utils.mem_constants import GiB_bytes
@@ -264,7 +265,109 @@ def _get_visible_ascend_device_count() -> int:
     return len(set(logical_map.values()))
 
 
+def _logical_to_visible_device_id(local_rank: int) -> int:
+    """Translate a vLLM-local rank to a torch-visible NPU ordinal.
+
+    ``logical_device_id_to_visible_device_id`` first applies the published
+    logical-to-physical assignment and then, when
+    ``ASCEND_RT_VISIBLE_DEVICES`` is set, converts that physical ID back to
+    the process-visible ordinal expected by ``torch.npu.set_device``. This
+    avoids applying the visibility mask twice.
+    """
+    mapper = getattr(
+        current_platform,
+        "logical_device_id_to_visible_device_id",
+        None,
+    )
+    if mapper is None:
+        return local_rank
+    return mapper(local_rank)
+
+
+def _get_assigned_physical_device_ids(parallel_config) -> list[int] | None:
+    assigned_physical_device_ids = getattr(parallel_config, "assigned_physical_gpu_ids", None)
+    if assigned_physical_device_ids == []:
+        raise ValueError("assigned_physical_gpu_ids must be None or a non-empty list of physical device IDs")
+    return assigned_physical_device_ids
+
+
+def _get_data_parallel_size_per_device(parallel_config) -> int:
+    data_parallel_size_per_device = getattr(parallel_config, "data_parallel_size_per_device", 1)
+    if data_parallel_size_per_device is None:
+        data_parallel_size_per_device = 1
+    if data_parallel_size_per_device < 1:
+        raise ValueError("data_parallel_size_per_device must be greater than zero")
+    return data_parallel_size_per_device
+
+
+def _adjust_local_rank_for_data_parallel(local_rank: int, parallel_config) -> int:
+    data_parallel_size_per_device = _get_data_parallel_size_per_device(parallel_config)
+    if (
+        parallel_config.distributed_executor_backend not in ("ray", "external_launcher")
+        and parallel_config.data_parallel_backend != "ray"
+        and parallel_config.nnodes_within_dp == 1
+    ):
+        tp_pp_world_size = parallel_config.pipeline_parallel_size * parallel_config.tensor_parallel_size
+        assigned_physical_device_ids = _get_assigned_physical_device_ids(parallel_config)
+        assignment_is_engine_local = (
+            assigned_physical_device_ids is not None and len(assigned_physical_device_ids) == tp_pp_world_size
+        )
+        if not assignment_is_engine_local:
+            # MP starts each DP engine with the same TP/PP-local ranks. Offset
+            # node-wide assignments by the node-local DP rank. A per-engine
+            # assignment already contains only this engine's TP/PP devices,
+            # so applying the DP offset again would index past that list.
+            dp_local_rank = parallel_config.data_parallel_rank_local
+            if dp_local_rank is None:
+                dp_local_rank = parallel_config.data_parallel_index
+
+            dp_device_rank = dp_local_rank // data_parallel_size_per_device
+            local_rank += dp_device_rank * tp_pp_world_size
+    elif data_parallel_size_per_device > 1:
+        # Ray/external_launcher (and cross-node launchers) provide a process
+        # local rank that already includes DP. Collapse the DP replicas that
+        # intentionally share each device while preserving the TP/PP rank.
+        tp_pp_world_size = parallel_config.pipeline_parallel_size * parallel_config.tensor_parallel_size
+        process_dp_rank, tp_pp_local_rank = divmod(local_rank, tp_pp_world_size)
+        device_dp_rank = process_dp_rank // data_parallel_size_per_device
+        local_rank = device_dp_rank * tp_pp_world_size + tp_pp_local_rank
+
+    return local_rank
+
+
+def _publish_and_map_device_id(local_rank: int, parallel_config) -> tuple[int, int]:
+    local_rank = _adjust_local_rank_for_data_parallel(local_rank, parallel_config)
+    assigned_physical_device_ids = _get_assigned_physical_device_ids(parallel_config)
+    if assigned_physical_device_ids is not None:
+        # Worker-side publication is required for Ray, external_launcher, and
+        # cross-node workers; unlike MP, those processes cannot rely on the
+        # multiprocess executor having published the mapping for them.
+        from vllm.platforms.interface import set_assigned_physical_gpu_ids
+
+        set_assigned_physical_gpu_ids(assigned_physical_device_ids)
+        assert 0 <= local_rank < len(assigned_physical_device_ids), (
+            f"local_rank {local_rank} is out of bounds for assigned_physical_gpu_ids {assigned_physical_device_ids}"
+        )
+
+        # With intra-device DP, multiple worker ranks intentionally share one
+        # accelerator, so process count may exceed physical device count.
+        if (
+            parallel_config.distributed_executor_backend not in ("ray", "external_launcher")
+            and _get_data_parallel_size_per_device(parallel_config) == 1
+        ):
+            assert parallel_config.local_world_size <= len(assigned_physical_device_ids), (
+                f"local_world_size ({parallel_config.local_world_size}) exceeds "
+                "assigned_physical_gpu_ids count "
+                f"({len(assigned_physical_device_ids)})"
+            )
+
+    return local_rank, _logical_to_visible_device_id(local_rank)
+
+
 def _maybe_auto_select_idle_ascend_device(local_rank: int, parallel_config) -> int | None:
+    if _get_assigned_physical_device_ids(parallel_config) is not None:
+        return None
+
     if os.environ.get("ASCEND_RT_VISIBLE_DEVICES"):
         return None
 
@@ -595,6 +698,13 @@ class NPUWorker(WorkerBase):
         self._is_checkpoint_format = True
 
     def shutdown(self) -> None:
+        # Flush bounded Python-dispatch telemetry during normal worker teardown.
+        # The probe also has an atexit fallback for initialization failures that
+        # happen before the model runner is attached.
+        from vllm_ascend.attention.path_probe import shutdown_attention_path_probe
+
+        shutdown_attention_path_probe()
+
         if ensure_kv_transfer_shutdown is not None:
             ensure_kv_transfer_shutdown()
 
@@ -614,25 +724,30 @@ class NPUWorker(WorkerBase):
         self.cache_config.num_cpu_blocks = num_cpu_blocks
 
     def _init_device(self):
-        selected_device = _maybe_auto_select_idle_ascend_device(
-            self.local_rank, self.parallel_config
+        self.local_rank, default_device_index = _publish_and_map_device_id(
+            self.local_rank,
+            self.parallel_config,
         )
-        device_index = selected_device if selected_device is not None else self.local_rank
+        selected_device = _maybe_auto_select_idle_ascend_device(
+            self.local_rank,
+            self.parallel_config,
+        )
+        device_index = selected_device if selected_device is not None else default_device_index
 
         device = torch.device(f"npu:{device_index}")
         try:
             torch.npu.set_device(device)
         except Exception as exc:
-            if selected_device is None or device_index == self.local_rank:
+            if selected_device is None or device_index == default_device_index:
                 raise
 
             logger.warning(
-                "Failed to initialize auto-selected Ascend device %s (%s); falling back to local_rank %s.",
+                "Failed to initialize auto-selected Ascend device %s (%s); falling back to mapped device %s.",
                 device_index,
                 exc,
-                self.local_rank,
+                default_device_index,
             )
-            device = torch.device(f"npu:{self.local_rank}")
+            device = torch.device(f"npu:{default_device_index}")
             torch.npu.set_device(device)
 
         check_ascend_device_type()
@@ -650,7 +765,8 @@ class NPUWorker(WorkerBase):
         torch.npu.empty_cache()
 
         if get_ascend_device_type() == AscendDeviceType.A5:
-            setup_ascend_local_comm_res(self.local_rank, self.vllm_config.kv_transfer_config)
+            assert device.index is not None
+            setup_ascend_local_comm_res(device.index, self.vllm_config.kv_transfer_config)
 
         # take current memory snapshot
         self.init_snapshot = MemorySnapshot()
@@ -675,8 +791,12 @@ class NPUWorker(WorkerBase):
             and self.vllm_config.parallel_config.nnodes_within_dp == 1
         ):
             visible_device_count = torch.npu.device_count() if torch.npu.is_available() else 0
-            assert self.parallel_config.local_world_size <= visible_device_count, (
-                f"local_world_size ({self.parallel_config.local_world_size}) must "
+            data_parallel_size_per_device = _get_data_parallel_size_per_device(self.parallel_config)
+            required_device_count = math.ceil(self.parallel_config.local_world_size / data_parallel_size_per_device)
+            assert required_device_count <= visible_device_count, (
+                f"local_world_size ({self.parallel_config.local_world_size}) with "
+                f"data_parallel_size_per_device ({data_parallel_size_per_device}) requires "
+                f"{required_device_count} devices, which must "
                 f"be less than or equal to the number of visible devices "
                 f"({visible_device_count})."
             )
@@ -704,6 +824,15 @@ class NPUWorker(WorkerBase):
             from vllm_ascend.worker.v2.model_runner import NPUModelRunner as NPUModelRunnerV2
 
             self.model_runner = NPUModelRunnerV2(self.vllm_config, self.device)
+        elif get_ascend_config().enable_layered_prefill is True:
+            from vllm_ascend.worker.layered_prefill_model_runner import (
+                LayeredPrefillNPUModelRunner,
+            )
+
+            self.model_runner = LayeredPrefillNPUModelRunner(
+                self.vllm_config,
+                self.device,
+            )
         else:
             self.model_runner = NPUModelRunner(self.vllm_config, self.device)
 

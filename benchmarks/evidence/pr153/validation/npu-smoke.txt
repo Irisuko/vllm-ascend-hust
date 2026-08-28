@@ -1,0 +1,3 @@
+can not use command: npu-smi info
+PASS: kv_cache_block_gather smoke succeeded
+device=npu:0 dtype=float16 src_shape=(8, 16, 2, 32)

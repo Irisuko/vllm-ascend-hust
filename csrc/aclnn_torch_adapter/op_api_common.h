@@ -146,7 +146,7 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable
   memcpy(g_hashBuf + g_hashOffset, data_expression, size_expression); \
   g_hashOffset += size_expression;
 
-bool IsOpInputBaseFormat(const at::Tensor &tensor)
+inline bool IsOpInputBaseFormat(const at::Tensor &tensor)
 {
     if (!tensor.is_privateuseone()) {
         return true;
@@ -253,9 +253,6 @@ inline std::vector<std::string> get_default_custom_lib_path()
     return default_vendors_list;
 }
 
-const std::vector<std::string> g_custom_lib_path = get_custom_lib_path();
-const std::vector<std::string> g_default_custom_lib_path = get_default_custom_lib_path();
-
 inline const char *GetOpApiLibName(void) { return "libopapi.so"; }
 
 inline const char *GetCustOpApiLibName(void) { return "libcust_opapi.so"; }
@@ -277,7 +274,7 @@ inline std::vector<std::string> get_packaged_custom_lib_path()
     }
 
     std::string packaged_lib_path =
-        module_path.substr(0, last_slash) + "/_cann_ops_custom/vendors/vllm-ascend/op_api/lib/";
+        module_path.substr(0, last_slash) + "/_cann_ops_custom/vendors/custom_transformer/op_api/lib/";
     packaged_lib_path = real_path(packaged_lib_path);
     if (packaged_lib_path.empty()) {
         return std::vector<std::string>();

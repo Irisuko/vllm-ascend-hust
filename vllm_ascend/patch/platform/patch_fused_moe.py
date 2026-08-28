@@ -27,6 +27,7 @@
 #   2. from vllm_ascend import ops
 #   3. model loading  ->  deepseek_v2 imported  ->  gets patched FusedMoE  ✓
 
+from vllm_ascend.ascend_config import get_ascend_config
 from vllm_ascend.utils import is_310p, vllm_version_is
 
 if not vllm_version_is("0.23.0"):
@@ -44,6 +45,20 @@ if not vllm_version_is("0.23.0"):
     def _ascend_FusedMoE(*args, runner_cls=None, runner_args=None, **kwargs):
         if runner_cls is None:
             runner_cls = _DefaultAscendMoERunner
+        # RoutedExperts allocates its parameters before AscendMoERunner is
+        # constructed. Propagate Ascend EPLB capacity into the upstream factory so
+        # redundant expert slots are present when weights are created and loaded.
+        eplb_config = get_ascend_config().eplb_config
+        if eplb_config.dynamic_eplb or eplb_config.expert_map_path is not None:
+            configured_redundancy = eplb_config.num_redundant_experts
+            upstream_redundancy = kwargs.get("num_redundant_experts", 0)
+            if configured_redundancy and upstream_redundancy not in (0, configured_redundancy):
+                raise ValueError(
+                    f"Conflicting EPLB redundant expert counts: vLLM={upstream_redundancy}, "
+                    f"Ascend={configured_redundancy}."
+                )
+            kwargs["enable_eplb"] = True
+            kwargs["num_redundant_experts"] = configured_redundancy or upstream_redundancy
         # 'hash' is a DeepSeek V4 flag already consumed before FusedMoE is called;
         # 'tid2eid' is Ascend-specific and must reach AscendMoERunner via runner_args.
         kwargs.pop("hash", None)

@@ -2013,9 +2013,14 @@ class AscendSpecDecodeBaseProposer(SpecDecodeBaseProposer):
                 ]
             )
 
+            # Discarded requests report zero valid output tokens, but padded
+            # draft geometry must retain their backup/anchor row.  The row is
+            # used only to keep positions and slots in-bounds; its sampled
+            # output remains discarded by the caller.
+            geometry_valid_count = valid_sampled_tokens_count.clamp_min(1)
             num_rejected_tokens_gpu = torch.where(
                 num_draft_tokens_gpu > 0,
-                num_draft_tokens_gpu + 1 - valid_sampled_tokens_count,
+                num_draft_tokens_gpu + 1 - geometry_valid_count,
                 torch.zeros_like(num_draft_tokens_gpu),
             )
 

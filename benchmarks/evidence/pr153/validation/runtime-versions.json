@@ -1,0 +1,1 @@
+{"platform": "Linux-5.15.0-25-generic-aarch64-with-glibc2.38", "python": "3.12.13", "torch": "2.10.0+cpu", "torch_npu": "2.10.0", "cann": "9.0.0", "vllm": "0.21.0"}

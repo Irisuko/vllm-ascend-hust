@@ -23,7 +23,7 @@ using namespace LIKernel;
 #define INVOKE_LI_NO_KFC_OP_IMPL(templateClass, ...)                                                                   \
     do {                                                                                                               \
         templateClass<LIType<__VA_ARGS__>> op;                                                                         \
-        LI_COPY_TILING_DATA(LITilingData, tiling);                                                                     \
+        LI_COPY_TILING_DATA(LightningIndexerVllmTilingData, tiling);                                                                     \
         op.Init(query, key, weights, actualSeqLengthsQ, actualSeqLengths, blocktable, sparseIndices, user,           \
                 tiling_data, &tPipe);                                                                                  \
         op.Process();                                                                                                  \

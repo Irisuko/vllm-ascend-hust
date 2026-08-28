@@ -364,28 +364,37 @@ def is_add_rms_norm_bias_custom_op_available() -> bool:
     if envs_ascend.VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP:
         return False
 
-    try:
-        libopapi = ctypes.CDLL("libopapi.so")
-    except OSError as exc:
-        logger.warning_once(
-            "Disable npu_add_rms_norm_bias custom op because libopapi.so "
-            "cannot be loaded: %s",
-            exc,
-        )
-        return False
+    vendor_opapi = os.path.join(
+        _CUSTOM_OP_BASE_DIR,
+        "_cann_ops_custom",
+        "vendors",
+        _CUSTOM_OP_VENDOR_DIR,
+        "op_api",
+        "lib",
+        "libcust_opapi.so",
+    )
+    candidates = [vendor_opapi, "libopapi.so"]
+    failures: list[str] = []
+    for candidate in candidates:
+        if os.path.isabs(candidate) and not os.path.isfile(candidate):
+            failures.append(f"{candidate}: missing")
+            continue
+        try:
+            opapi = ctypes.CDLL(candidate, mode=ctypes.RTLD_GLOBAL)
+        except OSError as exc:
+            failures.append(f"{candidate}: {exc}")
+            continue
 
-    missing_symbols = [
-        symbol for symbol in _ADD_RMS_NORM_BIAS_REQUIRED_SYMBOLS if not hasattr(libopapi, symbol)
-    ]
-    if missing_symbols:
-        logger.warning_once(
-            "Disable npu_add_rms_norm_bias custom op because libopapi.so "
-            "misses required symbol(s): %s",
-            ", ".join(missing_symbols),
-        )
-        return False
+        missing_symbols = [symbol for symbol in _ADD_RMS_NORM_BIAS_REQUIRED_SYMBOLS if not hasattr(opapi, symbol)]
+        if not missing_symbols:
+            return True
+        failures.append(f"{candidate}: missing {', '.join(missing_symbols)}")
 
-    return True
+    logger.warning_once(
+        "Disable npu_add_rms_norm_bias custom op because no available OPAPI library exports all required symbols: %s",
+        "; ".join(failures),
+    )
+    return False
 
 
 def enable_custom_op():
@@ -569,30 +578,49 @@ def _normalize_vllm_compat_version(version_str: str) -> str:
     return normalized
 
 
-def setup_ascend_local_comm_res(local_rank: int, kv_transfer_config: Any | None) -> None:
-    """Load the local A5 endpoint config into ASCEND_LOCAL_COMM_RES."""
+def setup_ascend_local_comm_res(visible_device_index: int, kv_transfer_config: Any | None) -> None:
+    """Load the selected A5 device's endpoint config.
+
+    ``visible_device_index`` is the final ordinal used by
+    ``torch.npu.set_device``. Convert it to a physical ID before selecting the
+    endpoint file because those files are named after physical NPU IDs.
+    """
     if kv_transfer_config is None:
         return
-
-    visible_devices = os.getenv("ASCEND_RT_VISIBLE_DEVICES")
-    if visible_devices is None:
-        from vllm_ascend.cpu_binding import DeviceInfo
-
-        devices = sorted([int(x) for x in DeviceInfo.get_npu_map_info()])
-    else:
-        devices = [int(x) for x in visible_devices.split(",") if x.strip()]
 
     extra_config = kv_transfer_config.kv_connector_extra_config or {}
     local_comm_res_path = extra_config.get("ascend_local_comm_res_path")
     if not local_comm_res_path:
         return
 
-    if not devices:
-        raise ValueError("No NPU devices found or specified in ASCEND_RT_VISIBLE_DEVICES.")
-    if local_rank < 0 or local_rank >= len(devices):
-        raise ValueError(f"local_rank {local_rank} is out of bounds for the available NPU devices: {devices}")
+    if visible_device_index < 0:
+        raise ValueError(f"visible_device_index must be non-negative, got {visible_device_index}")
 
-    local_comm_res_file = os.path.join(local_comm_res_path, f"ub_endpoint_npu_{devices[local_rank]}.json")
+    from vllm.platforms import current_platform
+
+    visible_to_physical = getattr(current_platform, "visible_device_id_to_physical_device_id", None)
+    if visible_to_physical is not None:
+        physical_device_id = visible_to_physical(visible_device_index)
+    else:
+        # Compatibility fallback for older vLLM versions without the platform
+        # conversion helper.
+        visible_devices = os.getenv("ASCEND_RT_VISIBLE_DEVICES")
+        if visible_devices is None:
+            from vllm_ascend.cpu_binding import DeviceInfo
+
+            devices = sorted([int(x) for x in DeviceInfo.get_npu_map_info()])
+        else:
+            devices = [int(x) for x in visible_devices.split(",") if x.strip()]
+
+        if not devices:
+            raise ValueError("No NPU devices found or specified in ASCEND_RT_VISIBLE_DEVICES.")
+        if visible_device_index >= len(devices):
+            raise ValueError(
+                f"visible_device_index {visible_device_index} is out of bounds for the available NPU devices: {devices}"
+            )
+        physical_device_id = devices[visible_device_index]
+
+    local_comm_res_file = os.path.join(local_comm_res_path, f"ub_endpoint_npu_{physical_device_id}.json")
     try:
         with open(local_comm_res_file) as f:
             data = json.load(f)
@@ -633,10 +661,7 @@ def vllm_version_is(target_vllm_version: str):
         current_version = get_vllm_upstream_version()
         target_version = _normalize_vllm_compat_version(target_vllm_version)
     except InvalidVersion as exc:
-        raise ValueError(
-            f"Invalid target vllm version {target_vllm_version}. "
-            "Please use x.y.z or x.y.zrcN."
-        ) from exc
+        raise ValueError(f"Invalid target vllm version {target_vllm_version}. Please use x.y.z or x.y.zrcN.") from exc
 
     return current_version == target_version
 
@@ -748,9 +773,7 @@ def register_ascend_customop(vllm_config: VllmConfig | None = None):
     )
 
     is_moe_model = bool(
-        vllm_config is not None
-        and vllm_config.model_config is not None
-        and vllm_config.model_config.is_moe
+        vllm_config is not None and vllm_config.model_config is not None and vllm_config.model_config.is_moe
     )
 
     global REGISTERED_ASCEND_OPS

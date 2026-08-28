@@ -47,6 +47,7 @@ from vllm_ascend.attention.kvcomp_attn.attention_utils import (
     is_enable_hamming_sparse,
     reshape_and_cache_kvcomp,
 )
+from vllm_ascend.attention.path_probe import classify_dispatch_coverage, get_attention_path_probe
 from vllm_ascend.attention.utils import (
     AscendCommonAttentionMetadata,
     cache_graph_workspace,
@@ -441,6 +442,37 @@ class AscendAttentionBackendImpl(AttentionImpl):
         # attn_metadata during graph replay. Record the captured layer name only
         # for that path.
         self._layer_name: str | None = None
+
+    def _record_python_dispatch(
+        self,
+        *,
+        layer_id: str,
+        operator_id: str,
+        query: torch.Tensor,
+        attn_metadata: AscendMetadata,
+        is_c8: bool = False,
+        pooling: bool = False,
+        actual_cache_dtype: torch.dtype | None = None,
+        fallback_reason: str | None = None,
+    ) -> None:
+        attention_path_probe = get_attention_path_probe()
+        if attention_path_probe is None:
+            return
+        capturing = bool(getattr(_EXTRA_CTX, "capturing", False))
+        attention_path_probe.record_dispatch(
+            operator_id=operator_id,
+            layer_id=layer_id,
+            coverage=classify_dispatch_coverage(
+                capturing=capturing,
+                is_c8=is_c8,
+                pooling=pooling,
+            ),
+            query=query,
+            attn_metadata=attn_metadata,
+            sliding_window=self.sliding_window,
+            actual_cache_dtype=(str(actual_cache_dtype) if actual_cache_dtype is not None else None),
+            fallback_reason=fallback_reason,
+        )
 
     def _graph_metadata_layer_name(self, layer: AttentionLayer | None = None) -> str | None:
         layer_name = layer.layer_name if layer is not None else self._layer_name
@@ -1453,10 +1485,9 @@ class AscendAttentionBackendImpl(AttentionImpl):
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
-        num_tokens = query.shape[0]
         if (
             attn_metadata.attn_state == AscendAttentionState.DecodeOnly
-            and using_paged_attention(num_tokens, self.vllm_config)
+            and using_paged_attention(query.shape[0], self.vllm_config)
             and self.sliding_window is None
         ):
             output = self.forward_paged_attention(query, attn_metadata, output)
@@ -1543,6 +1574,45 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
     so that C8 attention layers automatically use this forward path.
     """
 
+    def _record_c8_dispatch(
+        self,
+        *,
+        dispatch_path: str,
+        layer: AttentionLayer,
+        query: torch.Tensor,
+        attn_metadata: AscendMetadata,
+        actual_cache_dtype: torch.dtype | None,
+        fallback_reason: str | None = None,
+        pooling: bool = False,
+    ) -> None:
+        self._record_python_dispatch(
+            layer_id=layer.layer_name,
+            operator_id=dispatch_path,
+            query=query,
+            attn_metadata=attn_metadata,
+            is_c8=True,
+            pooling=pooling,
+            actual_cache_dtype=actual_cache_dtype,
+            fallback_reason=fallback_reason or "none",
+        )
+
+    def _record_c8_pooling_dispatch(
+        self,
+        *,
+        layer: AttentionLayer,
+        query: torch.Tensor,
+        attn_metadata: AscendMetadata,
+    ) -> None:
+        self._record_c8_dispatch(
+            dispatch_path="pooling_encoder_attention",
+            layer=layer,
+            query=query,
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=getattr(self.key_cache, "dtype", None),
+            fallback_reason="c8_pooling_uses_encoder_attention",
+            pooling=True,
+        )
+
     def forward(
         self,
         layer: AttentionLayer,
@@ -1576,11 +1646,23 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
                 query, key, value, _ = self._reshape_and_cache(query, key, value, kv_cache, attn_metadata, output)
             # pooling model branch
             if attn_metadata.model_runner_type == "pooling":
+                self._record_c8_pooling_dispatch(
+                    layer=layer,
+                    query=query,
+                    attn_metadata=attn_metadata,
+                )
                 attn_output = self._forward_encoder_attention(query, key, value, attn_metadata, output)
                 output[:num_tokens] = attn_output[:num_tokens]
                 return output
             if attn_metadata.attn_state == AscendAttentionState.DecodeOnly:
                 if _EXTRA_CTX.capturing:
+                    self._record_c8_dispatch(
+                        dispatch_path="decode_full_graph_fia_capture",
+                        layer=layer,
+                        query=query,
+                        attn_metadata=attn_metadata,
+                        actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+                    )
                     attn_output, num_tokens = self.full_graph_fia(query, key, value, attn_metadata, output, layer)
                     output[:num_tokens] = attn_output[:num_tokens]
                     return output
@@ -1606,9 +1688,22 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
                     )
                 # pooling model branch
                 if attn_metadata.model_runner_type == "pooling":
+                    self._record_c8_pooling_dispatch(
+                        layer=layer,
+                        query=query,
+                        attn_metadata=attn_metadata,
+                    )
                     attn_output = self._forward_encoder_attention(query, key, value, attn_metadata, output)
                     output[:num_tokens] = attn_output[:num_tokens]
                     return output
+                self._record_c8_dispatch(
+                    dispatch_path="kv_transfer_producer_base_attention",
+                    layer=layer,
+                    query=query,
+                    attn_metadata=attn_metadata,
+                    actual_cache_dtype=getattr(self.key_cache, "dtype", None),
+                    fallback_reason="kv_transfer_producer_uses_base_attention",
+                )
                 if output_padded is not None:
                     attn_output = self.forward_impl(query, key, value, kv_cache, attn_metadata, output_padded)
                 else:
@@ -1621,10 +1716,22 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
                     query, key, value, _ = self._reshape_and_cache(query, key, value, kv_cache, attn_metadata, output)
                 # pooling model branch
                 if attn_metadata.model_runner_type == "pooling":
+                    self._record_c8_pooling_dispatch(
+                        layer=layer,
+                        query=query,
+                        attn_metadata=attn_metadata,
+                    )
                     attn_output = self._forward_encoder_attention(query, key, value, attn_metadata, output)
                     output[:num_tokens] = attn_output[:num_tokens]
                     return output
                 if _EXTRA_CTX.capturing:
+                    self._record_c8_dispatch(
+                        dispatch_path="decode_full_graph_fia_capture",
+                        layer=layer,
+                        query=query,
+                        attn_metadata=attn_metadata,
+                        actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+                    )
                     attn_output, num_tokens = self.full_graph_fia(query, key, value, attn_metadata, output, layer)
                     output[:num_tokens] = attn_output[:num_tokens]
                     return output
@@ -1753,6 +1860,13 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         num_block, block_size, _, _ = self.key_cache.shape  # type: ignore[attr-defined]
         assert block_size % 32 == 0, f"C8 INT8 KV cache requires block_size to be a multiple of 32, got {block_size}"
         batch_size = len(attn_metadata.seq_lens_list)
+        self._record_c8_dispatch(
+            dispatch_path="decode_fia_bnsd_paged_int8",
+            layer=layer,
+            query=query[:batch_size],
+            attn_metadata=attn_metadata,
+            actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+        )
 
         key = self._nz_5d_view(self.key_cache, block_size)
         value = self._nz_5d_view(self.value_cache, block_size)
@@ -1802,6 +1916,13 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
             assert block_size % 32 == 0, (
                 f"C8 INT8 KV cache requires block_size to be a multiple of 32, got {block_size}"
             )
+            self._record_c8_dispatch(
+                dispatch_path="chunked_decode_fia_bnsd_paged_int8",
+                layer=layer,
+                query=query[:num_decode_tokens],
+                attn_metadata=attn_metadata,
+                actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+            )
             kv_k = self._nz_5d_view(self.key_cache, block_size)
             kv_v = self._nz_5d_view(self.value_cache, block_size)
 
@@ -1842,10 +1963,25 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
                     break
 
             if all_new_prefill and float_key is not None and float_value is not None:
+                self._record_c8_dispatch(
+                    dispatch_path="chunked_prefill_fia_tnd_new_float_kv",
+                    layer=layer,
+                    query=prefill_q,
+                    attn_metadata=attn_metadata,
+                    actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+                )
                 prefill_k = float_key[num_decode_tokens:num_tokens]
                 prefill_v = float_value[num_decode_tokens:num_tokens]
                 prefill_seq_kvlen = prefill_seq_qlen
             else:
+                self._record_c8_dispatch(
+                    dispatch_path="chunked_prefill_fia_tnd_dequantized_cache",
+                    layer=layer,
+                    query=prefill_q,
+                    attn_metadata=attn_metadata,
+                    actual_cache_dtype=self.key_cache.dtype,  # type: ignore[attr-defined]
+                    fallback_reason="fia_tnd_requires_dense_kv",
+                )
                 num_block, blk_size, _, _ = self.key_cache.shape  # type: ignore[attr-defined]
                 paged_k = self._nz_5d_view(self.key_cache, blk_size)
                 paged_v = self._nz_5d_view(self.value_cache, blk_size)
@@ -1894,6 +2030,7 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         PrefillCacheHit gathers + dequants paged INT8 KV).
         """
         key, value, block_size, block_table, actual_seq_lengths_kv = self._get_fia_params(key, value, attn_metadata)
+        actual_cache_dtype = getattr(self.key_cache, "dtype", None)
 
         actual_seq_qlen = attn_metadata.actual_seq_lengths_q
         num_tokens = int(actual_seq_qlen[-1])  # type: ignore[index]
@@ -1908,6 +2045,14 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
 
         if key.dtype == torch.int8:
             if block_table is not None:
+                self._record_c8_dispatch(
+                    dispatch_path="prefill_cache_hit_fia_tnd_dequantized_cache",
+                    layer=layer,
+                    query=query,
+                    attn_metadata=attn_metadata,
+                    actual_cache_dtype=actual_cache_dtype,
+                    fallback_reason="fia_tnd_requires_dense_kv",
+                )
                 seq_lens = (
                     actual_seq_lengths_kv if isinstance(actual_seq_lengths_kv, list) else actual_seq_lengths_kv.tolist()
                 )
@@ -1918,8 +2063,24 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
                 block_size = self.key_cache.shape[1]  # type: ignore[attr-defined]
                 actual_seq_lengths_kv = torch.tensor(seq_lens, dtype=torch.int32).cumsum(dim=0)
             else:
+                self._record_c8_dispatch(
+                    dispatch_path="prefill_fia_tnd_dequantized_input",
+                    layer=layer,
+                    query=query,
+                    attn_metadata=attn_metadata,
+                    actual_cache_dtype=actual_cache_dtype,
+                    fallback_reason="fia_tnd_requires_float_kv",
+                )
                 key = (key.to(query.dtype) - layer._c8_k_offset) * layer._c8_k_scale
                 value = (value.to(query.dtype) - layer._c8_v_offset) * layer._c8_v_scale
+        else:
+            self._record_c8_dispatch(
+                dispatch_path="prefill_fia_tnd_float_kv",
+                layer=layer,
+                query=query,
+                attn_metadata=attn_metadata,
+                actual_cache_dtype=actual_cache_dtype,
+            )
 
         attn_output, _ = torch_npu.npu_fused_infer_attention_score(
             query=query,

@@ -1,5 +1,8 @@
 # E2E CI Test
 
+> Historical document: the PR E2E workflow and `/e2e` command are retired. Pull request dataset
+> validation is handled by the external fixed-machine service.
+
 This document explains how to trigger specific E2E tests against your PR code via a
 comment command, without running the full E2E test suite.
 

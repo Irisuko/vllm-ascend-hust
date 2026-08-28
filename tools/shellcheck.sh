@@ -24,7 +24,9 @@ set -euo pipefail
 scversion="stable"
 
 if [ -d "shellcheck-${scversion}" ]; then
-    export PATH="$PATH:$(pwd)/shellcheck-${scversion}"
+    shellcheck_path="$(pwd)/shellcheck-${scversion}"
+    PATH="$PATH:$shellcheck_path"
+    export PATH
 fi
 
 if ! [ -x "$(command -v shellcheck)" ]; then
@@ -34,8 +36,31 @@ if ! [ -x "$(command -v shellcheck)" ]; then
     fi
 
     wget -qO- "https://github.com/koalaman/shellcheck/releases/download/${scversion?}/shellcheck-${scversion?}.linux.x86_64.tar.xz" | tar -xJv
-    export PATH="$PATH:$(pwd)/shellcheck-${scversion}"
+    shellcheck_path="$(pwd)/shellcheck-${scversion}"
+    PATH="$PATH:$shellcheck_path"
+    export PATH
 fi
 
-find . -path ./.git -prune -o -name "*.sh" -print0 | \
-  xargs -0 sh -c "for f in \"\$@\"; do git check-ignore -q \"\$f\" || shellcheck -s bash \"\$f\"; done" --
+run_shellcheck() {
+    local file
+    local status=0
+    for file in "$@"; do
+        [[ -f "$file" ]] || continue
+        if git check-ignore -q "$file"; then
+            continue
+        fi
+        shellcheck -s bash "$file" || status=$?
+    done
+    return "$status"
+}
+
+# pre-commit passes the changed shell files. Keep the no-argument behavior for
+# developers who intentionally request a repository-wide scan.
+if (( $# > 0 )); then
+    run_shellcheck "$@"
+    exit
+fi
+
+while IFS= read -r -d '' file; do
+    run_shellcheck "$file"
+done < <(find . -path ./.git -prune -o -name "*.sh" -print0)

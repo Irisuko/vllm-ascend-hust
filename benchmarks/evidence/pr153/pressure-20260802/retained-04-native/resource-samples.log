@@ -1,0 +1,2268 @@
+timestamp_ns=1785700158378765720
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700160542371538
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700162686835262
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700164831911695
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700166972115403
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700169126419456
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700171260404051
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700173411269895
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700175551093716
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700177693465501
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700179838651953
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700181992070833
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700184165426925
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700186305713772
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700188434399077
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700190598327889
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700192744904783
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700194896621395
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700197034983528
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700199188017031
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700201347030431
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700203506370483
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700205659197378
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700207807703779
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700209953457100
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700212085943467
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700214232592861
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700216371583095
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700218504494224
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700220660486768
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700222806371137
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700224944140800
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700227080690557
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700229234720014
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700231373527472
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):116
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700233515094973
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 18
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 11
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):18530
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700235666756519
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700237819675933
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700239964651029
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700242097882300
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700244239488120
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700246377922310
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700248523797769
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700250665242014
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700252814899467
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700254968645344
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700257102160765
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700259255839067
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700261398450125
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700263530752886
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700265681080796
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700267835207178
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700269986934565
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700272141704846
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700274287556604
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700276437846819
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700278583466533
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 48
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):28432
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700280740027374
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 49
+	Aicore Usage Rate(%)           : 99
+	Aivector Usage Rate(%)         : 10
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 99
+	Aicube Usage Rate(%)           : 87
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):29842
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700282896597315
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 12
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36806
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700285038845442
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36806
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700287182204441
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700289327641301
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700291461562206
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700293605098922
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700295750461215
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700297951123226
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700300091843447
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700302235065983
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700304400183984
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700306590333667
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700308742555904
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700310888756761
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 61
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):36904
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700313069251832
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 62
+	Aicore Usage Rate(%)           : 100
+	Aivector Usage Rate(%)         : 21
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 100
+	Aicube Usage Rate(%)           : 88
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):37654
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700315253227290
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 100
+	Aivector Usage Rate(%)         : 21
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 17
+	NPU Utilization(%)             : 100
+	Aicube Usage Rate(%)           : 89
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700317390129517
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 31
+	Aivector Usage Rate(%)         : 4
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 18
+	NPU Utilization(%)             : 31
+	Aicube Usage Rate(%)           : 25
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700319530186934
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 100
+	Aivector Usage Rate(%)         : 22
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 17
+	NPU Utilization(%)             : 100
+	Aicube Usage Rate(%)           : 88
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700321681338659
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 41
+	Aivector Usage Rate(%)         : 10
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 12
+	NPU Utilization(%)             : 62
+	Aicube Usage Rate(%)           : 29
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700323821644199
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 47
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 47
+	Aicube Usage Rate(%)           : 33
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700325959473877
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 48
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 48
+	Aicube Usage Rate(%)           : 34
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700328102920204
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 44
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 44
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700330243138749
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 32
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700332379918601
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 47
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 47
+	Aicube Usage Rate(%)           : 33
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700334515182380
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 21
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 32
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700336681497271
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 45
+	Aivector Usage Rate(%)         : 11
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 45
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700338841018611
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 45
+	Aivector Usage Rate(%)         : 11
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 45
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700340981814024
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 43
+	Aivector Usage Rate(%)         : 11
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 44
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700343134135393
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 45
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 45
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700345286306004
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 18
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 32
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700347430055143
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 49
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 49
+	Aicube Usage Rate(%)           : 34
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700349592322525
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 18
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 32
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700351737290094
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 96
+	Aivector Usage Rate(%)         : 26
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 23
+	NPU Utilization(%)             : 96
+	Aicube Usage Rate(%)           : 68
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700353904586471
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 49
+	Aivector Usage Rate(%)         : 14
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 49
+	Aicube Usage Rate(%)           : 34
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700356050539088
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 52
+	Aivector Usage Rate(%)         : 15
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 52
+	Aicube Usage Rate(%)           : 37
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700358197460199
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 54
+	Aivector Usage Rate(%)         : 16
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 54
+	Aicube Usage Rate(%)           : 37
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700360338153342
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 53
+	Aivector Usage Rate(%)         : 16
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 53
+	Aicube Usage Rate(%)           : 37
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700362469582090
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 50
+	Aivector Usage Rate(%)         : 14
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 50
+	Aicube Usage Rate(%)           : 36
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700364618903895
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 47
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 47
+	Aicube Usage Rate(%)           : 33
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700366784359918
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 49
+	Aivector Usage Rate(%)         : 14
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 49
+	Aicube Usage Rate(%)           : 34
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700368915737391
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 32
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700371051783058
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 46
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 46
+	Aicube Usage Rate(%)           : 33
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700373198555062
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 47
+	Aivector Usage Rate(%)         : 13
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 47
+	Aicube Usage Rate(%)           : 33
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700375385268489
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 45
+	Aivector Usage Rate(%)         : 12
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 19
+	NPU Utilization(%)             : 45
+	Aicube Usage Rate(%)           : 31
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700377531857134
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 35
+	Aivector Usage Rate(%)         : 7
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 11
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 20
+	NPU Utilization(%)             : 35
+	Aicube Usage Rate(%)           : 27
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700379672374438
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 25
+	Aivector Usage Rate(%)         : 3
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 18
+	NPU Utilization(%)             : 31
+	Aicube Usage Rate(%)           : 21
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700381814029647
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 27
+	Aivector Usage Rate(%)         : 2
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 16
+	NPU Utilization(%)             : 34
+	Aicube Usage Rate(%)           : 23
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700383968775638
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 25
+	Aivector Usage Rate(%)         : 2
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 16
+	NPU Utilization(%)             : 27
+	Aicube Usage Rate(%)           : 21
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700386117467380
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 26
+	Aivector Usage Rate(%)         : 2
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 17
+	NPU Utilization(%)             : 34
+	Aicube Usage Rate(%)           : 23
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700388256317517
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 17
+	NPU Utilization(%)             : 13
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700390389023762
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 4
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700392527051439
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700394682559921
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700396824698695
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700398996758871
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700401164643829
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700403303457952
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700405445441352
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 6
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700407583037099
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700409723285235
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 3
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700411853891734
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700413999352968
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700416137523584
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 0
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700418279298061
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 63
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):38378
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700420432475422
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 10
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 10
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):452
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700422590120744
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 1
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):452
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700424725000770
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 5
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):452
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700426855823055
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 2
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	Get pid name failed.
+	Process id:2249616 Process name:                  Process memory(MB):452
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700428984555461
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 14
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 7
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup
+timestamp_ns=1785700431145127428
+	DDR Capacity(MB)               : 0
+	DDR Usage Rate(%)              : 0
+	DDR Hugepages Total(page)      : 0
+	DDR Hugepages Usage Rate(%)    : 0
+	HBM Capacity(MB)               : 65536
+	HBM Usage Rate(%)              : 5
+	Aicore Usage Rate(%)           : 0
+	Aivector Usage Rate(%)         : 0
+	Aicpu Usage Rate(%)            : 0
+	Ctrlcpu Usage Rate(%)          : 14
+	DDR Bandwidth Usage Rate(%)    : 0
+	HBM Bandwidth Usage Rate(%)    : 0
+	NPU Utilization(%)             : 0
+	Aicube Usage Rate(%)           : 0
+	No process in device.
+Error: cannot run top on container b072be3d8b068f6d5a2d7f91de9f72409cacffb5dee4208b5534b748c7df0120 as it did not create a cgroup: this container does not have a cgroup

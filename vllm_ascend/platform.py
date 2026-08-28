@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 import os
 from importlib import import_module, util
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
 import torch
@@ -52,6 +52,7 @@ from vllm_ascend.utils import (
     update_cudagraph_capture_sizes,
     is_310p,
     enable_sp,
+    vllm_version_is,
 )
 
 # Since vllm-project/vllm#43746, DeepSeek V4 model classes no longer
@@ -183,6 +184,225 @@ def prune_capture_sizes_for_950(vllm_config):
         len(original_sizes),
         MAX_CAPTURE_SIZES_FOR_950,
     )
+
+
+class _KVTransferConfigProtocol(Protocol):
+    """Structural type for the KV-transfer config fields used in this module.
+
+    Keeps _resolve_npu_alloc_conf() decoupled from the concrete
+    KVTransferConfig (which lives in vllm.configs) while still giving
+    type checkers a real attribute contract instead of ``object``.
+    """
+
+    kv_connector: Any
+
+
+def _resolve_npu_alloc_conf(kv_transfer_config: _KVTransferConfigProtocol | None) -> str:
+    """Resolve the PYTORCH_NPU_ALLOC_CONF value for the current process.
+
+    expandable_segments allocates memory in 2MB expandable segments that
+    cannot be exported through HCCL IPC (rtsIpcMemGetExportKey). KV transfer
+    connectors (e.g. Mooncake in disaggregated prefill/decode) must export
+    the KV cache to the peer instance, so expandable_segments is disabled by
+    default when KV transfer is enabled. Users can still override this via
+    PYTORCH_NPU_ALLOC_CONF.
+    """
+    npu_alloc_configs = os.getenv("PYTORCH_NPU_ALLOC_CONF", "")
+    if kv_transfer_config and kv_transfer_config.kv_connector:
+        # KV transfer requires expandable_segments=False. Append the
+        # override even when the user set other config keys (e.g.
+        # page_size:1g), symmetric with the non-KV branch below.
+        if "expandable_segments" not in npu_alloc_configs:
+            if npu_alloc_configs:
+                npu_alloc_configs += ",expandable_segments:False"
+            else:
+                npu_alloc_configs = "expandable_segments:False"
+        return npu_alloc_configs
+    if not npu_alloc_configs:
+        npu_alloc_configs = "expandable_segments:True"
+    # This environment variable may have more than one key-value pairs.
+    # We should append ",expandable_segments:True" to the current configs.
+    # For example: "page_size:1g" + ",expandable_segments:True".
+    # NOTE: `max_split_size_mb` or `garbage_collection_threshold` cannot
+    # be enabled together with `expandable_segments=True`.
+    if (
+        "expandable_segments" not in npu_alloc_configs
+        and "max_split_size_mb" not in npu_alloc_configs
+        and "garbage_collection_threshold" not in npu_alloc_configs
+    ):
+        npu_alloc_configs += ",expandable_segments:True"
+    return npu_alloc_configs
+
+
+def _configure_layered_prefill(
+    vllm_config: VllmConfig,
+    ascend_config: Any,
+) -> None:
+    """Validate and install the opt-in layered-prefill components."""
+    from vllm.config import CompilationMode
+    from vllm.config.compilation import CUDAGraphMode
+
+    from vllm_ascend.layered_prefill import LAYERED_PREFILL_MODEL_ADAPTERS
+
+    model_config = vllm_config.model_config
+    assert model_config is not None
+    scheduler_config = vllm_config.scheduler_config
+    parallel_config = vllm_config.parallel_config
+    compilation_config = vllm_config.compilation_config
+
+    architecture = model_config.architecture
+    if architecture not in LAYERED_PREFILL_MODEL_ADAPTERS:
+        supported = ", ".join(LAYERED_PREFILL_MODEL_ADAPTERS)
+        raise ValueError(
+            "Layered prefill on Ascend currently supports "
+            f"{supported}; got {architecture!r}."
+        )
+    if getattr(model_config, "model_impl", "auto") not in ("auto", "vllm"):
+        raise ValueError(
+            "Layered prefill requires the native vLLM model implementation."
+        )
+    num_layers = model_config.get_total_num_hidden_layers()
+    if ascend_config.layered_prefill_num_stages > num_layers:
+        raise ValueError(
+            "layered_prefill_num_stages cannot exceed the model's "
+            f"{num_layers} hidden layers."
+        )
+
+    layered_scheduler_cls = (
+        "vllm_ascend.core.layered_prefill_scheduler."
+        "LayeredPrefillScheduler"
+    )
+    if getattr(scheduler_config, "scheduler_cls", None) not in (
+        None,
+        layered_scheduler_cls,
+    ):
+        raise ValueError(
+            "Layered prefill cannot be combined with a custom scheduler."
+        )
+    if getattr(scheduler_config, "async_scheduling", False):
+        logger.warning_once(
+            "Disabling asynchronous scheduling for layered prefill."
+        )
+    if getattr(scheduler_config, "policy", "fcfs") != "fcfs":
+        raise ValueError(
+            "Layered prefill currently requires the FCFS scheduling policy."
+        )
+    if getattr(scheduler_config, "runner_type", "generate") != "generate":
+        raise ValueError(
+            "Layered prefill only supports generative model runners."
+        )
+    if (
+        getattr(vllm_config, "use_v2_model_runner", False)
+        and not vllm_version_is("0.23.0")
+    ):
+        raise ValueError("Layered prefill currently requires Model Runner V1.")
+
+    if getattr(parallel_config, "pipeline_parallel_size", 1) != 1:
+        raise ValueError("Layered prefill currently requires PP=1.")
+    if is_310p():
+        raise ValueError("Layered prefill is not supported on Ascend 310P.")
+    if (
+        getattr(parallel_config, "decode_context_parallel_size", 1) != 1
+        or getattr(parallel_config, "prefill_context_parallel_size", 1) != 1
+    ):
+        raise ValueError("Layered prefill currently requires DCP=PCP=1.")
+    if getattr(parallel_config, "data_parallel_size", 1) != 1:
+        raise ValueError("Layered prefill currently requires DP=1 on Ascend.")
+    if getattr(parallel_config, "use_ubatching", False):
+        raise ValueError(
+            "Layered prefill cannot be combined with DBO or explicit "
+            "microbatching."
+        )
+    if getattr(parallel_config, "worker_cls", "auto") not in (
+        "auto",
+        "vllm_ascend.worker.worker.NPUWorker",
+    ):
+        raise ValueError(
+            "Layered prefill cannot be combined with a custom worker class."
+        )
+
+    if getattr(vllm_config, "speculative_config", None) is not None:
+        raise ValueError(
+            "Layered prefill cannot be combined with speculative decoding."
+        )
+    if getattr(vllm_config, "lora_config", None) is not None:
+        raise ValueError("Layered prefill cannot be combined with LoRA.")
+    if (
+        getattr(vllm_config, "kv_transfer_config", None) is not None
+        or getattr(vllm_config, "ec_transfer_config", None) is not None
+    ):
+        raise ValueError(
+            "Layered prefill cannot be combined with KV/EC connectors."
+        )
+    if getattr(model_config, "is_multimodal_model", False):
+        raise ValueError("Layered prefill currently supports text-only models.")
+    if getattr(model_config, "enable_return_routed_experts", False):
+        raise ValueError(
+            "Layered prefill cannot return routed-expert metadata."
+        )
+    if getattr(getattr(vllm_config, "cache_config", None), "kv_sharing_fast_prefill", False):
+        raise ValueError(
+            "Layered prefill cannot be combined with --kv-sharing-fast-prefill."
+        )
+
+    incompatible_ascend_features: list[str] = []
+    extension = getattr(ascend_config, "scheduler_config", None)
+    if extension is not None:
+        if getattr(extension, "enable_balance_scheduling", False):
+            incompatible_ascend_features.append("balance scheduling")
+        if getattr(extension, "recompute_scheduler_enable", False):
+            incompatible_ascend_features.append("recompute scheduler")
+        if getattr(getattr(extension, "short_request_first_config", None), "enabled", False):
+            incompatible_ascend_features.append("short-request-first scheduler")
+        if getattr(getattr(extension, "profiling_chunk_config", None), "enabled", False):
+            incompatible_ascend_features.append("profiling chunk scheduler")
+        if getattr(getattr(extension, "batch_job_sched_config", None), "enabled", False):
+            incompatible_ascend_features.append("batch-job scheduler")
+        if getattr(getattr(extension, "dyntra_lb_config", None), "enabled", False):
+            incompatible_ascend_features.append("DyntraLB scheduler")
+    else:
+        if getattr(ascend_config, "enable_balance_scheduling", False):
+            incompatible_ascend_features.append("balance scheduling")
+        if getattr(ascend_config, "recompute_scheduler_enable", False):
+            incompatible_ascend_features.append("recompute scheduler")
+        if getattr(getattr(ascend_config, "profiling_chunk_config", None), "enabled", False):
+            incompatible_ascend_features.append("profiling chunk scheduler")
+    if getattr(getattr(ascend_config, "xlite_graph_config", None), "enabled", False):
+        incompatible_ascend_features.append("Xlite graph")
+    if getattr(getattr(ascend_config, "eplb_config", None), "dynamic_eplb", False):
+        incompatible_ascend_features.append("dynamic EPLB")
+    if getattr(ascend_config, "multistream_overlap_shared_expert", False):
+        incompatible_ascend_features.append("multi-stream shared-expert overlap")
+    if enable_sp(vllm_config):
+        incompatible_ascend_features.append("sequence parallelism")
+    if incompatible_ascend_features:
+        raise ValueError(
+            "Layered prefill cannot currently be combined with: "
+            + ", ".join(incompatible_ascend_features)
+            + "."
+        )
+
+    scheduler_config.async_scheduling = False
+    scheduler_config.scheduler_cls = layered_scheduler_cls
+    if hasattr(scheduler_config, "enable_layered_prefill"):
+        scheduler_config.enable_layered_prefill = True
+    if hasattr(scheduler_config, "layered_prefill_num_stages"):
+        scheduler_config.layered_prefill_num_stages = (
+            ascend_config.layered_prefill_num_stages
+        )
+
+    if not getattr(model_config, "disable_cascade_attn", False):
+        logger.warning_once("Disabling cascade attention for layered prefill.")
+        model_config.disable_cascade_attn = True
+    if not getattr(model_config, "enforce_eager", False):
+        logger.warning_once("Layered prefill requires eager execution; enabling it.")
+        model_config.enforce_eager = True
+
+    compilation_config.mode = CompilationMode.NONE
+    compilation_config.cudagraph_mode = CUDAGraphMode.NONE
+    compilation_config.splitting_ops = []
+    ascend_config.ascend_compilation_config.enable_npugraph_ex = False
+    ascend_config.ascend_compilation_config.enable_static_kernel = False
 
 
 class NPUPlatform(Platform):
@@ -539,9 +759,16 @@ class NPUPlatform(Platform):
             isinstance(layer, str) and layer for layer in layer_sharding
         ):
             raise ValueError(
-                "additional_config.layer_sharding must be a list of non-empty "
-                f"strings, got {layer_sharding!r}."
+                f"additional_config.layer_sharding must be a list of non-empty strings, got {layer_sharding!r}."
             )
+
+    @classmethod
+    def _configure_layered_prefill(
+        cls,
+        vllm_config: VllmConfig,
+        ascend_config: Any,
+    ) -> None:
+        _configure_layered_prefill(vllm_config, ascend_config)
 
     @classmethod
     def check_and_update_config(cls, vllm_config: VllmConfig) -> None:
@@ -881,18 +1108,7 @@ class NPUPlatform(Platform):
         # NOTE: We should not set this environment variable in RL (sleep mode) scenarios.
         # Find more details about how to configure this environment variable at https://www.hiascend.com/document/detail/zh/Pytorch/720/comref/Envvariables/Envir_012.html
         if model_config and not model_config.enable_sleep_mode:
-            npu_alloc_configs = os.getenv("PYTORCH_NPU_ALLOC_CONF", "expandable_segments:True")
-            # This environment variable may have more than one key-value pairs.
-            # We should append ",expandable_segments:True" to the current configs.
-            # For example: "page_size:1g" + ",expandable_segments:True".
-            # NOTE: `max_split_size_mb` or `garbage_collection_threshold` cannot
-            # be enabled together with `expandable_segments=True`.
-            if (
-                "expandable_segments" not in npu_alloc_configs
-                and "max_split_size_mb" not in npu_alloc_configs
-                and "garbage_collection_threshold" not in npu_alloc_configs
-            ):
-                npu_alloc_configs += ",expandable_segments:True"
+            npu_alloc_configs = _resolve_npu_alloc_conf(vllm_config.kv_transfer_config)
             os.environ["PYTORCH_NPU_ALLOC_CONF"] = npu_alloc_configs
             logger.info("Set PYTORCH_NPU_ALLOC_CONF=%s", npu_alloc_configs)
 
@@ -916,6 +1132,9 @@ class NPUPlatform(Platform):
                 "fused mc2 op cannot be used with hierarchy communication."
                 "Please disable VLLM_ASCEND_ENABLE_FUSED_MC2 by setting it to 0."
             )
+
+        if ascend_config.enable_layered_prefill:
+            cls._configure_layered_prefill(vllm_config, ascend_config)
 
     @classmethod
     def import_kernels(cls) -> None:
@@ -1070,7 +1289,7 @@ class NPUPlatform(Platform):
             dict[str, Any]: _description_
         """
         # NOTE(Ronald1995): avoid circular import.
-        from vllm_ascend.ascend_forward_context import get_mc2_mask, select_moe_comm_method
+        from vllm_ascend.ascend_forward_context import get_mc2_mask, get_mrv2_in_profile_run, select_moe_comm_method
         from vllm_ascend.ops.fused_moe.moe_comm_method import get_moe_comm_method
         from vllm.distributed import get_dp_group, get_tensor_model_parallel_world_size
 
@@ -1394,10 +1613,6 @@ class NPUPlatform(Platform):
     @classmethod
     def use_custom_op_collectives(cls) -> bool:
         return True
-
-    @classmethod
-    def manual_seed_all(cls, seed: int) -> None:
-        pass
 
     @classmethod
     def register_custom_kv_cache_specs(cls, vllm_config: VllmConfig) -> None:

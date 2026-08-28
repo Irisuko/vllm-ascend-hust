@@ -1,0 +1,12 @@
+[vllm-ascend]
+3b029f6d54694175e834488bed2f01c2c063a7ce
+tree=ebdf2c042b344c9c3479978400b9d8a348dce802
+status_porcelain=clean
+[published-code-parent]
+a77efd8828acaa1555ee607a08b33bcfda6e13de
+tree=ebdf2c042b344c9c3479978400b9d8a348dce802
+transport=GitHub connector; tree is byte-identical to tested local commit
+[vllm]
+a30addc7548a9a8b9b3323a7bc3eb7d7c4895d1c
+tree=f47d528dccfe787d659dec57a6a3c3cd4514e2f4
+status_porcelain=clean

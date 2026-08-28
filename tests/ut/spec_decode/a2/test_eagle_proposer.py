@@ -138,7 +138,7 @@ def assert_attr_equal(attr: str | tuple[str, Any, Any], expect: Any, actual: Any
         assert expect_value == actual_value, f"{attr_name} value mismatch"
 
 
-def test_prepare_inputs_padded_preserves_internal_seq_lens_cpu():
+def test_prepare_inputs_padded_fallback_preserves_discard_anchor_and_internal_seq_lens_cpu():
     proposer = AscendEagleProposer.__new__(AscendEagleProposer)
     proposer.pcp_size = 1
     proposer.arange = torch.arange(16, dtype=torch.int32)
@@ -169,15 +169,24 @@ def test_prepare_inputs_padded_preserves_internal_seq_lens_cpu():
     )
     spec_decode_metadata = MagicMock()
     spec_decode_metadata.cu_num_draft_tokens = torch.tensor([2, 3], dtype=torch.int32)
-    valid_sampled_tokens_count = torch.tensor([3, 1], dtype=torch.int32)
+    # The first request is discarded: it has no valid sampled output, but its
+    # backup/anchor row must remain inside the request span for draft geometry.
+    valid_sampled_tokens_count = torch.tensor([0, 1], dtype=torch.int32)
 
     with patch.object(llm_base_proposer, "HAS_TRITON", False):
-        spec_common_attn_metadata, *_ = proposer.prepare_inputs_padded(
+        (
+            spec_common_attn_metadata,
+            _,
+            token_indices_to_sample,
+            num_rejected_tokens,
+        ) = proposer.prepare_inputs_padded(
             common_attn_metadata,
             spec_decode_metadata,
             valid_sampled_tokens_count,
         )
 
+    assert torch.equal(num_rejected_tokens, torch.tensor([2, 1], dtype=torch.int32))
+    assert torch.equal(token_indices_to_sample, torch.tensor([0, 4], dtype=torch.int32))
     assert spec_common_attn_metadata._seq_lens_cpu is internal_seq_lens_cpu
     assert spec_common_attn_metadata.seq_lens_cpu is None
 

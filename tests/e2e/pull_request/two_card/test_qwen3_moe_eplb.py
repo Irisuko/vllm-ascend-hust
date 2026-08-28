@@ -23,14 +23,6 @@ import pytest
 from vllm.utils.network_utils import get_open_port
 
 from tests.e2e.conftest import RemoteOpenAIServer
-from vllm_ascend.utils import vllm_version_is
-
-pytestmark = pytest.mark.skipif(
-    not vllm_version_is("0.23.0"),
-    reason="broken on main, fix me.",
-)
-
-
 @pytest.mark.asyncio
 async def test_qwen3_moe_w8a8_distributed_tp2_ep_dynamic_eplb():
     model = "vllm-ascend/Qwen3-30B-A3B-W8A8"

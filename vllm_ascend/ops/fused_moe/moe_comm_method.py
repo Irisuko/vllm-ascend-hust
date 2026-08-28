@@ -206,6 +206,8 @@ class AllGatherCommImpl(MoECommMethod):
             top_k=self.moe_config.experts_per_token,
             num_experts=self.moe_config.num_experts,
             num_local_experts=self.moe_config.num_local_experts,
+            ep_rank=self.moe_config.ep_rank,
+            ep_size=self.moe_config.ep_size,
         )
 
     def _get_prepare_finalize(self):

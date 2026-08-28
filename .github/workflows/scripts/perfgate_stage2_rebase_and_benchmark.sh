@@ -80,7 +80,11 @@ fi
 
 git checkout -B "$TEMP_BRANCH" "$ORIGINAL_REF"
 set +e
-git rebase origin/main >"$CONFLICT_FILE" 2>&1
+GIT_AUTHOR_NAME="vLLM-HUST Benchmark Bot" \
+  GIT_AUTHOR_EMAIL="benchmark-bot@vllm-hust.local" \
+  GIT_COMMITTER_NAME="vLLM-HUST Benchmark Bot" \
+  GIT_COMMITTER_EMAIL="benchmark-bot@vllm-hust.local" \
+  git rebase origin/main >"$CONFLICT_FILE" 2>&1
 rebase_rc=$?
 set -e
 if [[ "$rebase_rc" -ne 0 ]]; then

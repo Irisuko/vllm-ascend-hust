@@ -1,0 +1,118 @@
+{
+  "schema_version": "mapped-host-gather-mooncake-observation/v1",
+  "observation_scope": "historical repeated observation; not rerun at the PR review-fix head",
+  "repositories": {
+    "vllm": {
+      "commit": "23d0166c6f90712bf642c5e955cc48611517fbd4"
+    },
+    "vllm_ascend": {
+      "commit": "80b9a621d533dffbaff64b6a24fb74e5c0ad9a2a"
+    }
+  },
+  "hardware": {
+    "device": "Ascend 910B2",
+    "physical_npu": 6
+  },
+  "workload": {
+    "trace": "Mooncake FAST25 ToolAgent contiguous window",
+    "warmup_requests": 40,
+    "measured_requests": 159,
+    "warmup_sha256": "6c6de92efe18f81f52e8d987cf83630aa0dcf68be7a42f0c495307b271a1429b",
+    "measured_sha256": "d9128dee82555d3ba1b39f82fd6e415f35dac13310786054f15587fbfb7a282a",
+    "max_concurrency": 8,
+    "timestamp_multiplier": 0.001,
+    "device_kv_blocks": 256,
+    "device_kv_gib": 4.5,
+    "cpu_offload_gib": 32,
+    "max_model_len": 32768
+  },
+  "protocol": "two same-card reverse-order pairs; fresh server and warm-up per repetition",
+  "runs": [
+    {
+      "run": "p256-r2-span",
+      "variant": "span",
+      "order": "pair1-first",
+      "result_sha256": "921a40d64492fb25d9f37606f78d55d0b3c8938b18940784af91bbfbccc96b0b",
+      "completed_requests": 159,
+      "failed_requests": 0,
+      "duration_s": 209.67574795897235,
+      "total_input_tokens": 1139120,
+      "total_output_tokens": 31941,
+      "total_token_throughput": 5585.104674237975,
+      "mean_ttft_ms": 4632.43555398193,
+      "p99_ttft_ms": 23174.72841415146,
+      "h2d_handler_time_s": 3.762689480304719,
+      "h2d_load_operations": 149,
+      "h2d_bytes": 31218204672,
+      "external_kv_prompt_tokens": 419200
+    },
+    {
+      "run": "p256-r2-mapped",
+      "variant": "mapped",
+      "order": "pair1-second",
+      "result_sha256": "fffb5c0eb7c4226e90bfe737f2f1af27002c75c91e54c58bd6b76089844b0139",
+      "completed_requests": 159,
+      "failed_requests": 0,
+      "duration_s": 209.1723878789926,
+      "total_input_tokens": 1135680,
+      "total_output_tokens": 31941,
+      "total_token_throughput": 5582.09910896784,
+      "mean_ttft_ms": 4659.1188863822945,
+      "p99_ttft_ms": 23288.893629535443,
+      "h2d_handler_time_s": 0.514576300382614,
+      "h2d_load_operations": 150,
+      "h2d_bytes": 31690063872,
+      "external_kv_prompt_tokens": 425344
+    },
+    {
+      "run": "p256-r3-mapped",
+      "variant": "mapped",
+      "order": "pair2-first",
+      "result_sha256": "6a8e34a0a30996d43f6aff0250f1688e03dd92e7a83e97b52e0e8f847f56e434",
+      "completed_requests": 159,
+      "failed_requests": 0,
+      "duration_s": 208.3650234900124,
+      "total_input_tokens": 1136578,
+      "total_output_tokens": 31941,
+      "total_token_throughput": 5608.038145883975,
+      "mean_ttft_ms": 4638.247766181294,
+      "p99_ttft_ms": 23000.515890817616,
+      "h2d_handler_time_s": 0.542562180995941,
+      "h2d_load_operations": 149,
+      "h2d_bytes": 30689722368,
+      "external_kv_prompt_tokens": 415488
+    },
+    {
+      "run": "p256-r3-span",
+      "variant": "span",
+      "order": "pair2-second",
+      "result_sha256": "15692b74cb2cf84667bb5eefdfacd601fb43d2a888828566d8a87e83172ea340",
+      "completed_requests": 159,
+      "failed_requests": 0,
+      "duration_s": 208.10518329200568,
+      "total_input_tokens": 1140816,
+      "total_output_tokens": 31941,
+      "total_token_throughput": 5635.405045891768,
+      "mean_ttft_ms": 4655.106767426859,
+      "p99_ttft_ms": 23123.23268017498,
+      "h2d_handler_time_s": 3.550698013067244,
+      "h2d_load_operations": 151,
+      "h2d_bytes": 31633440768,
+      "external_kv_prompt_tokens": 428160
+    }
+  ],
+  "summary": {
+    "span_duration_mean_s": 208.89046562548902,
+    "mapped_duration_mean_s": 208.7687056845025,
+    "duration_change_percent": -0.0582898482505274,
+    "span_h2d_handler_mean_s": 3.6566937466859818,
+    "mapped_h2d_handler_mean_s": 0.5285692406892775,
+    "h2d_handler_reduction_percent": 85.54402509592039,
+    "correctness": "all four repetitions completed 159/159 measured requests with zero failures",
+    "span_duration_range_s": 1.5705646669666748,
+    "span_duration_sample_stddev_s": 1.1105569263041275,
+    "mapped_duration_range_s": 0.8073643889802042,
+    "mapped_duration_sample_stddev_s": 0.5708928343364359,
+    "interpretation": "The 0.12 s mean duration difference is much smaller than the 0.81-1.57 s within-variant ranges; this exact four-run observation is end-to-end neutral."
+  }
+}

@@ -46,12 +46,13 @@ def test_runtime_contract_accepts_exact_visible_device_set(tmp_path: Path) -> No
         device_root / "davinci_manager",
         device_root / "devmm_svm",
         device_root / "hisi_hdc",
-        device_root / "davinci1",
+        device_root / "davinci0",
     }
 
-    resolved_binary, device_ids = runtime.validate_runtime(
+    resolved_binary, logical_device_ids, physical_device_ids = runtime.validate_runtime(
         expected_npus=1,
-        visible_devices="1",
+        visible_devices="0",
+        physical_devices="1",
         device_root=device_root,
         npu_smi_candidates=(npu_smi,),
         is_char_device=lambda path: path in expected_nodes,
@@ -59,7 +60,8 @@ def test_runtime_contract_accepts_exact_visible_device_set(tmp_path: Path) -> No
     )
 
     assert resolved_binary == npu_smi
-    assert device_ids == (1,)
+    assert logical_device_ids == (0,)
+    assert physical_device_ids == (1,)
 
 
 @pytest.mark.parametrize("visible_devices", ["", "0,1", "1,1", "invalid"])
@@ -83,12 +85,30 @@ def test_runtime_contract_rejects_missing_device_node(tmp_path: Path) -> None:
     npu_smi.write_text("#!/bin/sh\n", encoding="utf-8")
     npu_smi.chmod(0o755)
 
-    with pytest.raises(runtime.RuntimeContractError, match="davinci1"):
+    with pytest.raises(runtime.RuntimeContractError, match="davinci0"):
         runtime.validate_runtime(
             expected_npus=1,
-            visible_devices="1",
+            visible_devices="0",
+            physical_devices="1",
             npu_smi_candidates=(npu_smi,),
-            is_char_device=lambda path: path.name != "davinci1",
+            is_char_device=lambda path: path.name != "davinci0",
+            run_probe=_successful_probe,
+        )
+
+
+@pytest.mark.parametrize("physical_devices", ["0,1", "1,1", "invalid"])
+def test_runtime_contract_rejects_invalid_physical_mapping(tmp_path: Path, physical_devices: str) -> None:
+    npu_smi = tmp_path / "npu-smi"
+    npu_smi.write_text("#!/bin/sh\n", encoding="utf-8")
+    npu_smi.chmod(0o755)
+
+    with pytest.raises(runtime.RuntimeContractError, match="physical Ascend device mapping"):
+        runtime.validate_runtime(
+            expected_npus=1,
+            visible_devices="0",
+            physical_devices=physical_devices,
+            npu_smi_candidates=(npu_smi,),
+            is_char_device=lambda _path: True,
             run_probe=_successful_probe,
         )
 

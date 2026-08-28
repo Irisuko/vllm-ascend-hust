@@ -15,6 +15,9 @@
 
 import math
 import os
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -95,6 +98,24 @@ class TestUtils(TestBase):
         )
         self.assertTrue(torch.allclose(output, expected))
 
+    def test_setup_ascend_local_comm_res_uses_selected_physical_device(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            endpoint_file = Path(temp_dir) / "ub_endpoint_npu_5.json"
+            endpoint_file.write_text('{"device": 5}', encoding="utf-8")
+            kv_transfer_config = SimpleNamespace(kv_connector_extra_config={"ascend_local_comm_res_path": temp_dir})
+
+            with (
+                mock.patch.dict(os.environ, {}, clear=False),
+                mock.patch(
+                    "vllm.platforms.current_platform.visible_device_id_to_physical_device_id",
+                    return_value=5,
+                ) as mock_visible_to_physical,
+            ):
+                utils.setup_ascend_local_comm_res(1, kv_transfer_config)
+                self.assertEqual(os.environ["ASCEND_LOCAL_COMM_RES"], '{"device":5}')
+
+            mock_visible_to_physical.assert_called_once_with(1)
+
     def test_aligned_16(self):
         # align to 16
         input_tensor = torch.randn(15, 64)
@@ -124,6 +145,7 @@ class TestUtils(TestBase):
         utils.is_add_rms_norm_bias_custom_op_available.cache_clear()
         with (
             mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
+            mock.patch("vllm_ascend.utils.os.path.isfile", return_value=False),
             mock.patch("vllm_ascend.utils.ctypes.CDLL", side_effect=OSError("missing")),
         ):
             self.assertFalse(utils.is_add_rms_norm_bias_custom_op_available())
@@ -135,6 +157,7 @@ class TestUtils(TestBase):
         utils.is_add_rms_norm_bias_custom_op_available.cache_clear()
         with (
             mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
+            mock.patch("vllm_ascend.utils.os.path.isfile", return_value=True),
             mock.patch("vllm_ascend.utils.ctypes.CDLL", return_value=MissingSymbolLib()),
         ):
             self.assertFalse(utils.is_add_rms_norm_bias_custom_op_available())
@@ -147,9 +170,25 @@ class TestUtils(TestBase):
         utils.is_add_rms_norm_bias_custom_op_available.cache_clear()
         with (
             mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
+            mock.patch("vllm_ascend.utils.os.path.isfile", return_value=True),
             mock.patch("vllm_ascend.utils.ctypes.CDLL", return_value=CompleteLib()),
         ):
             self.assertTrue(utils.is_add_rms_norm_bias_custom_op_available())
+
+    def test_add_rms_norm_bias_custom_op_prefers_bundled_vendor_library(self):
+        class CompleteLib:
+            aclnnAddRmsNormBias = object()
+            aclnnAddRmsNormBiasGetWorkspaceSize = object()
+
+        utils.is_add_rms_norm_bias_custom_op_available.cache_clear()
+        with (
+            mock.patch.dict(os.environ, {"VLLM_ASCEND_DISABLE_ADD_RMS_NORM_BIAS_CUSTOM_OP": "0"}),
+            mock.patch("vllm_ascend.utils.os.path.isfile", return_value=True),
+            mock.patch("vllm_ascend.utils.ctypes.CDLL", return_value=CompleteLib()) as cdll,
+        ):
+            self.assertTrue(utils.is_add_rms_norm_bias_custom_op_available())
+            bundled_path = cdll.call_args.args[0]
+            self.assertTrue(bundled_path.endswith("/op_api/lib/libcust_opapi.so"))
 
     def test_add_rms_norm_bias_enablement_checks_symbols_before_extension(self):
         with (
@@ -292,14 +331,16 @@ class TestUtils(TestBase):
                 self.assertTrue(utils.vllm_version_is.__wrapped__("1.0.0"))
                 self.assertFalse(utils.vllm_version_is.__wrapped__("2.0.0"))
         utils.get_vllm_upstream_version.cache_clear()
-        with mock.patch("vllm.__upstream_version__", "1.0.0", create=True), mock.patch(
-            "vllm.__version__", "1.0.0.post2.dev3+g123456789"
+        with (
+            mock.patch("vllm.__upstream_version__", "1.0.0", create=True),
+            mock.patch("vllm.__version__", "1.0.0.post2.dev3+g123456789"),
         ):
             self.assertTrue(utils.vllm_version_is.__wrapped__("1.0.0"))
             self.assertFalse(utils.vllm_version_is.__wrapped__("2.0.0"))
         utils.get_vllm_upstream_version.cache_clear()
-        with mock.patch("vllm.__upstream_version__", "2.0.0rc1", create=True), mock.patch(
-            "vllm.__version__", "2.0.0rc1.post1.dev7+g123456789"
+        with (
+            mock.patch("vllm.__upstream_version__", "2.0.0rc1", create=True),
+            mock.patch("vllm.__version__", "2.0.0rc1.post1.dev7+g123456789"),
         ):
             self.assertTrue(utils.vllm_version_is.__wrapped__("2.0.0rc1"))
             self.assertFalse(utils.vllm_version_is.__wrapped__("1.0.0"))
