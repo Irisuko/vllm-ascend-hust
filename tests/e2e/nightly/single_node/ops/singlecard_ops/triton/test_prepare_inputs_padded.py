@@ -21,15 +21,18 @@ def prepare_inputs_padded_ref(
         ]
     )
 
+    # A zero count denotes a discarded request. Its backup/anchor row must
+    # remain addressable even though no sampled output from the row is used.
+    geometry_valid_count = valid_sampled_tokens_count.clamp_min(1)
     num_rejected_tokens = torch.where(
         num_draft_tokens > 0,
-        num_draft_tokens + 1 - valid_sampled_tokens_count,
+        num_draft_tokens + 1 - geometry_valid_count,
         torch.zeros_like(num_draft_tokens),
     )
 
     token_indices_to_sample = query_start_loc[1:] - 1 - num_rejected_tokens
 
-    return token_indices_to_sample.to(torch.int32)
+    return token_indices_to_sample.to(torch.int32), num_rejected_tokens.to(torch.int32)
 
 
 @pytest.mark.parametrize("num_reqs", [1, 7, 32, 128, 2048])
@@ -44,13 +47,15 @@ def test_prepare_inputs_padded(num_reqs):
     valid_sampled_tokens_count = torch.zeros_like(draft_lens)
     for i in range(num_reqs):
         valid_sampled_tokens_count[i] = torch.randint(0, draft_lens[i] + 2, (1,)).item()
+    # Exercise the request-finalization/discard boundary deterministically.
+    valid_sampled_tokens_count[0] = 0
 
     seq_lens = draft_lens + 1
     query_start_loc = torch.zeros(num_reqs + 1, device=device, dtype=torch.int32)
     query_start_loc[1:] = torch.cumsum(seq_lens, dim=0)
 
     # Run PyTorch reference
-    out_ref = prepare_inputs_padded_ref(cu_num_draft_tokens, valid_sampled_tokens_count, query_start_loc)
+    out_ref, rejected_ref = prepare_inputs_padded_ref(cu_num_draft_tokens, valid_sampled_tokens_count, query_start_loc)
 
     # Run Triton kernel
     out_tri = torch.empty(num_reqs, dtype=torch.int32, device=device)
@@ -71,6 +76,11 @@ def test_prepare_inputs_padded(num_reqs):
     )
 
     torch.testing.assert_close(out_tri, out_ref)
+    torch.testing.assert_close(num_rejected_tokens, rejected_ref)
+    request_starts = query_start_loc[:-1]
+    request_ends = query_start_loc[1:]
+    assert torch.all(out_tri >= request_starts)
+    assert torch.all(out_tri < request_ends)
     gc.collect()
     torch.npu.empty_cache()
     torch.npu.reset_peak_memory_stats()

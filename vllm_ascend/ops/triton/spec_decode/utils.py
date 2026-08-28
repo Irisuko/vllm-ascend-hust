@@ -53,7 +53,12 @@ def prepare_inputs_padded_kernel(
         num_draft_tokens = tl.where(has_prev, cu_draft_curr - cu_draft_prev, cu_draft_curr)
 
         valid_count = tl.load(valid_sampled_tokens_count_ptr + offsets, mask=mask)
-        num_rejected = num_draft_tokens + 1 - valid_count
+        # A discarded request deliberately reports zero valid sampled tokens,
+        # but the padded drafter still needs the request's backup/anchor row to
+        # derive the next position and slot mapping safely.  Reject at most the
+        # draft rows; otherwise index_to_sample falls before this request span.
+        geometry_valid_count = tl.maximum(valid_count, 1)
+        num_rejected = num_draft_tokens + 1 - geometry_valid_count
         num_rejected = tl.where(num_draft_tokens > 0, num_rejected, 0)
 
         # query_start_loc[req_idx + 1] is the start position of the next request,
