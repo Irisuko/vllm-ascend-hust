@@ -211,6 +211,7 @@ jobs:
       vllm: ${{ contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') && needs.scope.outputs.pyramidkv_core_commit || needs.scope.outputs.main_commit }}
       ref: ${{ github.event.pull_request.head.sha }}
       base_ref: ${{ github.base_ref }}
+      rebase_on_base: ${{ !contains(needs.scope.outputs.matched_modules, 'kv_cache_compression') }}
       test_groups: ${{ needs.scope.outputs.test_groups }}
 
   paired-core-mypy:

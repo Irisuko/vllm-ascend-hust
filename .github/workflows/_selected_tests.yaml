@@ -42,6 +42,11 @@ on:
         required: false
         default: 'main'
         description: 'The base branch to rebase onto (e.g. main, v0.8.x).'
+      rebase_on_base:
+        type: boolean
+        required: false
+        default: true
+        description: 'Rebase the checked-out ref before running tests.'
       upload_timing:
         type: boolean
         required: false
@@ -139,6 +144,7 @@ jobs:
           pip uninstall -y triton
 
       - name: Rebase on latest ${{ inputs.base_ref }}
+        if: ${{ inputs.rebase_on_base }}
         working-directory: ${{ github.workspace }}
         run: |
           git config user.name "vllm-ascend-ci"
