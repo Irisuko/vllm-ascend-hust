@@ -20,6 +20,10 @@ from vllm.v1.core.sched.request_queue import create_request_queue
 from vllm.v1.core.sched.scheduler import Scheduler
 from vllm.v1.engine import EngineCoreEventType, EngineCoreOutputs
 from vllm.v1.engine.core import DPEngineCoreProc, EngineCoreProc
+from vllm.v1.kv_cache_compression import (
+    KVCacheCompressionError,
+    KVCacheCompressionRuntimeSpec,
+)
 from vllm.v1.kv_cache_interface import KVCacheConfig
 from vllm.v1.request import Request, RequestStatus
 from vllm.v1.structured_output import StructuredOutputManager
@@ -65,6 +69,7 @@ class BalanceScheduler(Scheduler):
         mm_registry: MultiModalRegistry = MULTIMODAL_REGISTRY,
         include_finished_set: bool = False,
         log_stats: bool = False,
+        kv_cache_compression_runtime_spec: (KVCacheCompressionRuntimeSpec | None) = None,
     ) -> None:
         super().__init__(
             vllm_config=vllm_config,
@@ -75,8 +80,11 @@ class BalanceScheduler(Scheduler):
             mm_registry=mm_registry,
             include_finished_set=include_finished_set,
             log_stats=log_stats,
+            kv_cache_compression_runtime_spec=(kv_cache_compression_runtime_spec),
         )
         self._balance_enabled = _balance_scheduling_enabled(vllm_config)
+        if self._balance_enabled and vllm_config.kv_cache_compression_config is not None:
+            raise KVCacheCompressionError("KV cache compression does not support Ascend balance scheduling")
         if self._balance_enabled:
             self.balance_queue = [
                 torch.tensor([0], dtype=torch.int, device="cpu")

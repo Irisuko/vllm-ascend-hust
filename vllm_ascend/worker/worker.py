@@ -24,6 +24,7 @@ import math
 import os
 import subprocess
 import sys
+from importlib import import_module
 from types import NoneType
 
 import regex as re
@@ -31,8 +32,6 @@ import torch
 import torch.nn as nn
 import torch_npu
 import vllm.envs as envs_vllm
-from torch_npu.op_plugin.atb._atb_ops import _register_atb_extensions
-from torch_npu.profiler import dynamic_profile as dp
 from vllm.config import CUDAGraphMode, VllmConfig, set_current_vllm_config
 from vllm.distributed import ensure_model_parallel_initialized, init_distributed_environment
 from vllm.distributed.ec_transfer import ensure_ec_transfer_initialized
@@ -53,6 +52,7 @@ from vllm.utils.mem_constants import GiB_bytes
 from vllm.utils.mem_utils import MemorySnapshot, format_gib, memory_profiling
 from vllm.utils.torch_utils import STR_DTYPE_TO_TORCH_DTYPE
 from vllm.v1.core.sched.output import GrammarOutput, SchedulerOutput
+from vllm.v1.kv_cache_compression import KVCacheCompressionCompatibility
 from vllm.v1.kv_cache_interface import KVCacheConfig, KVCacheSpec
 from vllm.v1.outputs import EMPTY_MODEL_RUNNER_OUTPUT, AsyncModelRunnerOutput, DraftTokenIds, ModelRunnerOutput
 from vllm.v1.utils import report_usage_stats
@@ -87,6 +87,23 @@ from vllm_ascend.utils import (
     vllm_version_is,
 )
 from vllm_ascend.worker.model_runner_v1 import NPUModelRunner
+
+
+def _register_atb_extensions() -> None:
+    """Load the optional ATB plugin only when an NPU worker needs it."""
+    from torch_npu.op_plugin.atb._atb_ops import (
+        _register_atb_extensions as register_atb_extensions,
+    )
+
+    register_atb_extensions()
+
+
+def _dynamic_profile_step() -> None:
+    """Load the optional dynamic profiler only when monitoring is enabled."""
+    from torch_npu.profiler import dynamic_profile
+
+    dynamic_profile.step()
+
 
 torch._dynamo.trace_rules.clear_lru_cache()  # noqa: E402
 from torch._dynamo.variables import TorchInGraphFunctionVariable  # noqa: E402
@@ -417,6 +434,10 @@ def _maybe_auto_select_idle_ascend_device(local_rank: int, parallel_config) -> i
 
 
 class NPUWorker(WorkerBase):
+    # WorkerBase is imported with follow-imports=skip in paired-Core mypy.
+    # Restate the inherited attribute so device mapping remains type-checked.
+    local_rank: int
+
     def __init__(
         self,
         vllm_config: VllmConfig,
@@ -521,6 +542,7 @@ class NPUWorker(WorkerBase):
                 "enforce_eager": self.vllm_config.model_config.enforce_eager,
             },
         )
+        self.kv_cache_compression_provider = None
         self._pp_send_work: list[Handle] = []
 
         ascend_compilation_config = get_ascend_config().ascend_compilation_config
@@ -1026,7 +1048,7 @@ class NPUWorker(WorkerBase):
         self.profile_memory()
         # enable msMonitor to monitor the performance of vllm-ascend
         if get_ascend_config().msmonitor_use_daemon:
-            dp.step()
+            _dynamic_profile_step()
 
         if self._pp_send_work:
             for handle in self._pp_send_work:
@@ -1310,6 +1332,52 @@ class NPUWorker(WorkerBase):
     def get_kv_cache_spec(self) -> dict[str, KVCacheSpec]:
         return self.model_runner.get_kv_cache_spec()
 
+    def validate_kv_cache_compression(self) -> KVCacheCompressionCompatibility:
+        """Resolve and validate the enabled provider before KV allocation."""
+        config = self.vllm_config.kv_cache_compression_config
+        if config is None:
+            return super().validate_kv_cache_compression()
+
+        factory = self.current_platform.get_kv_cache_compression_provider_factory()
+        if factory is None:
+            return KVCacheCompressionCompatibility(
+                schema_version=config.schema_version,
+                provider=config.provider,
+                supported=False,
+                reasons=("Ascend platform did not declare a KV cache compression provider factory",),
+                platform=self.current_platform.device_type,
+            )
+
+        try:
+            module_name, function_name = factory.split(":", 1)
+            provider_factory = getattr(import_module(module_name), function_name)
+            provider = provider_factory(config)
+        except Exception as error:
+            return KVCacheCompressionCompatibility(
+                schema_version=config.schema_version,
+                provider=config.provider,
+                supported=False,
+                reasons=(f"provider initialization failed: {type(error).__name__}: {error}",),
+                platform=self.current_platform.device_type,
+                provider_factory=factory,
+            )
+
+        try:
+            report = provider.validate_worker(config, self, factory)
+        except Exception as error:
+            return KVCacheCompressionCompatibility(
+                schema_version=config.schema_version,
+                provider=config.provider,
+                supported=False,
+                reasons=(f"provider capability inspection failed: {type(error).__name__}: {error}",),
+                platform=self.current_platform.device_type,
+                provider_factory=factory,
+            )
+
+        if report.supported:
+            self.kv_cache_compression_provider = provider
+        return report
+
     def update_max_model_len(self, max_model_len: int) -> None:
         """Update max_model_len after auto-fit to NPU memory.
 
@@ -1335,6 +1403,18 @@ class NPUWorker(WorkerBase):
             context = nullcontext()  # type: ignore
         with context:
             self.model_runner.initialize_kv_cache(kv_cache_config)
+            provider = getattr(self, "kv_cache_compression_provider", None)
+            if provider is not None:
+                self.model_runner.activate_kv_cache_compression_provider(provider)
+                config = self.vllm_config.kv_cache_compression_config
+                logger.info(
+                    "Activated KV cache compression provider after formal KV "
+                    "cache initialization: provider=%s schema_version=%d "
+                    "provider_config=%s",
+                    config.provider,
+                    config.schema_version,
+                    config.provider_config,
+                )
 
             # Restrict to mamba and full attn hybrid models (e.g. Qwen3.x).
             #

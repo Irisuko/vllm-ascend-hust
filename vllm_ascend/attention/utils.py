@@ -52,7 +52,16 @@ def needs_layer_aware_fia_graph_replay() -> bool:
         getattr(hf_text_config, "model_type", None),
         getattr(text_config, "model_type", None),
     )
-    return any(model_type in {"gemma4", "gemma4_text"} for model_type in model_types)
+    mixed_attention_model = any(model_type in {"gemma4", "gemma4_text"} for model_type in model_types)
+    compression_config = getattr(vllm_config, "kv_cache_compression_config", None)
+    compilation_config = getattr(vllm_config, "compilation_config", None)
+    configured_mode = getattr(compilation_config, "cudagraph_mode", None)
+    configured_mode_name = getattr(configured_mode, "name", str(configured_mode))
+    pyramidkv_full_decode = (
+        getattr(compression_config, "provider", None) == "pyramidkv_ascend"
+        and configured_mode_name == "FULL_DECODE_ONLY"
+    )
+    return mixed_attention_model or pyramidkv_full_decode
 
 
 def ascend_chunked_prefill_workspace_size(vllm_config: VllmConfig) -> int:
@@ -232,6 +241,10 @@ class AscendCommonAttentionMetadata(CommonAttentionMetadata):
     prefill_context_parallel_metadata: AscendPrefillContextParallelMetadata | None = None
     kvcomp_metadata: KVCompMetaData | None = None
 
+    # Optional provider-owned view. It remains None on the default path and
+    # deliberately uses Any to keep attention metadata provider-independent.
+    kv_cache_compression_view: Any = None
+
     # TODO: Remove it when vLLM no longer uses this function.
     def unpadded(self, num_actual_tokens: int, num_actual_reqs: int) -> "AscendCommonAttentionMetadata":
         # This only use to eagle now. It will be use to enforce_eager in future.
@@ -263,6 +276,7 @@ class AscendCommonAttentionMetadata(CommonAttentionMetadata):
             graph_pad_size=-1,  # It should be -1 when not run in fullgraph mode.
             num_input_tokens=self.num_input_tokens,
             prefill_context_parallel_metadata=self.prefill_context_parallel_metadata,
+            kv_cache_compression_view=self.kv_cache_compression_view,
             seq_lens_cpu_upper_bound=self.seq_lens_cpu_upper_bound[:num_actual_reqs]
             if self.seq_lens_cpu_upper_bound is not None
             else None,
