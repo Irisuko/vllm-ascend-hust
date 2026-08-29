@@ -1,0 +1,287 @@
+# PyramidKV KV cache compression (experimental)
+
+PyramidKV KV cache compression is an opt-in experimental feature for validated
+Llama-3-8B and Qwen2.5-14B Ascend configurations. It reduces the number of
+request-owned KV cache blocks after a complete prefill. It is disabled unless
+`--kv-cache-compression-config` is provided.
+
+The first release keeps token IDs, sequence positions, RoPE, sampling, the KV
+cache tensor shape, and the selected attention backend unchanged. During
+prefill, every layer computes attention from the original full Q/K/V. When
+prefix caching is enabled, the complete token-addressed K/V remains in the
+ordinary immutable prefix-cache source blocks and the compact K/V is written
+to a separate request-private, unhashed destination table. The core swaps the
+request to that destination only after all layers and the model forward
+succeed. During decode, each layer appends to its own compact physical length
+while the request continues to use its semantic sequence length.
+
+## Supported configuration
+
+All of the following are required. Startup fails before formal KV cache
+allocation if a requirement is not met:
+
+- Ascend 910B2 with the required torch-npu cache-write and
+  fused-infer-attention operators. Eager execution supports CANN 8.5.1 and
+  CANN 9.0; graph execution requires CANN 9.0.
+- V1 model runner with async scheduling enabled or disabled. Balance scheduling
+  and dual-batch overlap must remain disabled. Execution must be eager (`NONE`),
+  `PIECEWISE`, or `FULL_DECODE_ONLY` as described below.
+- One of these BF16 model/KV cache profiles:
+
+  | Validated model | Architecture | Layers | Query heads | KV heads | Head dimension |
+  | --- | --- | ---: | ---: | ---: | ---: |
+  | Meta-Llama-3-8B-Instruct | `LlamaForCausalLM` | 32 | 32 | 8 | 128 |
+  | Qwen2.5-14B-Instruct | `Qwen2ForCausalLM` | 48 | 40 | 8 | 128 |
+
+  Other geometries sharing these architecture names are rejected.
+- Dense `AscendAttentionBackend`, one full-attention cache group, and KV block
+  size 128. With prefix caching, the prefix hash block size must also be 128;
+  partial-block aliases are not supported.
+- TP, PP, PCP, and DCP all equal to 1.
+- Chunked prefill is supported on CANN 9.0 with default FIA. It continues to
+  fail closed on CANN 8.5.1; unchunked eager execution remains supported there.
+- Prefix caching may be enabled. Sliding-window attention, speculative
+  decoding, KV transfer, KV offload, KNorm, and quantized KV cache remain
+  disabled.
+- Graph execution uses the default fused-infer-attention (FIA) path and an
+  empty `pa_shape_list`. Paged-attention graph shapes, `FULL`, and
+  `FULL_AND_PIECEWISE` are not supported.
+- Complete or chunked prefill and ordinary one-token decode. A batch may
+  contain committed compact decodes, intermediate/final prefill chunks, and
+  requests below the compression threshold. Dynamic chunk sizes and a final
+  chunk of one token are supported.
+
+Other models, devices, backends, layouts, dtypes, or feature combinations are
+not silently downgraded.
+
+## Enabling the provider
+
+Use the same JSON object for the CLI and the Python `EngineArgs`/
+`VllmConfig` API:
+
+```bash
+VLLM_KNORM_ENABLED=0 VLLM_USE_V2_MODEL_RUNNER=0 \
+vllm serve /workspace/models/Qwen2.5-14B-Instruct \
+  --dtype bfloat16 \
+  --tensor-parallel-size 1 \
+  --pipeline-parallel-size 1 \
+  --enforce-eager \
+  --block-size 128 \
+  --async-scheduling \
+  --enable-chunked-prefill \
+  --max-num-batched-tokens 2048 \
+  --enable-prefix-caching \
+  --kv-cache-compression-config '{
+    "schema_version": 1,
+    "provider": "pyramidkv_ascend",
+    "provider_config": {
+      "max_capacity_prompt": 512,
+      "min_compression_prompt_tokens": 4096,
+      "window_size": 8,
+      "kernel_size": 7,
+      "pooling": "maxpool",
+      "beta": 20,
+      "kv_cache_granularity": "kv_head",
+      "gqa_score_aggregation": "mean",
+      "merge": null
+    }
+  }'
+```
+
+The command above uses the validated Qwen2.5-14B profile and selects eager
+chunked-prefill execution, so it requires CANN 9.0. The same command supports
+the validated Llama profile after replacing the model path. For unchunked
+execution, use
+`--no-enable-chunked-prefill`; that mode also supports eager CANN 8.5.1. On
+CANN 9.0, remove
+`--enforce-eager` and add one of the following compilation configurations to
+enable graph execution:
+
+```bash
+# Piecewise capture around graph breaks; the existing per-layer Python hook is
+# still used to prepare PyramidKV decode metadata.
+--compilation-config '{
+  "cudagraph_mode": "PIECEWISE",
+  "cudagraph_capture_sizes": [1, 8, 16, 24, 32]
+}'
+
+# Full decode capture with fixed-address, per-layer slot and sequence-length
+# metadata. Prefill continues outside the full-decode graph.
+--compilation-config '{
+  "cudagraph_mode": "FULL_DECODE_ONLY",
+  "cudagraph_capture_sizes": [1, 8, 16, 24, 32]
+}'
+```
+
+Do not combine either graph configuration with `--enforce-eager`. Startup
+fails rather than silently falling back if the requested mode, CANN version,
+or FIA/PA configuration is unsupported. `FULL_DECODE_ONLY` allocates stable
+`int32[num_hidden_layers, max_num_seqs]` slot-mapping and physical-length
+buffers: 32 rows for Llama-3-8B and 48 for Qwen2.5-14B. Each layer uses its own
+row during replay, while padding rows use an invalid slot and cannot write a
+real KV block.
+
+`max_capacity_prompt` must be greater than `window_size`;
+`min_compression_prompt_tokens` must be greater than or equal to
+`max_capacity_prompt`; `kernel_size` must be positive and odd; and `beta` must
+be positive. The other fields are fixed to the values shown above in the first
+release. Unknown fields and invalid values are errors.
+`--max-model-len` must be greater than `min_compression_prompt_tokens`;
+otherwise no request can enter the supported compression region and startup
+fails closed.
+
+The equivalent Python configuration uses the same typed object:
+
+```python
+from vllm.config import KVCacheCompressionConfig
+from vllm.engine.arg_utils import EngineArgs
+
+engine_args = EngineArgs(
+    model="/workspace/models/Qwen2.5-14B-Instruct",
+    kv_cache_compression_config=KVCacheCompressionConfig(
+        provider="pyramidkv_ascend",
+        provider_config={
+            "max_capacity_prompt": 512,
+            "min_compression_prompt_tokens": 4096,
+            "window_size": 8,
+            "kernel_size": 7,
+            "pooling": "maxpool",
+            "beta": 20,
+            "kv_cache_granularity": "kv_head",
+            "gqa_score_aggregation": "mean",
+            "merge": None,
+        },
+    ),
+)
+```
+
+The provider is implemented in vLLM Ascend and uses the PyTorch and torch-npu
+packages already required by vLLM Ascend. There is no additional optional
+package to install, and `KVCache-Factory` is not a runtime dependency. Keep the
+vLLM-HUST and vLLM-Ascend-HUST revisions matched because their compression
+schema and scheduler/worker transaction are versioned together.
+
+At startup, logs include the provider, schema, actual platform/backend/model/
+dtype/cache layout/block size, compatibility result, complete provider
+configuration, and the provider-derived runtime limits. They also include
+whether chunked prefill is enabled and its query-tail staging bound. Prefix-hit
+traces report the hit length. A successful transaction logs semantic and
+physical token lengths, source/destination block counts, released references,
+retained hashed source blocks, and the later commit acknowledgement.
+
+With async scheduling, an intermediate prefill chunk may overlap the following
+batch normally. After the final compressing prefill, the scheduler temporarily
+fences only that request until its compression plan is validated and committed.
+Other requests continue to fill the second in-flight batch. The fenced request
+becomes decode-eligible only when the complete replacement block table can be
+sent as its commit acknowledgement. Abort or forced reset cancels the matching
+transaction, and a late output from that transaction is ignored by its scheduler
+step ID rather than being applied to a restarted request.
+
+## Capacity and memory semantics
+
+Token selection is independent per KV head. GQA query-head scores are averaged
+within each KV-head group; scores use an fp32 softmax converted back to the
+query dtype before max pooling and top-k.
+The recent window remains in original order.
+
+All full-attention layers in the first release share one request-level block
+table. The scheduler therefore retains
+`ceil(max(per_layer_physical_length) / 128)` blocks. Layers with shorter compact
+lengths have unused slots inside those shared retained blocks. Do not estimate
+device-memory savings by summing theoretical per-layer capacities, and do not
+assume a performance or quality improvement without workload-specific
+measurements.
+
+With the default provider configuration, prompts of 4096 tokens or fewer stay
+on the original uncompressed path. Prompts longer than 4096 tokens are admitted
+to compression, at least the final 8 query tokens are recomputed, and the
+largest physical length for an 8192-token prompt is 991 tokens for both
+validated profiles. The 4096-token admission threshold is independent of the
+512-token compressed capacity and protects short requests from the compression
+hot-path cost. The scheduler consequently reserves at most 8 extra 128-token
+destination blocks per compressing request. These blocks are temporary before
+commit and remain request-private while the compressed request is active. They
+never receive a prefix hash and cannot be reused as a semantic prefix.
+
+For a compressing request, the maximum prefix hit is
+`prompt_length - window_size`, rounded down by vLLM's complete-block hit rule.
+For example, a repeated 7168-token prompt may hit 7040 tokens and recomputes
+128; a 769-token prompt may hit only 640 and recomputes 129. Requests below the
+compression threshold retain the ordinary vLLM hit limit.
+
+A batch made entirely of prompts at or below the compression threshold uses
+the original attention and cache-write path and does not emit a compression
+plan. In `FULL_DECODE_ONLY`, the runner still computes an exact read-only slot
+view for those requests so replay cannot use stale CPU slot metadata.
+
+For a compressible chunked request, intermediate chunks write their full K/V
+to the semantic cache positions and emit no compression plan. The provider
+retains only the final `window_size` query vectors for each layer. With the
+default Llama-3 shape this committed query tail is about 2 MiB per request; for
+Qwen2.5-14B it is about 3.75 MiB. Step-local transactional staging can coexist
+with the committed tail, giving worst-case bounds of about 4 MiB and 7.5 MiB
+per active request respectively, or 128 MiB and 240 MiB at
+`max_num_seqs=32`. The chunk end, block table, and query tail are committed only
+after every configured attention layer and the model forward succeed.
+
+The final chunk reconstructs the complete key from paged cache plus the current
+chunk and computes the same per-head indices as the unchunked path. It first
+finishes attention with full history. With prefix caching enabled, the ordinary
+writer completes and hashes the full source table, after which the provider
+gathers that source and materializes compact K/V into the private destination.
+The source tensor is never compacted or overwritten. With prefix caching
+disabled, the original in-place compaction and tail-truncation fast path is
+preserved. No partial-prefill plan is sent to the scheduler, and no
+request-long dense K/V copy is retained.
+
+For a mixed prefill/decode batch, compact decodes use their layer-specific
+physical slots and lengths. A new prefill remains complete in its source table
+while the existing `PrefillCacheHit` attention runs. Only after the whole model
+forward succeeds does the provider materialize that prefill into its private
+destination and emit its plan. A decode block table may grow only by the exact
+monotonic tail allocation required for its next physical token; shrinking,
+reordering, or adding excess blocks is an error before the cache write.
+
+For `FULL_DECODE_ONLY`, only all-decode scheduler steps enter the full graph.
+Any semantic prefill, including a one-token final chunk, disables `FULL` for
+that step and uses the dynamic/PIECEWISE path. Mixed prefill/decode steps remain
+outside that graph. Once the plan receives its core commit acknowledgement,
+ordinary decode may resume `FULL` replay. The request state advances only after
+the complete model forward succeeds; graph preparation or execution failures
+do not acknowledge a prefill chunk or decode step.
+
+## Failure and rollback behavior
+
+Compatibility and configuration failures occur before formal KV cache
+allocation. Runtime state, source generation, private destination ownership
+and capacity, full-layer completion, and the scheduler commit acknowledgement
+are validated before the request table is swapped or compact decode begins.
+Source and destination capacity is admitted atomically: insufficient space
+keeps a waiting request queued or uses the scheduler's normal safe preemption
+path, without retaining a destination for an unscheduled request. Abort,
+finish, preemption, reset, and forward-error cleanup release an uncommitted
+destination. There is no CUDA, Triton, CPU, or ordinary-cache fallback after a
+request starts compacting; a missing, overlapping, hashed, undersized, stale,
+or duplicate transaction raises an error instead of continuing with ambiguous
+cache contents.
+
+To disable the feature, remove `--kv-cache-compression-config` (or set
+`kv_cache_compression_config=None` in Python). The provider is then not
+resolved, instantiated, or attached to attention metadata. No environment or
+dependency change is required for rollback.
+
+## Validation guidance
+
+Compare the original code, compression disabled, compression with synchronous
+scheduling, and compression with async scheduling. Fix the model, backend,
+dtype, parallel settings, prompt/output lengths, seeds, concurrency, warm-up,
+and repetition count. Record KV/device memory, TTFT, TPOT, throughput,
+end-to-end latency, and a long-context quality metric. Verify greedy token IDs
+between async-off and async-on runs and report distributions, not only the best
+run. CUDA results are not evidence for this provider.
+
+The selection semantics were independently implemented from the observable
+PyramidKV behavior in `KVCache-Factory` commit
+`fc6f8f4c3d8ca7a1849a2ef67ff5fca8d285a6f0` (MIT). No Hugging Face monkey
+patch, CUDA/Triton implementation, or source copy from that repository is used.
