@@ -54,12 +54,16 @@ if not _npu_available:
     torch_npu.__spec__ = importlib.util.spec_from_loader("torch_npu", loader=None)
     torch_npu.__path__ = []
     torch_npu.npu = MagicMock()  # type: ignore[attr-defined]
-    torch_npu.profiler = MagicMock()  # type: ignore[attr-defined]
+    torch_npu_profiler = types.ModuleType("torch_npu.profiler")
+    torch_npu_profiler.__spec__ = importlib.util.spec_from_loader("torch_npu.profiler", loader=None)
+    torch_npu_profiler.dynamic_profile = MagicMock()  # type: ignore[attr-defined]
+    torch_npu.profiler = torch_npu_profiler  # type: ignore[attr-defined]
     torch_npu.npu_fusion_attention = MagicMock()  # type: ignore[attr-defined]
     torch_npu.npu_format_cast = MagicMock(side_effect=lambda weight, fmt: weight)  # type: ignore[attr-defined]
     torch_npu._C = MagicMock()  # type: ignore[attr-defined]
     torch_npu._C._NPUTaskGroupHandle = MagicMock
     sys.modules["torch_npu"] = torch_npu
+    sys.modules["torch_npu.profiler"] = torch_npu_profiler
     sys.modules["torch_npu._C"] = torch_npu._C
     sys.modules["torch_npu._C._distributed_c10d"] = torch_npu._C._distributed_c10d
     acl_rt = types.ModuleType("acl.rt")
