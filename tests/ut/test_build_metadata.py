@@ -38,6 +38,35 @@ def test_custom_op_metadata_uses_opc_discovery_filename():
     assert "DEPENDS ${CUSTOM_OPS_INFO_JSON}" in build_functions
 
 
+def test_paired_editable_workflow_uses_empty_target_dependency_sets():
+    root = Path(__file__).resolve().parents[2]
+    workflow = (root / ".github/workflows/pr_smart_ut.yaml").read_text()
+
+    job = workflow.index("validate-hust-dual-editable:")
+    checkout = workflow.index("repository: vLLM-HUST/vllm-hust", job)
+    runtime_install = workflow.index("-r ./vllm-hust/requirements/common.txt", checkout)
+    build_tools = workflow.index("-r ./vllm-hust/requirements/build/empty.txt", runtime_install)
+    core_install = workflow.index("VLLM_TARGET_DEVICE=empty uv pip install", build_tools)
+    plugin_install = workflow.index("COMPILE_CUSTOM_KERNELS=0", core_install)
+
+    assert "runs-on: ubuntu-24.04-arm" in workflow[job:checkout]
+    assert "runs-on: linux-aarch64-a2b3-1" not in workflow[job:checkout]
+    assert "container:" not in workflow[job:checkout]
+    assert "TORCH_DEVICE_BACKEND_AUTOLOAD: 0" in workflow[job:checkout]
+    assert "ref: ${{ needs.scope.outputs.pyramidkv_core_commit }}" in workflow[checkout:runtime_install]
+    assert "-r ./requirements.txt" in workflow[runtime_install:core_install]
+    assert runtime_install < build_tools < core_install < plugin_install
+    assert "--no-build-isolation" in workflow[core_install:plugin_install]
+    assert "--no-deps" in workflow[core_install:plugin_install]
+    assert "--no-build-isolation" not in workflow[plugin_install:]
+    assert "from importlib.metadata import distribution" in workflow[plugin_install:]
+    assert 'Path(get_path("purelib")).glob(' in workflow[plugin_install:]
+    assert 'f"__editable__.{normalized_name}-*.pth"' in workflow[plugin_install:]
+    assert "all(path.is_file() for path in editable_paths)" in workflow[plugin_install:]
+    assert 'for package in ("vllm", "vllm-ascend-hust")' in workflow[plugin_install:]
+    assert "import vllm; import vllm_ascend" not in workflow[plugin_install:]
+
+
 def test_dual_editable_documentation_uses_target_specific_flow():
     root = Path(__file__).resolve().parents[2]
     required = (

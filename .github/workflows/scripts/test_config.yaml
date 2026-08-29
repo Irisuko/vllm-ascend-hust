@@ -283,6 +283,22 @@
     - tests/e2e/pull_request/one_card/test_mapped_host_pool_registration.py
     - tests/e2e/pull_request/two_card/test_kv_cache_block_gather_devices.py
 
+- name: kv_cache_compression
+  optional: true
+  source_file_dependencies:
+    - vllm_ascend/kv_cache_compression
+    - vllm_ascend/attention/attention_v1.py
+    - vllm_ascend/attention/utils.py
+    - vllm_ascend/patch/platform/patch_balance_schedule.py
+    - vllm_ascend/platform.py
+    - vllm_ascend/worker/model_runner_v1.py
+    - vllm_ascend/worker/worker.py
+  tests:
+    - tests/ut/kv_cache_compression
+    - tests/ut/attention/test_attention_utils.py
+    - tests/ut/test_pyramidkv_ci_wiring.py
+    - tests/e2e/pull_request/one_card/test_pyramidkv.py
+
 # Lora
 - name: lora
   optional: false
@@ -632,10 +648,12 @@
   source_file_dependencies:
     - csrc/torch_binding.cpp
     - csrc/torch_binding_meta.cpp
+    - csrc/mc2/matmul_allreduce_add_rmsnorm/op_host/CMakeLists.txt
     - cmake/
     - CMakeLists.txt
   tests:
     - tests/ut/
+    - tests/ut/test_matmul_allreduce_add_rmsnorm_cmake.py
 # Single File
 - name: misc
   optional: false
@@ -726,6 +744,7 @@
 # When both file-level and ``::nodeid`` entries exist, lookup uses
 # exact match first, then file-level fallback.
 estimated_times:
+  tests/e2e/pull_request/one_card/test_pyramidkv.py: 1200
   tests/e2e/pull_request/one_card/test_mixed_logprobs.py: 600
   tests/e2e/pull_request/one_card/_310p/test_classification_310p.py: 190
   tests/e2e/pull_request/one_card/_310p/test_dense_model_310p.py: 1300
@@ -821,6 +840,7 @@ estimated_times:
   tests/ut/attention/a2/test_attention_cp_precision.py: 30
   tests/ut/attention/a2/test_attention_v1.py: 30
   tests/ut/attention/a2/test_attention_v1_precision.py: 400
+  tests/ut/kv_cache_compression/a2/test_pyramidkv_npu.py: 120
   tests/ut/attention/a2/test_common_cp.py: 30
   tests/ut/attention/a2/test_mla_cp.py: 40
   tests/ut/attention/a2/test_mla_cp_precision.py: 30
