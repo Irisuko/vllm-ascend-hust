@@ -40,6 +40,47 @@ from vllm_ascend.compilation.acl_graph import (
 from vllm_ascend.device_allocator.sleep_mem_optimized import AclGraphSleepWakeupManager
 
 
+class TestStreamResourceCaptureError(TestBase):
+    def test_matches_known_stream_resource_signatures(self):
+        messages = [
+            "insufficient_stream_resources while capturing graph",
+            "stream resources are insufficient (207008)",
+            "SqCqManage Alloc sq cq fail",
+            "ACLNN error 207005 in aclnnMatmulAllReduce",
+            "The inner error is reported above; current operator is aclnnMatmulAllReduce "
+            "(SqCqManage Alloc sq cq fail)",
+        ]
+
+        for message in messages:
+            with self.subTest(message=message):
+                self.assertTrue(acl_graph._is_stream_resource_capture_error(RuntimeError(message)))
+
+    def test_rejects_mc2_inner_error_without_stream_marker(self):
+        # The MC2 kernel's async "inner error" wrapper also carries real OOM /
+        # illegal-address failures. Without an MC2 stream-exhaustion marker
+        # (207005 or "alloc sq cq fail"/"sqcqmanage") we must NOT re-classify
+        # those as stream-resource exhaustion, which would hide the real root
+        # cause behind misleading capture-size guidance.
+        for message in (
+            "The inner error is reported above; current operator is aclnnMatmulAllReduce",
+            "ACLNN error: out of memory in aclnnMatmulAllReduce (inner error)",
+        ):
+            with self.subTest(message=message):
+                self.assertFalse(acl_graph._is_stream_resource_capture_error(RuntimeError(message)))
+
+    def test_walks_exception_cause_chain(self):
+        inner = RuntimeError("The current working operator is aclnnMatmulAllReduce")
+        outer = RuntimeError("ACLNN call failed with 207005 during graph capture")
+        outer.__cause__ = inner
+
+        self.assertTrue(acl_graph._is_stream_resource_capture_error(outer))
+
+    def test_rejects_unrelated_capture_error(self):
+        for message in ("capture failed with 507903", "unrelated ACLNN error 207005"):
+            with self.subTest(message=message):
+                self.assertFalse(acl_graph._is_stream_resource_capture_error(RuntimeError(message)))
+
+
 class TestACLGraphEntry(TestBase):
     def test_aclgraph_entry_initialization(self):
         """Test ACLGraphEntry initialization with default values"""

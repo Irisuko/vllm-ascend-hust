@@ -30,21 +30,58 @@ _STREAM_RESOURCE_ERROR_MARKERS = (
     "insufficient_stream_resources",
     "stream resources are insufficient",
 )
+# MC2 MatmulAllReduce kernel capture failure: its internal aicpu streams are
+# registered into the capture model via rtStreamAddToModel; the driver SQ/CQ
+# pool is exhausted once too many distinct capture sizes are captured.
+_MC2_STREAM_EXHAUSTION_MARKERS = (
+    "alloc sq cq fail",
+    "sqcqmanage",
+)
+_MC2_ERROR_CODE = "207005"
+_MC2_KERNEL_NAME = "aclnnmatmulallreduce"
 _STREAM_RESOURCE_GUIDANCE = (
     "ACL graph capture failed with a known stream-resource exhaustion "
     "signature. Consider upgrading to a newer HDK/CANN stack, reducing "
     "cudagraph_capture_sizes, lowering max_cudagraph_capture_size, preferring "
     "FULL or FULL_DECODE_ONLY for mostly uniform decode workloads, or "
-    "temporarily disabling graph mode to confirm the failure is capture-related."
+    "temporarily disabling graph mode to confirm the failure is capture-related. "
+    "With TP>1 and matmul_allreduce enabled, the MatmulAllReduce kernel "
+    "registers internal aicpu streams per captured size and the driver SQ/CQ "
+    "pool is exhausted when too many distinct capture sizes are captured, so "
+    "reducing the number of capture sizes is the primary remedy."
 )
 
 
+def _iter_exception_messages(exc: BaseException):
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield str(current)
+        current = current.__context__ or current.__cause__
+
+
 def _is_stream_resource_capture_error(exc: RuntimeError) -> bool:
-    message = str(exc)
-    lowered_message = message.lower()
-    has_error_code = _STREAM_RESOURCE_ERROR_CODE in message
-    has_stream_resource_marker = any(marker in lowered_message for marker in _STREAM_RESOURCE_ERROR_MARKERS)
-    return has_stream_resource_marker or (has_error_code and "stream resource" in lowered_message)
+    messages = [message.lower() for message in _iter_exception_messages(exc)]
+    for message in messages:
+        if any(marker in message for marker in _STREAM_RESOURCE_ERROR_MARKERS):
+            return True
+        if _STREAM_RESOURCE_ERROR_CODE in message and "stream resource" in message:
+            return True
+
+    combined_message = "\n".join(messages)
+    # NOTE: we deliberately do NOT classify a bare "<aclnnmatmulallreduce> ...
+    # inner error" wrapper as stream-resource exhaustion. The driver surfaces
+    # real MC2 failures (OOM, illegal address) through the same async "inner
+    # error" wrapper that names aclnnMatmulAllReduce, so matching the kernel
+    # name alone would misclassify them and re-wrap the original error into
+    # misleading capture-size guidance. MC2 stream exhaustion is only confirmed
+    # when the chain carries its actual signature (error 207005, or the
+    # "alloc sq cq fail" / "sqcqmanage" marker). Otherwise let the original
+    # error propagate unchanged.
+    return any(marker in combined_message for marker in _MC2_STREAM_EXHAUSTION_MARKERS) or (
+        _MC2_ERROR_CODE in combined_message and _MC2_KERNEL_NAME in combined_message
+    )
 
 
 def _raise_stream_resource_capture_error(exc: RuntimeError) -> None:

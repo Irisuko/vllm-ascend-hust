@@ -14,7 +14,9 @@ from vllm_ascend.platform import (
     NPUPlatform,
     _ensure_ascend_compilation_config_dict,
     _resolve_npu_alloc_conf,
+    _sample_capture_sizes,
     _sync_npugraph_ex_to_additional_config,
+    prune_capture_sizes_for_mc2,
 )
 from vllm_ascend.utils import (
     ASCEND_QUANTIZATION_METHOD,
@@ -239,6 +241,141 @@ class TestNPUPlatform(TestBase):
         self.platform.apply_config_platform_defaults(vllm_config)
 
         self.assertIsNone(vllm_config.compilation_config.max_cudagraph_capture_size)
+
+    def test_prune_capture_sizes_for_mc2(self):
+        test_cases = [
+            (list(range(1, 17)), 48, 8, list(range(1, 17))),
+            (list(range(1, 17)) + [32, 64], 48, 16, None),
+            ([1, 2, 3, 4, 8], 384, 3, [1, 2, 3, 8]),
+        ]
+        for sizes, num_layers, max_num_seqs, expected in test_cases:
+            with self.subTest(sizes=sizes, num_layers=num_layers, max_num_seqs=max_num_seqs):
+                vllm_config = self.mock_vllm_config()
+                vllm_config.compilation_config.cudagraph_capture_sizes = sizes.copy()
+                vllm_config.compilation_config.max_cudagraph_capture_size = sizes[-1]
+                vllm_config.model_config.hf_text_config.num_hidden_layers = num_layers
+                vllm_config.scheduler_config.max_num_seqs = max_num_seqs
+
+                prune_capture_sizes_for_mc2(vllm_config)
+
+                result = vllm_config.compilation_config.cudagraph_capture_sizes
+                if expected is not None:
+                    self.assertEqual(result, expected)
+                else:
+                    self.assertEqual(len(result), 16)
+                    self.assertEqual(result[-1], 64)
+                    self.assertTrue(all(size <= 16 for size in result[:-1]))
+
+    def test_prune_capture_sizes_for_mc2_keeps_dense_region_and_largest_tail(self):
+        vllm_config = self.mock_vllm_config()
+        sizes = list(range(1, 9)) + list(range(16, 145, 8))
+        vllm_config.compilation_config.cudagraph_capture_sizes = sizes.copy()
+        vllm_config.compilation_config.max_cudagraph_capture_size = sizes[-1]
+        vllm_config.model_config.hf_text_config.num_hidden_layers = 48
+        vllm_config.scheduler_config.max_num_seqs = 8
+
+        prune_capture_sizes_for_mc2(vllm_config)
+
+        result = vllm_config.compilation_config.cudagraph_capture_sizes
+        self.assertEqual(len(result), 16)
+        self.assertEqual(result[:8], list(range(1, 9)))
+        self.assertEqual(result[-1], sizes[-1])
+
+    def test_prune_capture_sizes_for_mc2_skips_unknown_layer_count(self):
+        vllm_config = self.mock_vllm_config()
+        sizes = list(range(1, 33))
+        vllm_config.compilation_config.cudagraph_capture_sizes = sizes.copy()
+        vllm_config.model_config.hf_text_config.num_hidden_layers = 0
+
+        prune_capture_sizes_for_mc2(vllm_config)
+
+        self.assertEqual(vllm_config.compilation_config.cudagraph_capture_sizes, sizes)
+
+    def test_sample_capture_sizes_boundaries(self):
+        sizes = list(range(1, 11))  # 1..10
+
+        self.assertEqual(_sample_capture_sizes(sizes, 0), [])
+        self.assertEqual(_sample_capture_sizes(sizes, 1), [10])
+        self.assertEqual(_sample_capture_sizes(sizes, 2), [1, 10])
+        self.assertEqual(_sample_capture_sizes(sizes, 4), [1, 4, 7, 10])
+        self.assertEqual(_sample_capture_sizes(sizes, len(sizes)), sizes)
+
+    def _mc2_wiring_config(self):
+        vllm_config = TestNPUPlatform.mock_vllm_config()
+        vllm_config.model_config.enforce_eager = False
+        vllm_config.model_config.architectures = ["LlamaForCausalLM"]
+        vllm_config.model_config.enable_sleep_mode = True
+        vllm_config.model_config.hf_text_config.num_hidden_layers = 48
+        vllm_config.compilation_config.mode = CompilationMode.VLLM_COMPILE
+        vllm_config.compilation_config.cudagraph_mode = CUDAGraphMode.FULL_DECODE_ONLY
+        vllm_config.compilation_config.cudagraph_capture_sizes = list(range(1, 33))
+        vllm_config.compilation_config.max_cudagraph_capture_size = 32
+        vllm_config.compilation_config.custom_ops = []
+        vllm_config.parallel_config.tensor_parallel_size = 2
+        vllm_config.parallel_config.worker_cls = "vllm_ascend.worker.worker.NPUWorker"
+        vllm_config.parallel_config.decode_context_parallel_size = 1
+        vllm_config.parallel_config.prefill_context_parallel_size = 1
+        vllm_config.parallel_config.cp_kv_cache_interleave_size = 1
+        vllm_config.cache_config.block_size = 128
+        vllm_config.scheduler_config.max_num_seqs = 8
+        return vllm_config
+
+    @patch("vllm_ascend.quantization.utils.maybe_auto_detect_quantization")
+    @patch("vllm_ascend.ascend_config.init_ascend_config")
+    @patch("vllm_ascend.utils.get_ascend_device_type", return_value=AscendDeviceType.A3)
+    @patch("vllm_ascend.core.recompute_scheduler.RecomputeSchedulerConfig.initialize_from_config")
+    def test_check_and_update_config_wires_mc2_prune_when_tp_gt_1(
+        self, mock_init_recompute, mock_soc_version, mock_init_ascend, mock_auto_detect
+    ):
+        mock_ascend_config = TestNPUPlatform.mock_vllm_ascend_config()
+        mock_ascend_config.enable_matmul_allreduce = True
+        mock_ascend_config.enable_layered_prefill = False
+        mock_init_ascend.return_value = mock_ascend_config
+        mock_init_recompute.return_value = MagicMock()
+
+        vllm_config = self._mc2_wiring_config()
+
+        from vllm_ascend import platform
+
+        importlib.reload(platform)
+        self.platform = platform.NPUPlatform()
+
+        with patch.object(platform.NPUPlatform, "_fix_incompatible_config"):
+            self.platform.check_and_update_config(vllm_config)
+
+        result = vllm_config.compilation_config.cudagraph_capture_sizes
+        # Gating satisfied (TP>1 + matmul_allreduce + graph mode): the 32 sizes
+        # must be pruned down to the per-layer MC2 budget (48 layers -> 16).
+        self.assertEqual(len(result), 16)
+        self.assertEqual(result[-1], 32)
+        self.assertEqual(result[:8], list(range(1, 9)))
+
+    @patch("vllm_ascend.quantization.utils.maybe_auto_detect_quantization")
+    @patch("vllm_ascend.ascend_config.init_ascend_config")
+    @patch("vllm_ascend.utils.get_ascend_device_type", return_value=AscendDeviceType.A3)
+    @patch("vllm_ascend.core.recompute_scheduler.RecomputeSchedulerConfig.initialize_from_config")
+    def test_check_and_update_config_skips_mc2_prune_without_matmul_allreduce(
+        self, mock_init_recompute, mock_soc_version, mock_init_ascend, mock_auto_detect
+    ):
+        mock_ascend_config = TestNPUPlatform.mock_vllm_ascend_config()
+        mock_ascend_config.enable_matmul_allreduce = False
+        mock_ascend_config.enable_layered_prefill = False
+        mock_init_ascend.return_value = mock_ascend_config
+        mock_init_recompute.return_value = MagicMock()
+
+        vllm_config = self._mc2_wiring_config()
+
+        from vllm_ascend import platform
+
+        importlib.reload(platform)
+        self.platform = platform.NPUPlatform()
+
+        with patch.object(platform.NPUPlatform, "_fix_incompatible_config"):
+            self.platform.check_and_update_config(vllm_config)
+
+        result = vllm_config.compilation_config.cudagraph_capture_sizes
+        # Gating not satisfied (matmul_allreduce disabled): sizes stay intact.
+        self.assertEqual(result, list(range(1, 33)))
 
     @patch("vllm_ascend.platform.refresh_block_size")
     @patch("vllm_ascend.platform.get_ascend_device_type", return_value=AscendDeviceType.A3)

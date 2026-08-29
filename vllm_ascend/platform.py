@@ -186,6 +186,75 @@ def prune_capture_sizes_for_950(vllm_config):
     )
 
 
+# Empirical driver budget for aclgraph capture with the MC2 fused
+# MatmulAllReduce kernel (TP>1 + enable_matmul_allreduce): each distinct
+# captured size registers the kernel's internal aicpu streams into the capture
+# model via rtStreamAddToModel, and the driver SQ/CQ pool is exhausted once too
+# many distinct sizes are captured ("SqCqManage Alloc sq cq fail" -> error
+# 207005 -> AclmdlRICaptureEnd 507903). Measured on Qwen2.5-14B (48 layers x 2
+# fused ops/layer): 18 distinct sizes capture fine, the 19th fails. Scale the
+# safe count by the per-layer fused-op count (~2 for dense transformers).
+# Override VLLM_ASCEND_MC2_CAPTURE_INSTANCE_BUDGET to tune the driver budget on
+# other hardware/driver/model combinations without touching code.
+_MC2_CAPTURE_INSTANCE_BUDGET = int(os.environ.get("VLLM_ASCEND_MC2_CAPTURE_INSTANCE_BUDGET", "1536"))
+
+
+def _sample_capture_sizes(sizes: list[int], count: int) -> list[int]:
+    """Keep first/last and evenly spaced indices in between (950-prune policy)."""
+    if count <= 0:
+        return []
+    if count == 1:
+        return [sizes[-1]]
+    step = (len(sizes) - 1) / (count - 1)
+    indices = sorted({round(i * step) for i in range(count)})
+    indices[0], indices[-1] = 0, len(sizes) - 1
+    return [sizes[i] for i in indices]
+
+
+def prune_capture_sizes_for_mc2(vllm_config):
+    """Prune distinct aclgraph capture sizes for TP>1 + matmul_allreduce.
+
+    Keeps the dense decode region (sizes <= max_num_seqs) intact when it fits
+    the budget, samples the tail above it, and always keeps the largest size,
+    so any --max-cudagraph-capture-size works without the manual capture-size
+    cap workaround.
+    """
+    sizes = vllm_config.compilation_config.cudagraph_capture_sizes
+    if not sizes:
+        return
+    num_layers = getattr(vllm_config.model_config.hf_text_config, "num_hidden_layers", 0)
+    if not num_layers:
+        return
+    max_count = max(4, _MC2_CAPTURE_INSTANCE_BUDGET // (2 * num_layers))
+    if len(sizes) <= max_count:
+        return
+    max_num_seqs = getattr(vllm_config.scheduler_config, "max_num_seqs", 0) or 0
+    dense = [s for s in sizes if s <= max_num_seqs]
+    tail = [s for s in sizes if s > max_num_seqs]
+    if len(dense) >= max_count:
+        dense_budget = max_count - 1 if tail else max_count
+        dense = _sample_capture_sizes(dense, dense_budget)
+        tail = [tail[-1]] if tail else []
+    else:
+        remaining = max_count - len(dense)
+        if len(tail) > remaining:
+            tail = _sample_capture_sizes(tail, remaining)
+    pruned_sizes = dense + tail
+    update_cudagraph_capture_sizes(vllm_config, pruned_sizes)
+    logger.warning(
+        "Pruned ACL graph capture sizes for TP>1 + matmul_allreduce: %d → %d sizes "
+        "(%d dense decode sizes <= max_num_seqs=%d kept, largest size %d kept).\n"
+        "Too many distinct capture sizes exhaust the driver SQ/CQ pool via the "
+        "MatmulAllReduce kernel's internal aicpu stream registration "
+        "(SqCqManage alloc fail, error 207005/507903).",
+        len(sizes),
+        len(pruned_sizes),
+        len(dense),
+        max_num_seqs,
+        pruned_sizes[-1],
+    )
+
+
 class _KVTransferConfigProtocol(Protocol):
     """Structural type for the KV-transfer config fields used in this module.
 
@@ -939,6 +1008,18 @@ class NPUPlatform(Platform):
             if len(sp_aclgraph_sizes) != len(original_sizes):
                 compilation_config.cudagraph_capture_sizes = sp_aclgraph_sizes
                 update_cudagraph_capture_sizes(vllm_config, sp_aclgraph_sizes)
+
+        # TP>1 + matmul_allreduce: too many distinct capture sizes exhaust the
+        # driver SQ/CQ pool (MC2 kernel aicpu stream registration), failing
+        # capture with 207005/507903. Prune the size list so any
+        # max_cudagraph_capture_size works without a manual cap.
+        if (
+            vllm_config.parallel_config.tensor_parallel_size > 1
+            and not enforce_eager
+            and compilation_config.cudagraph_mode != CUDAGraphMode.NONE
+            and ascend_config.enable_matmul_allreduce
+        ):
+            prune_capture_sizes_for_mc2(vllm_config)
 
         # Encoder-decoder models currently only support PIECEWISE mode
         # TODO(Jian Li): Confirm this behavior and explain why
