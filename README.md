@@ -70,7 +70,7 @@ For detailed information on supported models and features, please refer to the [
 The versions above describe the latest stable release. Development from
 `main` uses the exact vLLM commit in
 `.github/vllm-main-verified.commit` together with PyTorch 2.13.0,
-TorchNPU 2.13.0, and Triton Ascend 3.6.0. Do not mix the stable release
+TorchNPU 2.13.0rc1, and Triton Ascend 3.6.0. Do not mix the stable release
 dependencies with the `main` compatibility set.
 
 ## Accessing Ascend NPU
