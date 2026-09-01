@@ -67,6 +67,12 @@ For detailed information on supported models and features, please refer to the [
     - PyTorch == 2.10.0, TorchNPU == 2.10.0.post4
     - vLLM (the same version as vllm-ascend)
 
+The versions above describe the latest stable release. Development from
+`main` uses the exact vLLM commit in
+`.github/vllm-main-verified.commit` together with PyTorch 2.13.0,
+TorchNPU 2.13.0, and Triton Ascend 3.6.0. Do not mix the stable release
+dependencies with the `main` compatibility set.
+
 ## Accessing Ascend NPU
 
 If you need to access Ascend NPU computing resources for development or testing, please visit the [HiDevLab - Online Development](https://hidevlab.huawei.com/online-develop-intro) page on the Huawei HiDevLab platform to apply for and use them.
