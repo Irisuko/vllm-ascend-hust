@@ -291,19 +291,29 @@ class cmake_build_ext(build_ext):
         # prefix and add Torch's advertised prefix so out-of-tree and
         # build-isolated wheel builds can resolve both packages.
         try:
+            torch_query_env = os.environ.copy()
+            # Importing Torch only to locate its CMake package must not trigger
+            # optional device backends.  Some backends write initialization
+            # diagnostics to stdout, which would corrupt the path returned to
+            # CMake in no-device and build-isolated environments.
+            torch_query_env["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"
             torch_cmake_path = (
                 subprocess.check_output(
                     [
                         python_executable,
                         "-c",
                         "import torch; print(torch.utils.cmake_prefix_path)",
-                    ]
+                    ],
+                    env=torch_query_env,
                 )
                 .decode()
                 .strip()
             )
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Unable to discover Torch CMake prefix: {e}")
+
+        if not torch_cmake_path or "\n" in torch_cmake_path:
+            raise RuntimeError(f"Invalid Torch CMake prefix: {torch_cmake_path!r}")
 
         cmake_prefix_paths = [pybind11_cmake_path, torch_cmake_path]
         if existing_cmake_prefix := os.environ.get("CMAKE_PREFIX_PATH"):

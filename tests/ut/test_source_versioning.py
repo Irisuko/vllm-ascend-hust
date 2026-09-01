@@ -36,4 +36,5 @@ def test_wheel_build_exposes_torch_cmake_prefix() -> None:
     setup_source = (ROOT / "setup.py").read_text(encoding="utf-8")
 
     assert "torch.utils.cmake_prefix_path" in setup_source
+    assert 'torch_query_env["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "0"' in setup_source
     assert "-DCMAKE_PREFIX_PATH=" in setup_source
