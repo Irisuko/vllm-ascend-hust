@@ -30,3 +30,10 @@ def test_source_version_ignores_namespaced_mirror_tags() -> None:
     assert described.startswith("v")
     assert not described.startswith("upstream/")
     Version(get_version(root=ROOT, git_describe_command=command))
+
+
+def test_wheel_build_exposes_torch_cmake_prefix() -> None:
+    setup_source = (ROOT / "setup.py").read_text(encoding="utf-8")
+
+    assert "torch.utils.cmake_prefix_path" in setup_source
+    assert "-DCMAKE_PREFIX_PATH=" in setup_source

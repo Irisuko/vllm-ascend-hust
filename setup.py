@@ -286,7 +286,29 @@ class cmake_build_ext(build_ext):
         # add CMAKE_INSTALL_PATH
         cmake_args += [f"-DCMAKE_INSTALL_PREFIX={install_path}"]
 
-        cmake_args += [f"-DCMAKE_PREFIX_PATH={pybind11_cmake_path}"]
+        # Torch installed from a wheel keeps TorchConfig.cmake inside the
+        # package tree rather than a system CMake prefix.  Preserve pybind11's
+        # prefix and add Torch's advertised prefix so out-of-tree and
+        # build-isolated wheel builds can resolve both packages.
+        try:
+            torch_cmake_path = (
+                subprocess.check_output(
+                    [
+                        python_executable,
+                        "-c",
+                        "import torch; print(torch.utils.cmake_prefix_path)",
+                    ]
+                )
+                .decode()
+                .strip()
+            )
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Unable to discover Torch CMake prefix: {e}")
+
+        cmake_prefix_paths = [pybind11_cmake_path, torch_cmake_path]
+        if existing_cmake_prefix := os.environ.get("CMAKE_PREFIX_PATH"):
+            cmake_prefix_paths.extend(existing_cmake_prefix.split(os.pathsep))
+        cmake_args += [f"-DCMAKE_PREFIX_PATH={';'.join(filter(None, cmake_prefix_paths))}"]
 
         soc_version_map = {
             "910b": "ascend910b1",
