@@ -40,7 +40,19 @@ RUN python3 -m pip install -r /vllm-workspace/vllm/requirements/common.txt --ext
 
 COPY . /vllm-workspace/vllm-ascend/
 
-RUN pip install -r /vllm-workspace/vllm-ascend/requirements-dev.txt \
+# Triton Ascend main is currently consumed from a source-built wheel and is not
+# published on the package indexes used by this CPU-only lint image.  Lint does
+# not import or execute Triton, so install the same dependency sets while
+# excluding only that compiled runtime artifact. Hardware jobs and production
+# continue to require the exact Triton wheel from the verified runtime lock.
+RUN grep -v '^triton-ascend' /vllm-workspace/vllm-ascend/requirements.txt \
+        > /tmp/requirements-runtime-without-triton.txt && \
+    grep -v '^-r ' /vllm-workspace/vllm-ascend/requirements-dev.txt \
+        > /tmp/requirements-dev-extra.txt && \
+    pip install \
+        -r /vllm-workspace/vllm-ascend/requirements-lint.txt \
+        -r /tmp/requirements-runtime-without-triton.txt \
+        -r /tmp/requirements-dev-extra.txt \
     --extra-index-url https://download.pytorch.org/whl/cpu \
     --extra-index-url https://repo.huaweicloud.com/ascend/repos/pypi && \
     pip cache purge && \
