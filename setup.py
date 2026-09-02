@@ -451,7 +451,14 @@ class cmake_build_ext(build_ext):
 
 class custom_install(install):
     def run(self):
-        self.run_command("build_ext")
+        # ``bdist_wheel`` builds the project before invoking ``install`` with
+        # ``skip_build`` enabled.  Re-running build_ext here is both wasteful
+        # and unsafe for AscendC's in-place preprocessing: the first build
+        # turns intermediate object files into linked device objects, so a
+        # second build may try to link those outputs again.  Honor the
+        # standard setuptools contract and only build for direct installs.
+        if not self.skip_build:
+            self.run_command("build_ext")
         install.run(self)
 
 
