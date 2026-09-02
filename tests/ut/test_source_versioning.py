@@ -4,9 +4,13 @@ import ast
 import subprocess
 from pathlib import Path
 
+import pytest
 from packaging.requirements import Requirement
 from packaging.version import Version
 from setuptools_scm import get_version
+
+import build_version
+from build_version import resolve_trusted_scm_version, validate_source_version
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +34,20 @@ def test_source_version_ignores_namespaced_mirror_tags() -> None:
 
     assert described.startswith("v")
     assert not described.startswith("upstream/")
-    Version(get_version(root=ROOT, git_describe_command=command))
+    version = resolve_trusted_scm_version(ROOT, command)
+    assert Version(version) >= Version("0.23")
+
+
+@pytest.mark.parametrize("version", ["0.0.0", "0.1.dev1", "0.19.1rc2.dev999"])
+def test_stale_or_fallback_source_versions_are_rejected(version: str) -> None:
+    with pytest.raises(RuntimeError, match="Refusing stale or fallback"):
+        validate_source_version(version)
+
+
+def test_shallow_checkout_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(build_version, "_git_output", lambda *_args: "true")
+    with pytest.raises(RuntimeError, match="shallow checkout"):
+        resolve_trusted_scm_version(ROOT, _describe_command_from_setup())
 
 
 def test_wheel_build_exposes_torch_cmake_prefix() -> None:
