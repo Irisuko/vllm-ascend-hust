@@ -288,10 +288,29 @@ class TestAscendLogitsProcessor(unittest.TestCase):
         lmhead.quant_method = self.mock_quant_method
         lmhead.quant_method.apply = self.mock_quant_method.apply
         hidden_state = torch.randn(1, self.org_num_embeddings)
-        logits = processor._get_logits(hidden_state, lmhead)
+        # Pass skip_gather positionally to match the current vLLM core call
+        # contract and guard against plugin overrides retaining the old
+        # three-argument signature.
+        logits = processor._get_logits(hidden_state, lmhead, None, False)
         self.mock_quant_method.apply.assert_called_once()
         # The lmhead-TP path must actually reach the collective; a missing
         # assertion here would silently regress to not exercising it.
         self.mock_all_to_all_single.assert_called_once()
         # [N/P, V] after redistribution, then truncated to org_vocab_size.
         self.assertEqual(logits.shape, (1, self.vocab_size))
+
+    def test_get_logits_skip_gather(self):
+        processor = AscendLogitsProcessor(vocab_size=self.vocab_size)
+        lmhead = AscendParallelLMHead(
+            num_embeddings=self.num_embeddings,
+            embedding_dim=self.embedding_dim,
+            prefix="lm_head",
+        )
+        lmhead.quant_method = self.mock_quant_method
+        hidden_state = torch.randn(1, self.org_num_embeddings)
+
+        logits = processor._get_logits(hidden_state, lmhead, None, True)
+
+        self.mock_quant_method.apply.assert_called_once()
+        self.mock_all_to_all_single.assert_not_called()
+        self.assertEqual(logits.shape, (2, self.vocab_size))
