@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import torch
+from vllm.v1.kv_cache_layout import KVCacheLayout
 
 import vllm_ascend.attention.attention_v1 as attn_module
 from tests.ut.base import TestBase
@@ -462,6 +463,38 @@ class TestAscendAttentionBackendImpl(TestBase):
             attn_type=self.attention_type.DECODER,
             kv_sharing_target_layer_name="producer_layer",
         )
+
+    def test_backend_requires_zero_copy_ascend_kv_layout(self):
+        self.assertEqual(
+            AscendAttentionBackend.supported_kv_cache_layouts(),
+            (KVCacheLayout.LBNHC,),
+        )
+
+    def test_unpack_standardized_kv_cache_returns_4d_kernel_views(self):
+        # Build a logical [B, H, N, K+V] view backed in LBNHC physical order.
+        physical = torch.arange(2 * 4 * 8 * 128, dtype=torch.float32).view(
+            2, 4, 8, 128
+        )
+        standardized = physical.permute(0, 2, 1, 3)
+
+        key_cache, value_cache = self.impl._unpack_kv_cache(standardized)
+
+        self.assertEqual(key_cache.shape, (2, 4, 8, 64))
+        self.assertEqual(value_cache.shape, (2, 4, 8, 64))
+        self.assertTrue(
+            torch.equal(
+                key_cache,
+                standardized[..., :64].permute(0, 2, 1, 3),
+            )
+        )
+        self.assertTrue(
+            torch.equal(
+                value_cache,
+                standardized[..., 64:].permute(0, 2, 1, 3),
+            )
+        )
+        self.assertEqual(key_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
+        self.assertEqual(value_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
 
     @patch("vllm_ascend.ascend_forward_context.get_forward_context")
     def test_large_head_prefill_uses_device_operator_fallback(self, mock_get_forward_context):
