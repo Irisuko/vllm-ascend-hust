@@ -469,10 +469,13 @@ class TestAscendAttentionBackendImpl(TestBase):
         self.assertEqual(packed.state_content_bytes, 8 * 64 * 2)
         self.assertEqual(packed.page_size_bytes, spec.page_size_bytes)
 
-    def test_unpack_standardized_kv_cache_returns_4d_kernel_views(self):
+    def test_unpack_standardized_kv_cache_returns_dense_kernel_views(self):
         # Physical LHBNC order keeps each complete K/V plane contiguous. The
         # per-layer logical view remains [B, 2, N, H*D].
-        physical = torch.arange(2 * 2 * 4 * 8 * 64, dtype=torch.float32).view(2, 2, 4, 8 * 64)
+        physical = torch.arange(
+            2 * 2 * 4 * 8 * 64,
+            dtype=torch.float32,
+        ).view(2, 2, 4, 8 * 64)
         standardized = physical.permute(1, 0, 2, 3)
 
         key_cache, value_cache = self.impl._unpack_kv_cache(standardized)
@@ -483,8 +486,14 @@ class TestAscendAttentionBackendImpl(TestBase):
         self.assertTrue(torch.equal(value_cache, physical[1].view(2, 4, 8, 64)))
         self.assertTrue(key_cache.is_contiguous())
         self.assertTrue(value_cache.is_contiguous())
-        self.assertEqual(key_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
-        self.assertEqual(value_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
+        self.assertEqual(
+            key_cache.untyped_storage().data_ptr(),
+            physical.untyped_storage().data_ptr(),
+        )
+        self.assertEqual(
+            value_cache.untyped_storage().data_ptr(),
+            physical.untyped_storage().data_ptr(),
+        )
 
     @patch("vllm_ascend.ascend_forward_context.get_forward_context")
     def test_large_head_prefill_uses_device_operator_fallback(self, mock_get_forward_context):

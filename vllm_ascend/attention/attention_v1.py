@@ -1655,7 +1655,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         layer: torch.nn.Module,
         key: torch.Tensor,
         value: torch.Tensor,
-        kv_cache: list[torch.Tensor],
+        kv_cache: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
         slot_mapping: torch.Tensor,
     ) -> None:
         if self.attn_type in (AttentionType.ENCODER_ONLY):
@@ -1677,7 +1677,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        kv_cache: tuple[torch.Tensor],
+        kv_cache: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
@@ -1849,7 +1849,7 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        kv_cache: tuple[torch.Tensor],
+        kv_cache: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
         attn_metadata: AscendMetadata,
         output: torch.Tensor | None = None,
         output_scale: torch.Tensor | None = None,
