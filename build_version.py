@@ -45,7 +45,12 @@ def validate_source_version(version: str) -> str:
     return version
 
 
-def resolve_trusted_scm_version(root: str | Path, describe_command: Sequence[str]) -> str:
+def resolve_trusted_scm_version(
+    root: str | Path,
+    describe_command: Sequence[str],
+    *,
+    write_to: str | None = None,
+) -> str:
     """Resolve a traceable version only from complete, tagged Git history."""
 
     checkout = Path(root).resolve()
@@ -59,11 +64,13 @@ def resolve_trusted_scm_version(root: str | Path, describe_command: Sequence[str
     # hidden by setuptools-scm's archive or fallback heuristics.
     _git_output(checkout, *describe_command[1:])
     try:
-        resolved = get_version(
+        version_options = dict(
             root=checkout,
-            write_to=checkout / "vllm_ascend" / "_version.py",
             git_describe_command=list(describe_command),
         )
+        if write_to is not None:
+            version_options["write_to"] = write_to
+        resolved = get_version(**version_options)
     except LookupError as exc:
         raise RuntimeError(
             "Unable to derive vLLM Ascend version from tagged Git history."

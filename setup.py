@@ -472,7 +472,11 @@ SCM_GIT_DESCRIBE_COMMAND = [
     "--match",
     "v[0-9]*",
 ]
-VERSION = resolve_trusted_scm_version(ROOT_DIR, SCM_GIT_DESCRIBE_COMMAND)
+VERSION = resolve_trusted_scm_version(
+    ROOT_DIR,
+    SCM_GIT_DESCRIBE_COMMAND,
+    write_to="vllm_ascend/_version.py",
+)
 
 ext_modules = []
 if envs.COMPILE_CUSTOM_KERNELS:
