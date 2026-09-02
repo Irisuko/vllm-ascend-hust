@@ -1751,7 +1751,7 @@ class AscendAttentionBackendImpl(AttentionImpl):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        kv_cache: tuple[torch.Tensor],
+        kv_cache: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
@@ -2248,7 +2248,7 @@ class AscendC8AttentionBackendImpl(AscendAttentionBackendImpl):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        kv_cache: tuple[torch.Tensor],
+        kv_cache: torch.Tensor | list[torch.Tensor] | tuple[torch.Tensor, ...],
         attn_metadata: AscendMetadata,
         output: torch.Tensor,
     ):
