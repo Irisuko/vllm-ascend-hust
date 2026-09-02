@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import torch
+from vllm.v1.kv_cache_interface import FullAttentionSpec
 from vllm.v1.kv_cache_layout import KVCacheLayout
 
 import vllm_ascend.attention.attention_v1 as attn_module
@@ -467,32 +468,37 @@ class TestAscendAttentionBackendImpl(TestBase):
     def test_backend_requires_zero_copy_ascend_kv_layout(self):
         self.assertEqual(
             AscendAttentionBackend.supported_kv_cache_layouts(),
-            (KVCacheLayout.LBNHC,),
+            (KVCacheLayout.LHBNC,),
         )
 
-    def test_unpack_standardized_kv_cache_returns_4d_kernel_views(self):
-        # Build a logical [B, H, N, K+V] view backed in LBNHC physical order.
-        physical = torch.arange(2 * 4 * 8 * 128, dtype=torch.float32).view(
-            2, 4, 8, 128
+    def test_backend_packs_standardized_cache_as_dense_kv_planes(self):
+        spec = FullAttentionSpec(
+            block_size=128,
+            num_kv_heads=8,
+            head_size=64,
+            dtype=torch.float16,
         )
-        standardized = physical.permute(0, 2, 1, 3)
+
+        packed = AscendAttentionBackend.customize_spec(spec)
+
+        self.assertEqual(packed.num_head_slots, 2)
+        self.assertEqual(packed.state_content_bytes, 8 * 64 * 2)
+        self.assertEqual(packed.page_size_bytes, spec.page_size_bytes)
+
+    def test_unpack_standardized_kv_cache_returns_4d_kernel_views(self):
+        # Physical LHBNC order keeps each complete K/V plane contiguous. The
+        # per-layer logical view remains [B, 2, N, H*D].
+        physical = torch.arange(2 * 2 * 4 * 8 * 64, dtype=torch.float32).view(2, 2, 4, 8 * 64)
+        standardized = physical.permute(1, 0, 2, 3)
 
         key_cache, value_cache = self.impl._unpack_kv_cache(standardized)
 
         self.assertEqual(key_cache.shape, (2, 4, 8, 64))
         self.assertEqual(value_cache.shape, (2, 4, 8, 64))
-        self.assertTrue(
-            torch.equal(
-                key_cache,
-                standardized[..., :64].permute(0, 2, 1, 3),
-            )
-        )
-        self.assertTrue(
-            torch.equal(
-                value_cache,
-                standardized[..., 64:].permute(0, 2, 1, 3),
-            )
-        )
+        self.assertTrue(torch.equal(key_cache, physical[0].view(2, 4, 8, 64)))
+        self.assertTrue(torch.equal(value_cache, physical[1].view(2, 4, 8, 64)))
+        self.assertTrue(key_cache.is_contiguous())
+        self.assertTrue(value_cache.is_contiguous())
         self.assertEqual(key_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
         self.assertEqual(value_cache.untyped_storage().data_ptr(), physical.untyped_storage().data_ptr())
 
