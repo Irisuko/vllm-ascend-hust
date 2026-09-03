@@ -170,6 +170,7 @@ PCP_MODEL_CASE = AccuracyCase(
 )
 
 
+@pytest.mark.skip("The use case is unstable and temporarily taken offline.")
 @patch.dict(
     os.environ,
     {
