@@ -83,6 +83,7 @@ from vllm.v1.kv_cache_interface import (
     MambaSpec,
     UniformTypeKVCacheSpecs,
 )
+from vllm.v1.kv_cache_layout import KVCacheLayout
 from vllm.v1.outputs import (
     EMPTY_MODEL_RUNNER_OUTPUT,
     AsyncModelRunnerOutput,
@@ -4009,7 +4010,12 @@ class NPUModelRunner(GPUModelRunner):
                 int(size[0] if isinstance(size, (list, tuple)) else size)
                 for size in self.kernel_block_sizes
             ]
-            kv_caches = allocate_kv_cache(
+            allocator = allocate_kv_cache
+            if self.cache_config.get_resolved_kv_cache_layout() == KVCacheLayout.LBHNC:
+                from vllm_ascend.worker.hybrid_cache import allocate_native_hybrid_cache
+
+                allocator = allocate_native_hybrid_cache
+            kv_caches = allocator(
                 kv_cache_config,
                 self.device,
                 self.cache_config.get_resolved_kv_cache_layout(),

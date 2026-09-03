@@ -452,7 +452,7 @@ class TestAscendAttentionBackendImpl(TestBase):
     def test_backend_requires_zero_copy_ascend_kv_layout(self):
         self.assertEqual(
             AscendAttentionBackend.supported_kv_cache_layouts(),
-            (KVCacheLayout.LHBNC,),
+            (KVCacheLayout.LHBNC, KVCacheLayout.LBHNC),
         )
 
     def test_backend_packs_standardized_cache_as_dense_kv_planes(self):

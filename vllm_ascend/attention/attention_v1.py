@@ -100,7 +100,9 @@ class AscendAttentionBackend(AttentionBackend):
         # head slots selected by customize_spec(), and put that slot dimension
         # outside the block dimension.  A per-layer LHBNC view can then expose
         # each plane as a contiguous kernel tensor without a copy.
-        return (KVCacheLayout.LHBNC,)
+        # Mixed attention/Mamba shapes require block-compact pool placement.
+        # NPUModelRunner adapts LBHNC pools to native dense planes at startup.
+        return (KVCacheLayout.LHBNC, KVCacheLayout.LBHNC)
 
     @classmethod
     def customize_spec(cls, spec: AttentionSpec) -> AttentionSpec:
