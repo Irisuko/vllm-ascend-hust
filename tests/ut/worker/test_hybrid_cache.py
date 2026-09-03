@@ -6,7 +6,6 @@ import pytest
 import torch
 from vllm.v1.kv_cache_interface import FullAttentionSpec, KVCacheConfig, KVCacheGroupSpec, KVCacheTensor, MambaSpec
 from vllm.v1.kv_cache_layout import KVCacheLayout
-
 from vllm_ascend.worker.hybrid_cache import allocate_native_hybrid_cache
 
 

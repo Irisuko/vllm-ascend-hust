@@ -4046,7 +4046,9 @@ class NPUModelRunner(GPUModelRunner):
             group_specs = []
             for group in kv_cache_config.kv_cache_groups:
                 spec = getattr(group, "kv_cache_spec", None)
-                group_specs.extend(spec.kv_cache_specs.values() if isinstance(spec, UniformTypeKVCacheSpecs) else [spec])
+                group_specs.extend(
+                    spec.kv_cache_specs.values() if isinstance(spec, UniformTypeKVCacheSpecs) else [spec]
+                )
             native_planes = any(isinstance(spec, MambaSpec) for spec in group_specs) or all(
                 isinstance(spec, AttentionSpec) and getattr(spec, "num_head_slots", None) == 2
                 for spec in group_specs
