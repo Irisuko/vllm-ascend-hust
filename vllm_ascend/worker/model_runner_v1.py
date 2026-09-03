@@ -4043,7 +4043,12 @@ class NPUModelRunner(GPUModelRunner):
                 for size in self.kernel_block_sizes
             ]
             allocator = allocate_kv_cache
-            if self.cache_config.get_resolved_kv_cache_layout() == KVCacheLayout.LBHNC:
+            group_specs = [getattr(group, "kv_cache_spec", None) for group in kv_cache_config.kv_cache_groups]
+            native_planes = any(isinstance(spec, MambaSpec) for spec in group_specs) or all(
+                isinstance(spec, AttentionSpec) and getattr(spec, "num_head_slots", None) == 2
+                for spec in group_specs
+            )
+            if self.cache_config.get_resolved_kv_cache_layout() == KVCacheLayout.LBHNC and native_planes:
                 from vllm_ascend.worker.hybrid_cache import allocate_native_hybrid_cache
 
                 allocator = allocate_native_hybrid_cache
